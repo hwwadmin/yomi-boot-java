@@ -14,17 +14,25 @@
         LIMIT #{limit}
     </select>
 
-    <!-- 保留期清理：只删已成功终态的行，PENDING/FETCHED/SENT_FAIL 与 DLQ 在途行不受影响
-         外层 IN + 派生表包一层：DELETE ... LIMIT 是 MySQL 专有（PG 报语法错误），派生表形式两边通用 -->
-    <delete id="deleteSentSuccessBefore">
+    <!-- 保留期清理：只删已成功终态的行，PENDING/FETCHED/SENT_FAIL 与 DLQ 在途行不受影响。
+         受限删除两库语法不同，按方言各写一条（databaseId 由 ds 组件的 DsDatabaseIdProvider 解析）：
+         MySQL 用原生 DELETE ... LIMIT（走 idx_status_sent_time，按 limit 提前结束）；PG 无此语法，用 ctid 子查询限量
+         （PG 的经典批量删写法：计划是 Tid Scan 直接按元组定位，O(limit)，不会退化成"按 id 删"的全表 Hash Semi Join） -->
+    <delete id="deleteSentSuccessBefore" databaseId="mysql">
         DELETE FROM sys_event_outbox
-        WHERE id IN (SELECT id FROM (
-            SELECT id FROM sys_event_outbox
-            WHERE service_name = #{serviceName}
-              AND status = #{status}
-              AND sent_time &lt; #{sentTimeBefore}
-            LIMIT #{limit}
-        ) AS expired_ids)
+        WHERE service_name = #{serviceName}
+          AND status = #{status}
+          AND sent_time &lt; #{sentTimeBefore}
+        LIMIT #{limit}
+    </delete>
+
+    <delete id="deleteSentSuccessBefore" databaseId="pgsql">
+        DELETE FROM sys_event_outbox
+        WHERE ctid IN (SELECT ctid FROM sys_event_outbox
+                       WHERE service_name = #{serviceName}
+                         AND status = #{status}
+                         AND sent_time &lt; #{sentTimeBefore}
+                       LIMIT #{limit})
     </delete>
 
 </mapper>

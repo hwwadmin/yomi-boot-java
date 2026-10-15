@@ -10,7 +10,9 @@ import com.baomidou.mybatisplus.extension.plugins.inner.InnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.yomi.boot.java.component.ds.DsInfo;
 import com.yomi.boot.java.component.ds.DsPreheat;
+import com.yomi.boot.java.component.ds.support.DsDatabaseIdProvider;
 import com.yomi.boot.java.component.ds.support.MybatisPlusChainChecker;
+import org.apache.ibatis.mapping.DatabaseIdProvider;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -268,6 +270,37 @@ class DsAutoConfigurationTest {
     static class ScanBootstrap {
     }
 
+    /** 方言提供者必须装配，且真的被 MP 注入到 SqlSessionFactory（方言语句靠它选择；删了 Bean 就该红） */
+    @Test
+    void databaseIdProviderWiresIntoMybatisPlusSqlSessionFactory() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class,
+                        com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration.class))
+                .withBean(DataSource.class, () -> productNameDataSource("MySQL"))
+                .run(context -> {
+                    assertNull(context.getStartupFailure(), "上下文应启动成功");
+                    assertNotNull(context.getBean(DatabaseIdProvider.class), "应装配 DsDatabaseIdProvider");
+                    org.apache.ibatis.session.SqlSessionFactory sqlSessionFactory =
+                            context.getBean(org.apache.ibatis.session.SqlSessionFactory.class);
+                    assertEquals("mysql", sqlSessionFactory.getConfiguration().getDatabaseId(),
+                            "方言标识必须进到 MyBatis 配置里，mapper XML 的 databaseId 变体才选得出来");
+                });
+    }
+
+    /** 宿主自定义 DatabaseIdProvider 时本组件让位 */
+    @Test
+    void hostDatabaseIdProviderWins() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
+                .withBean(DataSource.class, DsAutoConfigurationTest::stubDataSource)
+                .withBean(DatabaseIdProvider.class, HostDatabaseIdProvider::new)
+                .run(context -> assertTrue(context.getBean(DatabaseIdProvider.class) instanceof HostDatabaseIdProvider));
+    }
+
+    /** 宿主自定义方言提供者（探针） */
+    static class HostDatabaseIdProvider extends DsDatabaseIdProvider {
+    }
+
     /** 读取 AutoConfiguration.imports 资源内容 */
     private static String readImportsResource() throws IOException {
         try (InputStream in = Thread.currentThread().getContextClassLoader().getResourceAsStream(IMPORTS_RESOURCE)) {
@@ -306,6 +339,31 @@ class DsAutoConfigurationTest {
                 (proxy, method, args) -> {
                     throw new UnsupportedOperationException("stub datasource");
                 });
+    }
+
+    /** 只回答"数据库产品名"的 DataSource 桩（方言解析用） */
+    private static DataSource productNameDataSource(String productName) {
+        java.sql.DatabaseMetaData metaData = (java.sql.DatabaseMetaData) java.lang.reflect.Proxy.newProxyInstance(
+                DsAutoConfigurationTest.class.getClassLoader(), new Class<?>[]{java.sql.DatabaseMetaData.class},
+                (proxy, method, args) -> "getDatabaseProductName".equals(method.getName())
+                        ? productName : stubDefaults(proxy, method, args));
+        java.sql.Connection connection = (java.sql.Connection) java.lang.reflect.Proxy.newProxyInstance(
+                DsAutoConfigurationTest.class.getClassLoader(), new Class<?>[]{java.sql.Connection.class},
+                (proxy, method, args) -> "getMetaData".equals(method.getName())
+                        ? metaData : stubDefaults(proxy, method, args));
+        return (DataSource) java.lang.reflect.Proxy.newProxyInstance(
+                DsAutoConfigurationTest.class.getClassLoader(), new Class<?>[]{DataSource.class},
+                (proxy, method, args) -> "getConnection".equals(method.getName())
+                        ? connection : stubDefaults(proxy, method, args));
+    }
+
+    private static Object stubDefaults(Object proxy, java.lang.reflect.Method method, Object[] args) {
+        return switch (method.getName()) {
+            case "toString" -> "stub";
+            case "hashCode" -> System.identityHashCode(proxy);
+            case "equals" -> proxy == (args == null || args.length == 0 ? null : args[0]);
+            default -> null;
+        };
     }
 
 }

@@ -2,8 +2,10 @@ package com.yomi.boot.java.component.ds.config;
 
 import com.yomi.boot.java.component.ds.DsInfo;
 import com.yomi.boot.java.component.ds.DsPreheat;
+import com.yomi.boot.java.component.ds.support.DsDatabaseIdProvider;
 import com.yomi.boot.java.component.ds.support.InstantJdbcTypeHandler;
 import com.yomi.boot.java.component.ds.support.MybatisPlusChainChecker;
+import org.apache.ibatis.mapping.DatabaseIdProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
@@ -66,6 +68,17 @@ public class DsAutoConfiguration {
     @ConditionalOnMissingBean(InstantJdbcTypeHandler.class)
     public InstantJdbcTypeHandler instantJdbcTypeHandler() {
         return new InstantJdbcTypeHandler();
+    }
+
+    /**
+     * 方言标识（{@code databaseId}）：MySQL→{@code mysql}、PostgreSQL→{@code pgsql}；
+     * mapper XML 里无法双库通用的语句（如受限删除）按 dialect 各写一条，由 MyBatis 按当前数据源选择。
+     * 由 MP 的 {@code MybatisPlusAutoConfiguration} 注入到 SqlSessionFactory；识别不了方言即启动失败
+     */
+    @Bean
+    @ConditionalOnMissingBean(DatabaseIdProvider.class)
+    public DatabaseIdProvider databaseIdProvider() {
+        return new DsDatabaseIdProvider();
     }
 
 }
