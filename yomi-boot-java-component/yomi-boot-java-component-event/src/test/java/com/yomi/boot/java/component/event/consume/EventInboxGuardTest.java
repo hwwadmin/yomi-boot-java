@@ -14,6 +14,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.AbstractPlatformTransactionManager;
 import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.SavepointManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.lang.reflect.Proxy;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -73,18 +75,25 @@ class EventInboxGuardTest {
         assertEquals(List.of(), inbox.inserts);
     }
 
-    /** 降级路径 + 并发插入撞唯一键：按重复消息处理（异常不得逃逸成 RETRY） */
+    /** 降级路径 + 并发插入撞唯一键：按重复消息处理（异常不得逃逸成 RETRY），且必须回滚到保存点 */
     @Test
     void lockUnavailableWithUniqueKeyConflictTreatedAsDuplicate() {
         FakeInbox inbox = new FakeInbox();
         inbox.duplicateOnInsert = true;
+        SavepointTxManager txManager = new SavepointTxManager();
         List<String> handled = new ArrayList<>();
-        EventInboxGuard guard = new TestGuard(inbox.repo(), new IllegalStateException("Redis 连接被拒绝"));
+        EventInboxGuard guard = new TestGuard(inbox.repo(), new IllegalStateException("Redis 连接被拒绝"), txManager);
 
         EventConsumeResult result = guard.onMessage(body("evt-1"), evt -> handled.add(evt.getEventId()));
 
         assertEquals(EventConsumeResult.SUCCESS, result);
         assertEquals(List.of(), handled, "唯一键冲突方必须放弃业务（互斥由唯一键承担）");
+        assertEquals(1, txManager.savepoints.created.get(), "冲突前必须建保存点");
+        assertEquals(1, txManager.savepoints.rolledBack.get(),
+                "冲突后必须回滚到保存点：PG 下不回滚会让事务保持 aborted，提交会静默变成整体回滚");
+        assertEquals(1, txManager.savepoints.released.get(), "保存点必须释放，避免长事务内堆积");
+        assertEquals(1, txManager.commits.get(), "重复消息应正常提交（保存点回滚后事务仍可用）");
+        assertEquals(0, txManager.rollbacks.get(), "不应走整体回滚");
     }
 
     /** 抢锁失败 + 未入 inbox：说明其他实例正在处理 → RETRY */
@@ -134,8 +143,12 @@ class EventInboxGuardTest {
         private final RuntimeException lockFailure;
 
         TestGuard(IEventInboxRepository repository, RuntimeException lockFailure) {
+            this(repository, lockFailure, null);
+        }
+
+        TestGuard(IEventInboxRepository repository, RuntimeException lockFailure, SavepointTxManager txManager) {
             super(repository, new EventKeys("test"), new EventProperties(),
-                    new TransactionTemplate(new FakeTxManager()));
+                    new TransactionTemplate(txManager != null ? txManager : new FakeTxManager()));
             this.lockFailure = lockFailure;
         }
 
@@ -171,7 +184,7 @@ class EventInboxGuardTest {
         }
     }
 
-    /** 最小事务管理器：让 transactionTemplate 真进入事务（不连库） */
+    /** 最小事务管理器：让 transactionTemplate 真进入事务（不连库）；事务对象不支持保存点 */
     static class FakeTxManager extends AbstractPlatformTransactionManager {
 
         @Override
@@ -189,6 +202,57 @@ class EventInboxGuardTest {
 
         @Override
         protected void doRollback(DefaultTransactionStatus status) {
+        }
+    }
+
+    /** 模拟 DataSourceTransactionManager：事务对象支持保存点并记账，用于断言"冲突回滚到保存点、事务照常提交" */
+    static class SavepointTxManager extends AbstractPlatformTransactionManager {
+
+        final RecordingSavepoints savepoints = new RecordingSavepoints();
+        final AtomicInteger commits = new AtomicInteger();
+        final AtomicInteger rollbacks = new AtomicInteger();
+
+        @Override
+        protected Object doGetTransaction() {
+            return savepoints;
+        }
+
+        @Override
+        protected void doBegin(Object transaction, TransactionDefinition definition) {
+        }
+
+        @Override
+        protected void doCommit(DefaultTransactionStatus status) {
+            commits.incrementAndGet();
+        }
+
+        @Override
+        protected void doRollback(DefaultTransactionStatus status) {
+            rollbacks.incrementAndGet();
+        }
+    }
+
+    /** 保存点记账桩 */
+    static class RecordingSavepoints implements SavepointManager {
+
+        final AtomicInteger created = new AtomicInteger();
+        final AtomicInteger rolledBack = new AtomicInteger();
+        final AtomicInteger released = new AtomicInteger();
+
+        @Override
+        public Object createSavepoint() {
+            created.incrementAndGet();
+            return new Object();
+        }
+
+        @Override
+        public void rollbackToSavepoint(Object savepoint) {
+            rolledBack.incrementAndGet();
+        }
+
+        @Override
+        public void releaseSavepoint(Object savepoint) {
+            released.incrementAndGet();
         }
     }
 

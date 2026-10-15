@@ -1,6 +1,7 @@
 package com.yomi.boot.java.component.event.consume;
 
 import com.yomi.boot.java.component.ds.support.DbDuplicateKey;
+import com.yomi.boot.java.component.ds.support.SavepointScope;
 import com.yomi.boot.java.component.event.config.EventProperties;
 import com.yomi.boot.java.component.event.entity.EventInbox;
 import com.yomi.boot.java.component.event.model.WireEvent;
@@ -129,13 +130,19 @@ public class EventInboxGuard {
                         .setEventId(evt.getEventId())
                         .setTopic(evt.getTopic())
                         .setPayload(evt.getPayload());
+                // 保存点包住 INSERT：PG 里唯一键冲突会把事务打成 aborted，
+                // 不回滚到保存点，本次"重复消息"的提交会静默变成整体回滚（调用方在本事务的其它写入也会丢）
+                SavepointScope scope = SavepointScope.open(status);
                 try {
                     inboxRepository.insert(inbox);
                 } catch (Exception e) {
+                    scope.rollbackTo();
                     if (DbDuplicateKey.isDuplicateKey(e)) {
                         return true;
                     }
                     throw e;
+                } finally {
+                    scope.release();
                 }
                 invokeHandler(handler, evt);
                 return false;

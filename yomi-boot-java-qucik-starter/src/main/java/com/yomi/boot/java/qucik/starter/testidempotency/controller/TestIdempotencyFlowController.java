@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
@@ -24,6 +25,8 @@ import java.util.Objects;
  *     <li>POST /test/ds/test-idempotency/annotation：{@link com.yomi.boot.java.component.idempotency.annotation.Idempotent}</li>
  *     <li>POST /test/ds/test-idempotency/utils：{@link IdempotencyUtils}</li>
  * </ul>
+ * 两者都支持可选参数 {@code flowKey}（默认随机生成）：传同一个键重复调用即可手工验证
+ * "结果缓存已过期/被清 + 库中已有已完成记录"的冲突读回路径。
  *
  * @author zwei
  */
@@ -44,13 +47,13 @@ public class TestIdempotencyFlowController {
     private final TestIdempotencyDemoService demoService;
 
     @PostMapping("/annotation")
-    public Response<List<String>> annotationFlow() {
-        return runFlow(FLOW_ANNOTATION, key -> demoService.invokeByAnnotation(key));
+    public Response<List<String>> annotationFlow(@RequestParam(value = "flowKey", required = false) String flowKey) {
+        return runFlow(FLOW_ANNOTATION, flowKey, key -> demoService.invokeByAnnotation(key));
     }
 
     @PostMapping("/utils")
-    public Response<List<String>> utilsFlow() {
-        return runFlow(FLOW_UTILS, key -> IdempotencyUtils.execute(
+    public Response<List<String>> utilsFlow(@RequestParam(value = "flowKey", required = false) String flowKey) {
+        return runFlow(FLOW_UTILS, flowKey, key -> IdempotencyUtils.execute(
                 NAMESPACE_UTILS,
                 key,
                 TestIdempotencyInvokeResult.class,
@@ -58,10 +61,16 @@ public class TestIdempotencyFlowController {
         ));
     }
 
-    /** 执行演示流程并逐步断言 */
-    private Response<List<String>> runFlow(String flow, java.util.function.Function<String, TestIdempotencyInvokeResult> invoker) {
+    /**
+     * 执行演示流程并逐步断言
+     *
+     * @param fixedKey 显式指定的幂等键（可不传，默认随机生成）。传同一个键重复调用可用于手工验证
+     *                 "结果缓存冷 + 库中已有记录"的冲突读回路径（先删掉 Redis 结果键再调）
+     */
+    private Response<List<String>> runFlow(String flow, String fixedKey,
+                                          java.util.function.Function<String, TestIdempotencyInvokeResult> invoker) {
         List<String> steps = new ArrayList<>();
-        String flowKey = IdempotencyUtils.newKey();
+        String flowKey = StringUtils.isNotBlank(fixedKey) ? fixedKey : IdempotencyUtils.newKey();
         log.info("[幂等测试流程][{}] 开始, flowKey={}", flow, flowKey);
         try {
             TestIdempotencyInvokeResult first = invoker.apply(flowKey);

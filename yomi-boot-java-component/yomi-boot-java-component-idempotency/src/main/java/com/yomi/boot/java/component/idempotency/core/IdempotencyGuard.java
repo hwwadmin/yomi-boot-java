@@ -3,6 +3,7 @@ package com.yomi.boot.java.component.idempotency.core;
 import com.yomi.boot.java.base.utils.ExUtils;
 import com.yomi.boot.java.base.utils.JsonUtils;
 import com.yomi.boot.java.component.ds.support.DbDuplicateKey;
+import com.yomi.boot.java.component.ds.support.SavepointScope;
 import com.yomi.boot.java.component.idempotency.config.IdempotencyProperties;
 import com.yomi.boot.java.component.idempotency.entity.IdempotencyRecord;
 import com.yomi.boot.java.component.idempotency.exception.IdempotencyException;
@@ -20,6 +21,7 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.redisson.api.RLock;
 import org.redisson.client.RedisException;
+import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -38,6 +40,8 @@ import java.util.function.Supplier;
  * 幂等编排：Redis 热读 → 分布式锁 → 事务占位执行业务 → 写回 Redis
  * <p>Redis 不可用时降级为无锁路径（fail-open）：分布式锁只是"省一次 DB 写入"的优化，
  * 互斥由 {@code sys_idempotency_record} 唯一键 + 事务内先插占位承担，性能略降但正确性不变</p>
+ * <p>占位 INSERT 用保存点包住：唯一键冲突在 PostgreSQL 上会让事务进入 aborted（25P02），
+ * 冲突后必须回滚到保存点才能读回已完成结果、外层事务才能继续</p>
  *
  * @author zwei
  */
@@ -195,14 +199,14 @@ public class IdempotencyGuard {
         if (again.hit()) {
             return again.value();
         }
-        Object result = transactionTemplate.execute(status -> runBusinessOnce(key, returnType, fn));
+        Object result = transactionTemplate.execute(status -> runBusinessOnce(key, returnType, fn, status));
         cacheResult(key, result);
         return result;
     }
 
     /** Redis 不可用时的无锁路径：互斥由 DB 唯一键承担，流程与持锁路径一致 */
     private Object executeWithoutLock(IdempotencyKey key, Type returnType, Supplier<Object> fn) {
-        Object result = transactionTemplate.execute(status -> runBusinessOnce(key, returnType, fn));
+        Object result = transactionTemplate.execute(status -> runBusinessOnce(key, returnType, fn, status));
         cacheResult(key, result);
         return result;
     }
@@ -245,8 +249,12 @@ public class IdempotencyGuard {
     /**
      * 事务内：INSERT 抢占位 → 执行业务 → 更新为已完成
      * 唯一键冲突则只读库中已完成结果（无锁降级路径下即靠它承担互斥）
+     * <p>
+     * INSERT 用保存点包住：PostgreSQL 里唯一键冲突会把整个事务打成 aborted（后续语句 25P02），
+     * 不先回滚到保存点，冲突后的读回与整个事务都会硬失败；MySQL 无此限制，保存点两边通用。
+     * 保存点只包住 INSERT，回滚它不影响调用方在本事务里的其它写入。
      */
-    private Object runBusinessOnce(IdempotencyKey key, Type returnType, Supplier<Object> fn) {
+    private Object runBusinessOnce(IdempotencyKey key, Type returnType, Supplier<Object> fn, TransactionStatus status) {
         Instant expireTime = Instant.now().plus(properties.getRecordRetention());
         IdempotencyRecord row = new IdempotencyRecord()
                 .setNamespace(key.namespace())
@@ -255,13 +263,18 @@ public class IdempotencyGuard {
                 .setStatus(IdempotencyStatus.PROCESSING)
                 .setExpireTime(expireTime);
 
+        SavepointScope scope = SavepointScope.open(status);
         try {
             repository.save(row);
         } catch (Exception e) {
+            // 冲突/失败后先把事务恢复到可用状态，再做读回或抛出
+            scope.rollbackTo();
             if (!DbDuplicateKey.isDuplicateKey(e)) {
                 throw e;
             }
             return loadCompletedResultFromDb(key, returnType, true);
+        } finally {
+            scope.release();
         }
 
         Object fnResult = fn.get();
