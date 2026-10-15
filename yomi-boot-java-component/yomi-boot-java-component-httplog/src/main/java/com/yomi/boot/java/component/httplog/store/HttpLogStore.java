@@ -1,0 +1,21 @@
+package com.yomi.boot.java.component.httplog.store;
+
+import com.yomi.boot.java.component.httplog.model.HttpLogRecord;
+
+import java.util.List;
+
+/**
+ * 批量落库端口：默认实现为批量写入 {@code sys_http_log}
+ * <p>宿主可注册自己的 Bean 顶替（{@code @ConditionalOnMissingBean} 让位），写入异构存储（ClickHouse/ES 等）。
+ *
+ * @author zwei
+ */
+public interface HttpLogStore {
+
+    /**
+     * 批量写入
+     * <p>内部完成有限重试（重试耗尽抛异常，由消费循环按失败丢弃并计数）。
+     */
+    void writeBatch(List<HttpLogRecord> batch);
+
+}

@@ -1,0 +1,279 @@
+package com.yomi.boot.java.component.rbac.config;
+
+import com.yomi.boot.java.component.ds.support.TableExistingChecker;
+import com.yomi.boot.java.component.rbac.IRbacAdminService;
+import com.yomi.boot.java.component.rbac.IRbacAuthService;
+import com.yomi.boot.java.component.rbac.cache.RbacProjectionKeys;
+import com.yomi.boot.java.component.rbac.cache.RbacProjectionStore;
+import com.yomi.boot.java.component.rbac.core.RbacAdminService;
+import com.yomi.boot.java.component.rbac.core.RbacAuthService;
+import com.yomi.boot.java.component.rbac.relay.RbacProjectionRefresher;
+import com.yomi.boot.java.component.rbac.repository.*;
+import com.yomi.boot.java.component.rbac.repository.mapper.RbacAuthMapper;
+import com.yomi.boot.java.component.rbac.repository.mapper.RbacGroupPermRelMapper;
+import com.yomi.boot.java.component.rbac.repository.mapper.RbacPermGroupMapper;
+import com.yomi.boot.java.component.rbac.repository.mapper.RbacPermMapper;
+import com.yomi.boot.java.component.rbac.repository.mapper.RbacRoleGroupRelMapper;
+import com.yomi.boot.java.component.rbac.repository.mapper.RbacRoleMapper;
+import com.yomi.boot.java.component.rbac.repository.mapper.RbacUserRoleRelMapper;
+import com.yomi.boot.java.component.rbac.web.RbacExceptionAdvice;
+import com.yomi.boot.java.component.rbac.web.RbacInterceptor;
+import com.yomi.boot.java.component.rbac.web.RbacWebMvcConfig;
+import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
+import com.yomi.boot.java.component.roundrobin.RoundRobin;
+import com.yomi.boot.java.component.roundrobin.annotation.RoundRobinTask;
+import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
+import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
+import com.yomi.boot.java.component.roundrobin.core.RoundRobinDefaults;
+import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
+import com.yomi.boot.java.component.token.ITokenService;
+import com.yomi.boot.java.component.token.config.TokenAutoConfiguration;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
+import org.springframework.data.redis.core.StringRedisTemplate;
+
+import javax.sql.DataSource;
+import java.util.List;
+
+/**
+ * RBAC 自动装配；需 {@code yomi.rbac.enabled=true}
+ * <p>本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描，宿主无需关心依赖 jar
+ *
+ * @author zwei
+ */
+@Slf4j
+@AutoConfiguration
+@MapperScan("com.yomi.boot.java.component.rbac.repository.mapper")
+@AutoConfigureAfter({TokenAutoConfiguration.class, RedisAutoConfiguration.class, RoundRobinAutoConfiguration.class})
+@EnableConfigurationProperties(RbacProperties.class)
+@ConditionalOnProperty(value = "yomi.rbac.enabled", havingValue = "true")
+public class RbacAutoConfiguration {
+
+    // ---- 仓储（端口）：数据访问唯一出入口；Mapper 只在此注入，宿主可自行实现端口并注册 Bean 顶替 ----
+
+    @Bean
+    @ConditionalOnMissingBean(IRbacPermRepository.class)
+    public RbacPermRepository rbacPermRepository(ObjectProvider<RbacPermMapper> mapperProvider) {
+        return new RbacPermRepository(requireMapper(mapperProvider, "RbacPermMapper"));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(IRbacPermGroupRepository.class)
+    public RbacPermGroupRepository rbacPermGroupRepository(ObjectProvider<RbacPermGroupMapper> mapperProvider) {
+        return new RbacPermGroupRepository(requireMapper(mapperProvider, "RbacPermGroupMapper"));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(IRbacRoleRepository.class)
+    public RbacRoleRepository rbacRoleRepository(ObjectProvider<RbacRoleMapper> mapperProvider) {
+        return new RbacRoleRepository(requireMapper(mapperProvider, "RbacRoleMapper"));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(IRbacAuthRepository.class)
+    public RbacAuthRepository rbacAuthRepository(ObjectProvider<RbacAuthMapper> mapperProvider) {
+        return new RbacAuthRepository(requireMapper(mapperProvider, "RbacAuthMapper"));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(IRbacRelationRepository.class)
+    public RbacRelationRepository rbacRelationRepository(ObjectProvider<RbacUserRoleRelMapper> userRoleRelMapperProvider,
+                                                        ObjectProvider<RbacRoleGroupRelMapper> roleGroupRelMapperProvider,
+                                                        ObjectProvider<RbacGroupPermRelMapper> groupPermRelMapperProvider,
+                                                        IRbacRoleRepository roleRepository) {
+        return new RbacRelationRepository(
+                requireMapper(userRoleRelMapperProvider, "RbacUserRoleRelMapper"),
+                requireMapper(roleGroupRelMapperProvider, "RbacRoleGroupRelMapper"),
+                requireMapper(groupPermRelMapperProvider, "RbacGroupPermRelMapper"),
+                roleRepository);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(IRbacSnapshotRepository.class)
+    public RbacSnapshotRepository rbacSnapshotRepository(ObjectProvider<RbacPermMapper> permMapperProvider,
+                                                        ObjectProvider<RbacPermGroupMapper> permGroupMapperProvider,
+                                                        ObjectProvider<RbacRoleMapper> roleMapperProvider,
+                                                        ObjectProvider<RbacUserRoleRelMapper> userRoleRelMapperProvider,
+                                                        ObjectProvider<RbacRoleGroupRelMapper> roleGroupRelMapperProvider,
+                                                        ObjectProvider<RbacGroupPermRelMapper> groupPermRelMapperProvider) {
+        return new RbacSnapshotRepository(
+                requireMapper(permMapperProvider, "RbacPermMapper"),
+                requireMapper(permGroupMapperProvider, "RbacPermGroupMapper"),
+                requireMapper(roleMapperProvider, "RbacRoleMapper"),
+                requireMapper(userRoleRelMapperProvider, "RbacUserRoleRelMapper"),
+                requireMapper(roleGroupRelMapperProvider, "RbacRoleGroupRelMapper"),
+                requireMapper(groupPermRelMapperProvider, "RbacGroupPermRelMapper"));
+    }
+
+    /** 取必需的 Mapper：缺失时给出与建表脚本、Mapper 自动扫描一致的指引 */
+    private static <T> T requireMapper(ObjectProvider<T> mapperProvider, String mapperName) {
+        T mapper = mapperProvider.getIfAvailable();
+        if (mapper == null) {
+            throw new IllegalStateException("yomi.rbac.enabled=true 需要 " + mapperName
+                    + "：请执行 sql/sys_rbac.sql（含内置超管种子）；Mapper 由 component-rbac 自动配置扫描，无需宿主配置 @MapperScan");
+        }
+        return mapper;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public RbacProjectionKeys rbacProjectionKeys(RbacProperties properties, Environment environment) {
+        return new RbacProjectionKeys(resolvePrefix(properties, environment));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(value = "yomi.rbac.projection-enabled", havingValue = "true", matchIfMissing = true)
+    public RbacProjectionStore rbacProjectionStore(StringRedisTemplate stringRedisTemplate,
+                                                   RbacProjectionKeys keys,
+                                                   RbacProperties properties,
+                                                   IRbacSnapshotRepository snapshotRepository) {
+        return new RbacProjectionStore(stringRedisTemplate, keys, properties, snapshotRepository);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public IRbacAuthService rbacAuthService(IRbacAuthRepository authRepository,
+                                           RbacProperties properties,
+                                           ObjectProvider<RbacProjectionStore> projectionStoreProvider) {
+        RbacProjectionStore store = properties.isProjectionEnabled()
+                ? projectionStoreProvider.getIfAvailable() : null;
+        return new RbacAuthService(authRepository, properties, store);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public IRbacAdminService rbacAdminService(IRbacPermRepository permRepository,
+                                             IRbacPermGroupRepository permGroupRepository,
+                                             IRbacRoleRepository roleRepository,
+                                             IRbacRelationRepository relationRepository,
+                                             IRbacAuthRepository authRepository,
+                                             IRbacAuthService authService,
+                                             RbacProperties properties) {
+        return new RbacAdminService(permRepository, permGroupRepository, roleRepository,
+                relationRepository, authRepository);
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnMissingBean
+    public RbacInterceptor rbacInterceptor(ITokenService tokenService,
+                                           IRbacAuthService rbacAuthService,
+                                           RbacProperties properties) {
+        return new RbacInterceptor(tokenService, rbacAuthService, properties);
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnMissingBean
+    public RbacWebMvcConfig rbacWebMvcConfig(RbacInterceptor rbacInterceptor, RbacProperties properties) {
+        return new RbacWebMvcConfig(rbacInterceptor, properties);
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnMissingBean
+    public RbacExceptionAdvice rbacExceptionAdvice(ObjectProvider<ITokenService> tokenServiceProvider) {
+        return new RbacExceptionAdvice(tokenServiceProvider);
+    }
+
+    @Bean
+    @ConditionalOnProperty(value = "yomi.rbac.scheduled-refresh-enabled", havingValue = "true")
+    @ConditionalOnProperty(value = "yomi.rbac.projection-enabled", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
+    @ConditionalOnClass(RoundRobinTask.class)
+    public RbacProjectionRefresher rbacProjectionRefresher(IRbacAuthService authService,
+                                                           RbacProperties properties,
+                                                           RoundRobinRegistry roundRobinRegistry) {
+        RbacProjectionRefresher refresher = new RbacProjectionRefresher(authService);
+        registerProjectionRefreshTask(roundRobinRegistry, refresher, properties);
+        log.info("[RBAC] 定时投影刷新已注册: interval={}", properties.getScheduledRefreshInterval());
+        return refresher;
+    }
+
+    /** 注册 RBAC 投影定时刷新任务 */
+    private static void registerProjectionRefreshTask(RoundRobinRegistry registry,
+                                                      RbacProjectionRefresher refresher,
+                                                      RbacProperties properties) {
+        RoundRobinDefaults defaults = RoundRobinDefaults.builder().build();
+        RoundRobinConfig config = RoundRobinConfig.simple(
+                RbacProjectionRefresher.TASK_NAME, "定时全量刷新 RBAC 鉴权投影（Redis）",
+                properties.getScheduledRefreshInterval(), defaults);
+        config.validate();
+        registry.register(RoundRobin.task(config, refresher::refresh));
+    }
+
+    @Bean
+    public ApplicationRunner rbacBootstrapRefresh(RbacProperties properties, IRbacAuthService authService) {
+        return args -> {
+            if (!properties.isBootstrapRefresh() || !properties.isProjectionEnabled()) {
+                return;
+            }
+            try {
+                authService.refreshProjection();
+                log.info("[RBAC] 启动期鉴权投影已刷新");
+            } catch (Exception e) {
+                log.warn("[RBAC] 启动期刷新投影失败，冷启动可能全拒绝直至手动 refresh", e);
+            }
+        };
+    }
+
+    @Bean
+    public RbacBootstrap rbacBootstrap(RbacProperties properties,
+                                       RbacProjectionKeys keys,
+                                       ObjectProvider<StringRedisTemplate> redisProvider,
+                                       ObjectProvider<RbacAuthMapper> authMapperProvider) {
+        properties.validate();
+        if (properties.isProjectionEnabled() && redisProvider.getIfAvailable() == null) {
+            throw new IllegalStateException(
+                    "yomi.rbac.projection-enabled=true 需要 Redis：请配置 spring.data.redis.host");
+        }
+        if (authMapperProvider.getIfAvailable() == null) {
+            throw new IllegalStateException(
+                    "yomi.rbac.enabled=true 需要 RbacAuthMapper：请执行 sql/sys_rbac.sql（含内置超管种子）；"
+                            + "Mapper 由 component-rbac 自动配置扫描，无需宿主配置 @MapperScan");
+        }
+        log.info("[RBAC]已启用: storePrefix={}, projectionEnabled={}, httpPathStyle={}",
+                keys.getPrefix(), properties.isProjectionEnabled(), properties.getHttpPathStyle());
+        return new RbacBootstrap();
+    }
+
+    /** 启动期建表检查：缺表直接启动失败（fail-fast），避免"应用起来了但所有请求 403" */
+    @Bean
+    public TableExistingChecker rbacTableExistingChecker(ObjectProvider<DataSource> dataSourceProvider) {
+        return new TableExistingChecker(dataSourceProvider, "RBAC", "sql/sys_rbac.sql", List.of(
+                "sys_rbac_perm", "sys_rbac_perm_group", "sys_rbac_role",
+                "sys_rbac_user_role_rel", "sys_rbac_role_group_rel", "sys_rbac_group_perm_rel"));
+    }
+
+    /** 从环境补全存储键前缀 */
+    private static String resolvePrefix(RbacProperties properties, Environment environment) {
+        String raw = properties.getStorePrefix();
+        if (StringUtils.isBlank(raw)) {
+            String applicationName = environment.getProperty("spring.application.name");
+            if (StringUtils.isBlank(applicationName)) {
+                throw new IllegalStateException(
+                        "yomi.rbac.store-prefix 未配置，且无法从 spring.application.name 推导，请显式配置 store-prefix");
+            }
+            raw = "yomi:rbac:" + applicationName;
+        }
+        return raw;
+    }
+
+    /** 占位 Bean：触发 RBAC 启动校验与日志 */
+    public static final class RbacBootstrap {
+    }
+
+}

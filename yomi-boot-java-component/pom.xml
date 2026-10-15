@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.yomi</groupId>
+        <artifactId>yomi-boot-java</artifactId>
+        <version>1.0</version>
+    </parent>
+    <artifactId>yomi-boot-java-component</artifactId>
+    <packaging>pom</packaging>
+    <modules>
+        <module>yomi-boot-java-component-ds</module>
+        <module>yomi-boot-java-component-redis</module>
+        <module>yomi-boot-java-component-kafka</module>
+        <module>yomi-boot-java-component-token</module>
+        <module>yomi-boot-java-component-roundrobin</module>
+        <module>yomi-boot-java-component-idempotency</module>
+        <module>yomi-boot-java-component-oss</module>
+        <module>yomi-boot-java-component-event</module>
+        <module>yomi-boot-java-component-rbac</module>
+        <module>yomi-boot-java-component-captcha</module>
+        <module>yomi-boot-java-component-desensitize</module>
+        <module>yomi-boot-java-component-httplog</module>
+    </modules>
+
+</project>

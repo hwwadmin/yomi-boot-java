@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.yomi</groupId>
+        <artifactId>yomi-boot-java</artifactId>
+        <version>1.0</version>
+    </parent>
+    <artifactId>yomi-boot-java-qucik-starter</artifactId>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <!-- yomi -->
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-ds</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-token</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-roundrobin</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-idempotency</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-oss</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-event</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-rbac</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-kafka</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-captcha</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-desensitize</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.yomi</groupId>
+            <artifactId>yomi-boot-java-component-httplog</artifactId>
+        </dependency>
+
+        <!-- Excel（Apache Fesod） -->
+        <dependency>
+            <groupId>org.apache.fesod</groupId>
+            <artifactId>fesod-sheet</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <skipTests>true</skipTests>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

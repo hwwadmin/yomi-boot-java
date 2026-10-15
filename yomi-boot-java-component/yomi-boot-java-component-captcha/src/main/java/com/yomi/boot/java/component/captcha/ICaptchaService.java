@@ -1,0 +1,41 @@
+package com.yomi.boot.java.component.captcha;
+
+import com.yomi.boot.java.component.captcha.core.CaptchaChallenge;
+import com.yomi.boot.java.component.captcha.core.CaptchaType;
+import com.yomi.boot.java.component.captcha.core.CaptchaVerifyResult;
+import com.yomi.boot.java.component.captcha.exception.CaptchaException;
+
+/**
+ * 验证码服务（服务层门面）
+ * <p>
+ * 组件不提供 HTTP 接口，接口由业务自行封装（响应模型、放行路径、no-store 头都归业务）。
+ * 契约：
+ * <ul>
+ *     <li>生成：随机句柄 + 图片（不含答案），答案存于存储层并带有效期；</li>
+ *     <li>校验：<b>一次性消费</b>——无论输对输错，挑战即刻失效（防爆破、防重放）；</li>
+ *     <li>诚实失败：存储/渲染等基础设施异常抛 {@link CaptchaException}（500），
+ *     不静默放行、也不伪装成"输错"；需要降级放行的调用方显式 catch。</li>
+ * </ul>
+ *
+ * @author zwei
+ */
+public interface ICaptchaService {
+
+    /**
+     * 生成挑战；{@code type} 传 null 用配置的默认类型
+     */
+    CaptchaChallenge generate(CaptchaType type);
+
+    /**
+     * 校验答案（一次性消费）
+     * <p>
+     * 句柄或答案为空、答案不匹配返回 MISMATCH；挑战不存在/已过期/已被消费返回 EXPIRED。
+     */
+    CaptchaVerifyResult verify(String captchaId, String answer);
+
+    /**
+     * 主动作废挑战（不做任何处理当句柄为空）
+     */
+    void invalidate(String captchaId);
+
+}

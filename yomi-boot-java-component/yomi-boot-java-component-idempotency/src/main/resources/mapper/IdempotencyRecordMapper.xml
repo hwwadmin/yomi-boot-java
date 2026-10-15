@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- sys_idempotency_record 自定义 SQL，与 IdempotencyRecordMapper 接口方法一一对应 -->
+<mapper namespace="com.yomi.boot.java.component.idempotency.repository.mapper.IdempotencyRecordMapper">
+
+    <sql id="columns">
+        id, namespace, idempotency_key, request_hash, status, result_type, result_payload, expire_time,
+        create_time, create_by, update_time, update_by, delete_time, delete_by
+    </sql>
+
+    <!-- 乐观：仅 status=处理中 时可更新为已完成 -->
+    <update id="markCompleted">
+        UPDATE sys_idempotency_record
+        SET status = #{completedStatus},
+            result_type = #{resultType},
+            result_payload = #{resultPayload},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND status = #{processingStatus}
+          AND delete_time IS NULL
+    </update>
+
+    <!-- 与框架约定一致：仅物理删，避免软删占用唯一键 -->
+    <delete id="deleteStaleProcessing">
+        DELETE FROM sys_idempotency_record
+        WHERE status = #{processingStatus}
+          AND update_time &lt; #{before}
+        LIMIT #{limit}
+    </delete>
+
+    <delete id="deleteExpired">
+        DELETE FROM sys_idempotency_record
+        WHERE expire_time &lt; #{before}
+        LIMIT #{limit}
+    </delete>
+
+</mapper>

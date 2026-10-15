@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- sys_event_inbox 自定义 SQL -->
+<mapper namespace="com.yomi.boot.java.component.event.repository.mapper.EventInboxMapper">
+
+    <!-- 保留期清理：物理删除（与幂等组件清理一致，避免软删行长期占用表空间） -->
+    <delete id="deleteCreatedBefore">
+        DELETE FROM sys_event_inbox
+        WHERE service_name = #{serviceName}
+          AND create_time &lt; #{createTimeBefore}
+        LIMIT #{limit}
+    </delete>
+
+</mapper>

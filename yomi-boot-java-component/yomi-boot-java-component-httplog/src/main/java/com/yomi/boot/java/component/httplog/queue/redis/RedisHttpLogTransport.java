@@ -1,0 +1,411 @@
+package com.yomi.boot.java.component.httplog.queue.redis;
+
+import com.yomi.boot.java.base.utils.JsonUtils;
+import com.yomi.boot.java.component.httplog.config.HttpLogProperties;
+import com.yomi.boot.java.component.httplog.desensitize.HttpLogDesensitizer;
+import com.yomi.boot.java.component.httplog.model.HttpLogRecord;
+import com.yomi.boot.java.component.httplog.queue.HttpLogBatchHandler;
+import com.yomi.boot.java.component.httplog.queue.HttpLogConsumer;
+import com.yomi.boot.java.component.httplog.queue.HttpLogSink;
+import com.yomi.boot.java.component.httplog.support.HttpLogKeys;
+import com.yomi.boot.java.component.httplog.support.HttpLogMetrics;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.data.redis.connection.stream.Consumer;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.RecordId;
+import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.connection.stream.StreamReadOptions;
+import org.springframework.data.redis.connection.stream.StreamRecords;
+import org.springframework.data.redis.core.StringRedisTemplate;
+
+import java.net.InetAddress;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * redis 模式传输：L1 有界缓冲 → 发送线程批量写入 Redis → 消费线程批量读取 → 回调
+ * <p>structure=list（默认）：RPUSH 批量写 / LPOP count 批量读（Redis ≥ 6.2），pop 即删不重复；
+ * structure=stream：XADD + 消费组 XREADGROUP；无论成败都按批 XACK（失败按丢弃计数，不允许无限重投）；
+ * 崩溃遗留的 PEL 由同名 consumer（默认主机名，可配）重启后补投，不认领其他实例的 PEL。
+ * <p>发送前完成 body 补脱敏：进入介质的即为脱敏后数据。
+ *
+ * @author zwei
+ */
+@Slf4j
+public class RedisHttpLogTransport implements HttpLogSink, HttpLogConsumer {
+
+    /** Redis Stream 消息体字段名 */
+    private static final String PAYLOAD_FIELD = "payload";
+
+    /** 模块配置 */
+    private final HttpLogProperties properties;
+
+    /** Redis 读写 */
+    private final StringRedisTemplate redisTemplate;
+
+    /** 发送前补脱敏 */
+    private final HttpLogDesensitizer desensitizer;
+
+    /** 队列深度、丢弃与失败指标 */
+    private final HttpLogMetrics metrics;
+
+    /** 队列键：{prefix}:{serviceName} */
+    private final String queueKey;
+
+    /** 消费组（stream 结构） */
+    private final String group;
+
+    /** 消费者名（多实例必须互异） */
+    private final String consumerName;
+
+    /** L1 缓冲 */
+    private final BlockingQueue<HttpLogRecord> buffer;
+
+    /** 发送/消费线程是否在运行 */
+    private final AtomicBoolean running = new AtomicBoolean(false);
+
+    /** 发送侧是否有批次尚未写完 Redis */
+    private final AtomicBoolean inFlight = new AtomicBoolean(false);
+
+    /** 缓冲 → Redis 的发送线程 */
+    private volatile Thread sender;
+
+    /** List/Stream 消费线程 */
+    private volatile Thread consumerThread;
+
+    /** 建组失败是否已告警：连续失败期间仅 WARN 一次（仅消费线程访问），成功或恢复后重置 */
+    private boolean groupWarned;
+
+    public RedisHttpLogTransport(HttpLogProperties properties, HttpLogKeys keys,
+                                 StringRedisTemplate redisTemplate, HttpLogDesensitizer desensitizer,
+                                 HttpLogMetrics metrics) {
+        this.properties = properties;
+        this.redisTemplate = redisTemplate;
+        this.desensitizer = desensitizer;
+        this.metrics = metrics;
+        this.queueKey = keys.redisQueueKey(properties);
+        this.group = keys.redisGroup(properties);
+        this.consumerName = resolveConsumerName(properties.getRedis());
+        this.buffer = new ArrayBlockingQueue<>(properties.getBuffer().getCapacity());
+        metrics.registerQueueDepth("redis", buffer);
+    }
+
+    /** LPUSH 到 Redis 列表，失败计指标 */
+    @Override
+    public boolean offer(HttpLogRecord record) {
+        if (buffer.offer(record)) {
+            return true;
+        }
+        if (properties.getBuffer().getDropPolicy() == HttpLogProperties.DropPolicy.DROP_OLD) {
+            buffer.poll();
+            return buffer.offer(record);
+        }
+        return false;
+    }
+
+    /** 启动 BRPOP 消费线程 */
+    @Override
+    public void start(HttpLogBatchHandler handler) {
+        if (!running.compareAndSet(false, true)) {
+            return;
+        }
+        sender = Thread.ofPlatform().name("httplog-redis-sender").daemon(true).start(this::sendLoop);
+        boolean stream = properties.getRedis().getStructure() == HttpLogProperties.RedisStructure.STREAM;
+        consumerThread = Thread.ofPlatform().name("httplog-redis-consumer").daemon(true).start(() -> {
+            if (stream) {
+                consumeStream(handler);
+            } else {
+                consumeList(handler);
+            }
+        });
+        log.info("[httplog]redis 模式已启动: structure={}, key={}, group={}, consumer={}",
+                properties.getRedis().getStructure(), queueKey, group, consumerName);
+    }
+
+    /** 停止消费线程 */
+    @Override
+    public void stop(Duration timeout) {
+        flush(timeout);
+        running.set(false);
+        stopThread(sender, timeout);
+        stopThread(consumerThread, timeout);
+    }
+
+    /** 等待列表被消费空（带超时） */
+    @Override
+    public void flush(Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (buffer.isEmpty() && !inFlight.get()) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        int remaining = buffer.size();
+        if (remaining > 0) {
+            metrics.dropped("shutdown-timeout", remaining);
+        }
+    }
+
+    /** 发送循环：取批 → 补脱敏 → 写介质；失败丢弃计数（重试耗尽即丢，符合允许丢语义） */
+    private void sendLoop() {
+        HttpLogProperties.Buffer bufferConfig = properties.getBuffer();
+        int batchSize = bufferConfig.getBatchSize();
+        long flushMillis = bufferConfig.getFlushInterval().toMillis();
+        List<HttpLogRecord> batch = new ArrayList<>(Math.min(batchSize, 1024));
+        while (running.get()) {
+            try {
+                HttpLogRecord first = buffer.poll(flushMillis, TimeUnit.MILLISECONDS);
+                if (first == null) {
+                    continue;
+                }
+                batch.add(first);
+                buffer.drainTo(batch, batchSize - 1);
+                inFlight.set(true);
+                try {
+                    for (HttpLogRecord record : batch) {
+                        desensitizer.maskDeferredBodies(record);
+                    }
+                    writeToRedis(batch);
+                } catch (Exception e) {
+                    metrics.failed("redis-send", e);
+                    metrics.dropped("send-failed", batch.size());
+                } finally {
+                    batch.clear();
+                    inFlight.set(false);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (Throwable t) {
+                metrics.failed("redis-send-loop", t);
+            }
+        }
+    }
+
+    /** List 结构读写 */
+    private void writeToRedis(List<HttpLogRecord> batch) {
+        if (properties.getRedis().getStructure() == HttpLogProperties.RedisStructure.STREAM) {
+            for (HttpLogRecord record : batch) {
+                redisTemplate.opsForStream().add(StreamRecords.newRecord()
+                        .in(queueKey)
+                        .ofStrings(Map.of(PAYLOAD_FIELD, JsonUtils.toJson(record))));
+            }
+            return;
+        }
+        List<String> payloads = new ArrayList<>(batch.size());
+        for (HttpLogRecord record : batch) {
+            payloads.add(JsonUtils.toJson(record));
+        }
+        // RPUSH key v1..vN：单命令批量写入
+        redisTemplate.opsForList().rightPushAll(queueKey, payloads);
+    }
+
+    /** list 结构消费：LPOP key count 批量读取（Redis ≥ 6.2），pop 即删 */
+    private void consumeList(HttpLogBatchHandler handler) {
+        HttpLogProperties.Redis redis = properties.getRedis();
+        while (running.get()) {
+            try {
+                List<String> payloads = redisTemplate.opsForList().leftPop(queueKey, redis.getReadCount());
+                if (payloads == null || payloads.isEmpty()) {
+                    sleepQuietly(redis.getBlockMs().toMillis());
+                    continue;
+                }
+                List<HttpLogRecord> batch = new ArrayList<>(payloads.size());
+                for (String payload : payloads) {
+                    HttpLogRecord record = parse(payload);
+                    if (record != null) {
+                        batch.add(record);
+                    }
+                }
+                handle(handler, batch, "redis-consume");
+            } catch (Throwable t) {
+                metrics.failed("redis-consume-loop", t);
+                sleepQuietly(200);
+            }
+        }
+    }
+
+    /**
+     * stream 结构消费：组就绪后先补自身 PEL 遗留（崩溃恢复），再读新消息；
+     * 失败批按"允许丢"契约丢弃并计数（不无限重投）；组丢失（NOGROUP）时自动重建
+     */
+    private void consumeStream(HttpLogBatchHandler handler) {
+        HttpLogProperties.Redis redis = properties.getRedis();
+        boolean groupReady = false;
+        while (running.get()) {
+            try {
+                if (!groupReady) {
+                    groupReady = ensureGroupSafely();
+                    if (!groupReady) {
+                        sleepQuietly(500);
+                        continue;
+                    }
+                }
+                List<MapRecord<String, Object, Object>> pending = redisTemplate.opsForStream().read(
+                        Consumer.from(group, consumerName),
+                        StreamReadOptions.empty().count(redis.getReadCount()),
+                        StreamOffset.create(queueKey, ReadOffset.from("0")));
+                if (pending != null && !pending.isEmpty()) {
+                    handleStreamRecords(pending, handler);
+                }
+                List<MapRecord<String, Object, Object>> records = redisTemplate.opsForStream().read(
+                        Consumer.from(group, consumerName),
+                        StreamReadOptions.empty().count(redis.getReadCount()).block(redis.getBlockMs()),
+                        StreamOffset.create(queueKey, ReadOffset.lastConsumed()));
+                if (records != null && !records.isEmpty()) {
+                    handleStreamRecords(records, handler);
+                }
+            } catch (Throwable t) {
+                if (isNoGroup(t)) {
+                    groupReady = false;
+                    log.warn("[httplog]stream 消费组不存在（key 被清理？），将重建消费组");
+                }
+                metrics.failed("redis-stream-consume", t);
+                sleepQuietly(200);
+            }
+        }
+    }
+
+    /** 处理一批 stream 记录：无论成功失败都 ACK（失败按丢弃计数；PEL 仅承载崩溃未处理，重启后补投） */
+    private void handleStreamRecords(List<MapRecord<String, Object, Object>> records, HttpLogBatchHandler handler) {
+        List<HttpLogRecord> batch = new ArrayList<>(records.size());
+        for (MapRecord<String, Object, Object> record : records) {
+            Object payload = record.getValue().get(PAYLOAD_FIELD);
+            HttpLogRecord parsed = payload == null ? null : parse(String.valueOf(payload));
+            if (parsed != null) {
+                batch.add(parsed);
+            }
+        }
+        try {
+            if (!batch.isEmpty()) {
+                handler.onBatch(batch);
+            }
+        } catch (Throwable t) {
+            metrics.failed("redis-consume", t);
+            metrics.dropped("consume-failed", batch.size());
+        }
+        RecordId[] ids = records.stream().map(MapRecord::getId).toArray(RecordId[]::new);
+        redisTemplate.opsForStream().acknowledge(queueKey, group, ids);
+    }
+
+    /** 建组（幂等）；key 尚不存在等失败返回 false 由调用方退避重试，绝不抛出终止消费线程 */
+    private boolean ensureGroupSafely() {
+        try {
+            redisTemplate.opsForStream().createGroup(queueKey, ReadOffset.latest(), group);
+            groupWarned = false;
+            return true;
+        } catch (RuntimeException e) {
+            if (containsBusyGroup(e)) {
+                groupWarned = false;
+                return true;
+            }
+            // 连续失败只告警一次（低频服务夜间无流量时避免每 500ms 刷 WARN），恢复后重置
+            if (!groupWarned) {
+                groupWarned = true;
+                log.warn("[httplog]stream 消费组建组失败（key 可能尚不存在），转入退避重试、恢复后自动建组: {}",
+                        e.getMessage());
+            } else {
+                log.debug("[httplog]stream 消费组建组仍失败，继续退避重试: {}", e.getMessage());
+            }
+            return false;
+        }
+    }
+
+    /** 是否消费组不存在（组或 key 被清理） */
+    private static boolean isNoGroup(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.contains("NOGROUP")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    /** 异常链是否表示消费组已存在（BUSYGROUP） */
+    private static boolean containsBusyGroup(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.contains("BUSYGROUP")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    /** 执行业务逻辑 */
+    private void handle(HttpLogBatchHandler handler, List<HttpLogRecord> batch, String stage) {
+        if (batch.isEmpty()) {
+            return;
+        }
+        try {
+            handler.onBatch(batch);
+        } catch (Exception e) {
+            metrics.failed(stage, e);
+            metrics.dropped("consume-failed", batch.size());
+        }
+    }
+
+    /** 解析线协议消息 */
+    private static HttpLogRecord parse(String payload) {
+        try {
+            return JsonUtils.parse(payload, HttpLogRecord.class);
+        } catch (Exception e) {
+            log.warn("[httplog]反序列化失败，丢弃该条: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 消费者名：配置优先；默认主机名——重启后同名，才能补投自身崩溃遗留的 PEL */
+    private static String resolveConsumerName(HttpLogProperties.Redis redis) {
+        if (StringUtils.isNotBlank(redis.getConsumerName())) {
+            return redis.getConsumerName().trim();
+        }
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (Exception e) {
+            return "httplog-unknown-host";
+        }
+    }
+
+    /** 中断并等待工作线程结束（上限为 shutdown 超时） */
+    private void stopThread(Thread thread, Duration timeout) {
+        if (thread == null) {
+            return;
+        }
+        thread.interrupt();
+        try {
+            thread.join(Math.max(100L, timeout.toMillis()));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** 休眠指定毫秒；被中断时恢复中断标志 */
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+}

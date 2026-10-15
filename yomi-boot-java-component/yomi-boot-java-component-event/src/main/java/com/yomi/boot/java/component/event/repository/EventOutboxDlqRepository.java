@@ -1,0 +1,142 @@
+package com.yomi.boot.java.component.event.repository;
+
+import com.yomi.boot.java.base.utils.Assert;
+import com.yomi.boot.java.component.ds.MyBatisDao;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.yomi.boot.java.base.model.PageRequest;
+import com.yomi.boot.java.component.event.entity.EventOutbox;
+import com.yomi.boot.java.component.event.model.EventDlqQuery;
+import com.yomi.boot.java.component.event.entity.EventOutboxDlq;
+import com.yomi.boot.java.component.event.model.OutboxStatus;
+import com.yomi.boot.java.component.event.repository.mapper.EventOutboxDlqMapper;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+/**
+ * 发件箱 DLQ 数据访问
+ *
+ * @author zwei
+ */
+public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, EventOutboxDlq>
+        implements IEventOutboxDlqRepository {
+
+    public EventOutboxDlqRepository(EventOutboxDlqMapper mapper) {
+        super(mapper);
+    }
+
+    /** 插入 DLQ 行 */
+    public void insert(EventOutboxDlq row) {
+        row.init();
+        save(row);
+    }
+
+    /** 按主键更新 DLQ 行 */
+    public void updateRow(EventOutboxDlq row) {
+        row.update();
+        super.update(row);
+    }
+
+    /** 物理删除 DLQ 行 */
+    public void deleteById(Long id) {
+        del(id);
+    }
+
+    /**
+     * 抢占 DLQ 投递中状态；成功则其他 worker/扫描轮次在 lease 结束前不会再捞到该行
+     */
+    public boolean tryClaimInFlight(Long dlqId, Duration lease) {
+        Assert.nonNull(dlqId, "dlqId 不能为空");
+        Instant now = Instant.now();
+        Instant claimUntil = now.plus(lease);
+        int rows = getMapper().claimInFlight(dlqId, now, claimUntil, now);
+        return rows == 1;
+    }
+
+    /** 按发件箱主键查 DLQ（uk_event_outbox_id） */
+    public EventOutboxDlq findByEventOutboxId(Long eventOutboxId) {
+        return lambdaQuery()
+                .eq(EventOutboxDlq::getEventOutboxId, eventOutboxId)
+                .isNull(EventOutboxDlq::getDeleteTime)
+                .one();
+    }
+
+    /** 按主键查；不存在或已逻辑删除返回 null（与 {@code get()} 的"不存在抛异常"相区分，供重试前复核使用） */
+    public EventOutboxDlq findById(Long id) {
+        if (id == null) {
+            return null;
+        }
+        EventOutboxDlq row = getMapper().selectById(id);
+        return row != null && row.exist() ? row : null;
+    }
+
+    /**
+     * 查询可重试的 DLQ 行（未达最大重试次数且已到重试窗口）
+     * <p>拆成两条各自走索引的查询（未排期 + 已到期）后按"就绪时间"归并：
+     * {@code COALESCE(retry_after_time, create_time)} 这类排序表达式用不上索引，大表下每轮都要全表排序</p>
+     */
+    public List<EventOutboxDlq> fetchRetryable(String serviceName, int maxRetry, int limit, Instant now) {
+        Assert.isTrue(limit > 0, "dlq limit 必须大于 0");
+        List<EventOutboxDlq> rows = new ArrayList<>(
+                getMapper().selectRetryableUnscheduled(serviceName, maxRetry, limit));
+        int remain = limit - rows.size();
+        if (remain > 0) {
+            rows.addAll(getMapper().selectRetryableDue(serviceName, maxRetry, now, remain));
+        }
+        rows.sort(Comparator.comparing(EventOutboxDlqRepository::readyTime));
+        return rows;
+    }
+
+    /** 就绪时间：已排期取 retry_after_time，未排期取 create_time（与原 ORDER BY COALESCE 同义） */
+    private static Instant readyTime(EventOutboxDlq row) {
+        if (row.getRetryAfterTime() != null) {
+            return row.getRetryAfterTime();
+        }
+        return row.getCreateTime() == null ? Instant.MAX : row.getCreateTime();
+    }
+
+    /** 删除指定发件箱行的 DLQ（重发时移交重试责任） */
+    public int deleteByEventOutboxId(Long eventOutboxId) {
+        return getMapper().delete(new LambdaQueryWrapper<EventOutboxDlq>()
+                .eq(EventOutboxDlq::getEventOutboxId, eventOutboxId));
+    }
+
+    /** 业务查询死信分页（创建时间倒序，走 idx_service_name_create_time 索引） */
+    public Page<EventOutboxDlq> pageDlq(EventDlqQuery condition, String serviceName) {
+        Page<EventOutboxDlq> page = new Page<>(
+                Math.max(condition.getPageNo(), 1),
+                Math.min(Math.max(condition.getPageSize(), 1), PageRequest.MAX_PAGE_SIZE));
+        return getMapper().selectPage(page, new LambdaQueryWrapper<EventOutboxDlq>()
+                .eq(EventOutboxDlq::getServiceName, serviceName)
+                .ge(condition.getStartTime() != null, EventOutboxDlq::getCreateTime, condition.getStartTime())
+                .le(condition.getEndTime() != null, EventOutboxDlq::getCreateTime, condition.getEndTime())
+                .orderByDesc(EventOutboxDlq::getCreateTime)
+                .orderByDesc(EventOutboxDlq::getId));
+    }
+
+    /** 将时间范围内 DLQ 的 retry_count 清零（运维批量复位） */
+    public long resetRetryCountInRange(String serviceName, Instant from, Instant to) {
+        Assert.nonNull(from, "from 不能为空");
+        Assert.nonNull(to, "to 不能为空");
+        if (to.isBefore(from)) {
+            throw new IllegalArgumentException("结束时间不能早于开始时间");
+        }
+        return getMapper().resetRetryCountInRange(serviceName, from, to, Instant.now());
+    }
+
+    /**
+     * 发件箱标为 SENT_SUCCESS 并删除 DLQ（须在事务内调用）
+     */
+    public void markOutboxSuccessAndDeleteDlq(EventOutbox outbox, EventOutboxDlq dlq, Instant sentTime,
+                                              IEventOutboxRepository outboxRepository) {
+        outbox.setStatus(OutboxStatus.SENT_SUCCESS);
+        outbox.setSentTime(sentTime);
+        outboxRepository.updateRow(outbox);
+        deleteById(dlq.getId());
+    }
+
+}
