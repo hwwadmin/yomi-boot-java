@@ -53,6 +53,22 @@ class DefaultCaptchaRendererTest {
     }
 
     @Test
+    void fontSizeAtUpperBoundKeepsDescendersInsideCanvas() throws Exception {
+        CaptchaProperties properties = properties();
+        properties.getImage().setFontSize(40);
+        assertDoesNotThrow(properties::validate, "40px 是校验允许的上界，不该被拒");
+        properties.getFilter().getLine().setEnabled(false);
+        properties.getFilter().getNoise().setEnabled(false);
+        properties.getFilter().getWave().setEnabled(false);
+        // 带降部的字符（g/q/y）在 40px 字号下字形框约 47px（Roboto ≈ 1.17em）：
+        // 基线若按字号估算会整体压低，降部被画到画布外
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(new DefaultCaptchaRenderer(properties).render("agqy", 5L)));
+        int[] bounds = inkBounds(image);
+        assertTrue(bounds[1] >= 1, "内容不能贴/出上缘: " + Arrays.toString(bounds));
+        assertTrue(bounds[3] <= image.getHeight() - 2, "降部不能贴/出下缘（裁切）: " + Arrays.toString(bounds));
+    }
+
+    @Test
     void pngEncodingIgnoresImageIOCacheDirectory(@TempDir Path tempDir) throws Exception {
         // 把 ImageIO 的缓存目录指向一个随即删除的目录：走文件缓存的实现会因"目录不存在"直接失败
         // （即线上 java.io.tmpdir 不可写/不存在时每次 generate 都 500 的根因）

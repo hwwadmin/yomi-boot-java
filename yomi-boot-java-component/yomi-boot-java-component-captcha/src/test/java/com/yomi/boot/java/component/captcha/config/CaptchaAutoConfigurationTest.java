@@ -6,7 +6,11 @@ import com.yomi.boot.java.component.captcha.store.CaptchaStore;
 import com.yomi.boot.java.component.captcha.store.LocalCaptchaStore;
 import com.yomi.boot.java.component.captcha.store.RedisCaptchaStore;
 import com.yomi.boot.java.component.captcha.web.CaptchaExceptionAdvice;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -89,6 +93,65 @@ class CaptchaAutoConfigurationTest {
                     assertTrue(rootMessage(context.getStartupFailure()).contains("store-prefix"),
                             rootMessage(context.getStartupFailure()));
                 });
+    }
+
+    @Test
+    void redisStoreWithoutStringRedisTemplateNamesTheCause() {
+        // 宿主排除了 Boot 的 DataRedisAutoConfiguration（StringRedisTemplate 由它提供）：
+        // 报错必须点名是哪个配置项、缺的是什么 Bean，而不是一句 No qualifying bean
+        runner("yomi.captcha.enabled=true", "yomi.captcha.store=redis", "spring.data.redis.host=127.0.0.1")
+                .run(context -> {
+                    assertNotNull(context.getStartupFailure(), "store=redis 但容器无 StringRedisTemplate 必须启动失败");
+                    String message = rootMessage(context.getStartupFailure());
+                    assertTrue(message.contains("yomi.captcha.store=redis") && message.contains("DataRedisAutoConfiguration"),
+                            message);
+                });
+    }
+
+    @Test
+    void unresolvedPrefixPlaceholderIsReportedAsPlaceholder() {
+        // `${XXX}` 未解析时 Boot 绑定不强求解析，字面量会落到前缀校验里：不能被报成"配了 hash tag"
+        runner("yomi.captcha.enabled=true", "yomi.captcha.store=redis", "spring.data.redis.host=127.0.0.1",
+                "yomi.captcha.store-prefix=${NO_SUCH_PREFIX_PROP}")
+                .withBean(StringRedisTemplate.class, CaptchaAutoConfigurationTest::stubRedisTemplate)
+                .run(context -> {
+                    assertNotNull(context.getStartupFailure(), "redis 分支前缀不可用时必须启动失败");
+                    String message = rootMessage(context.getStartupFailure());
+                    assertTrue(message.contains("占位符未解析"), message);
+                });
+    }
+
+    @Test
+    void localStoreIgnoresUnusedStorePrefix() {
+        runnerWithoutAppName("yomi.captcha.enabled=true", "yomi.captcha.store=local",
+                "yomi.captcha.store-prefix=yomi:cap{tcha")
+                .run(context -> {
+                    assertNull(context.getStartupFailure(), () -> "local 不落键、用不到前缀，前缀非法也不应阻断启动: "
+                            + context.getStartupFailure());
+                    assertInstanceOf(LocalCaptchaStore.class, context.getBean(CaptchaStore.class));
+                });
+    }
+
+    @Test
+    void prefixIsLoggedEvenWhenCaptchaKeysIsOverridden() {
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(CaptchaAutoConfiguration.class);
+        logger.addAppender(appender);
+        try {
+            runner("yomi.captcha.enabled=true", "spring.data.redis.host=127.0.0.1")
+                    .withBean(CaptchaKeys.class, () -> new CaptchaKeys("host:captcha:test"))
+                    .withBean(StringRedisTemplate.class, CaptchaAutoConfigurationTest::stubRedisTemplate)
+                    .run(context -> {
+                        assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
+                        assertTrue(appender.list.stream()
+                                        .anyMatch(event -> event.getFormattedMessage().contains("host:captcha:test")),
+                                "宿主顶替 CaptchaKeys 后，生效的挑战键前缀仍须落日志："
+                                        + appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList());
+                    });
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     @Test

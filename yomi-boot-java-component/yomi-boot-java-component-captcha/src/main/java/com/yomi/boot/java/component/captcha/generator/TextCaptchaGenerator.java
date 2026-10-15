@@ -5,10 +5,8 @@ import com.yomi.boot.java.component.captcha.core.CaptchaRandoms;
 import com.yomi.boot.java.component.captcha.core.CaptchaType;
 import lombok.RequiredArgsConstructor;
 
-import java.util.Locale;
-
 /**
- * 读图输入：从字符集随机取字，答案即展示文本（校验大小写不敏感，故答案统一大写）
+ * 读图输入：从字符集随机取字，答案即展示文本（校验大小写不敏感，故答案取大写形式）
  *
  * @author zwei
  */
@@ -32,7 +30,11 @@ public class TextCaptchaGenerator implements CaptchaGenerator {
             text.appendCodePoint(candidates[CaptchaRandoms.nextInt(candidates.length)]);
         }
         String value = text.toString();
-        return new CaptchaContent(value, value.toUpperCase(Locale.ROOT));
+        // 逐 code point 大写：String.toUpperCase 会把 ß 这类字符扩成多字符（ß→SS），
+        // 答案与图上所见不再等长，用户照着图输入也恒 MISMATCH
+        StringBuilder answer = new StringBuilder(value.length());
+        value.codePoints().forEach(codePoint -> answer.appendCodePoint(Character.toUpperCase(codePoint)));
+        return new CaptchaContent(value, answer.toString());
     }
 
 }

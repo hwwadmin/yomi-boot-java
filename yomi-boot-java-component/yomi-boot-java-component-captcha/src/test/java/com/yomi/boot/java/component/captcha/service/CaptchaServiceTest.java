@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -140,6 +141,65 @@ class CaptchaServiceTest {
         CaptchaException invalidateError = assertThrows(CaptchaException.class, () -> service.invalidate("id"));
         assertEquals(CaptchaErrorCode.INVALIDATE_FAILED, invalidateError.getErrorCode());
         assertEquals(500, invalidateError.getCode());
+    }
+
+    @Test
+    void invalidateKeepsStoreErrorCode() {
+        CaptchaStore codedFailure = new CaptchaStore() {
+            @Override
+            public void save(String captchaId, String answer) {
+            }
+
+            @Override
+            public String remove(String captchaId) {
+                throw CaptchaException.of(CaptchaErrorCode.VERIFY_FAILED, "存储层原始错误",
+                        new IllegalStateException("redis down"));
+            }
+
+            @Override
+            public String name() {
+                return "coded";
+            }
+        };
+        ICaptchaService service = new CaptchaService(Map.of(CaptchaType.TEXT, fixed(CaptchaType.TEXT, "AB12", "AB12")),
+                renderer(), codedFailure, properties);
+        CaptchaException error = assertThrows(CaptchaException.class, () -> service.invalidate("id"));
+        assertEquals(CaptchaErrorCode.VERIFY_FAILED, error.getErrorCode(),
+                "存储层已带错误码，作废不能再包一层改成 INVALIDATE_FAILED");
+        assertInstanceOf(IllegalStateException.class, error.getCause(), "原始原因链必须保留（不再多套一层 CaptchaException）");
+    }
+
+    @Test
+    void charsetWhoseUppercaseExpandsStaysVerifiable() {
+        // ß 这类字符的 String.toUpperCase 是两字符（ß→SS）：答案被扩长后与图上所见失配，用户照着图输入也恒 MISMATCH
+        CaptchaProperties.Text textProperties = new CaptchaProperties().getText();
+        textProperties.setCharset("ßabcdefg");
+        TextCaptchaGenerator delegate = new TextCaptchaGenerator(textProperties);
+        AtomicReference<CaptchaContent> shown = new AtomicReference<>();
+        CaptchaGenerator recorder = new CaptchaGenerator() {
+            @Override
+            public CaptchaType type() {
+                return CaptchaType.TEXT;
+            }
+
+            @Override
+            public CaptchaContent generate() {
+                CaptchaContent content = delegate.generate();
+                shown.set(content);
+                return content;
+            }
+        };
+        ICaptchaService service = new CaptchaService(Map.of(CaptchaType.TEXT, recorder), renderer(), store, properties);
+        for (int i = 0; i < 200; i++) {
+            CaptchaChallenge challenge = service.generate(CaptchaType.TEXT);
+            CaptchaContent content = shown.get();
+            if (content.displayText().contains("ß")) {
+                assertEquals(CaptchaVerifyResult.OK, service.verify(challenge.captchaId(), content.displayText()),
+                        "图上是 " + content.displayText() + "，照着图输入必须通过");
+                return;
+            }
+        }
+        fail("200 次生成都没抽到 ß，无法验证该场景");
     }
 
     /** 固定答案的服务：让契约测试不依赖随机字符 */

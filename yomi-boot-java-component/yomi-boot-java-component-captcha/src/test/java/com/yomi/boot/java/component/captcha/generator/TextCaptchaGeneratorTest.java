@@ -43,6 +43,20 @@ class TextCaptchaGeneratorTest {
     }
 
     @Test
+    void answerNeverExpandsForSpecialCaseChars() {
+        // ß 的 String.toUpperCase 是两字符（SS）：答案一旦被扩长就与图上字符失配，用户照着图输入恒不符
+        CaptchaProperties.Text properties = new CaptchaProperties().getText();
+        properties.setCharset("ßabcdefg");
+        TextCaptchaGenerator generator = new TextCaptchaGenerator(properties);
+        for (int i = 0; i < 50; i++) {
+            CaptchaContent content = generator.generate();
+            assertEquals(content.displayText().length(), content.answer().length(), "答案必须与图上字符等长");
+            assertTrue(content.displayText().equalsIgnoreCase(content.answer()),
+                    "答案与图上字符必须大小写不敏感相等: " + content.displayText() + " / " + content.answer());
+        }
+    }
+
+    @Test
     void supplementaryCharsetPicksWholeCodePoints() {
         // 配置期已拒绝代理对，这里绕过校验直接构造生成器：取字本身也必须按 code point（不产生孤立代理项）
         CaptchaProperties.Text properties = new CaptchaProperties().getText();

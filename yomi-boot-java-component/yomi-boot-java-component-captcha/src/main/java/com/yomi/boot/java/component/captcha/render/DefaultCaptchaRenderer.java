@@ -29,7 +29,7 @@ import java.util.Random;
 /**
  * 默认渲染器：背景渐变 → 干扰线 → 逐字绘制 → 噪点 → 自定义滤镜 → 波纹
  * <p>
- * 同文本 + 同种子输出字节一致；字符总宽超出画布时等比缩小字号而非裁切——
+ * 同文本 + 同种子输出字节一致；字符总宽或字形框高超出画布时按字体度量等比缩小字号而非裁切——
  * 裁切会让图上内容与答案不一致，是最难排查的静默故障。
  *
  * @author zwei
@@ -134,17 +134,27 @@ public class DefaultCaptchaRenderer implements CaptchaRenderer {
         int fontSize = image.getFontSize();
         Font font = baseFont.deriveFont((float) fontSize);
         FontMetrics metrics = g.getFontMetrics(font);
-        int usableWidth = canvas.getWidth() - 2 * MARGIN;
+        // 超出画布不裁切：等比缩小字号，保证图上内容与答案一致
+        double scale = 1.0;
         int totalWidth = textWidth(text, metrics);
-        if (totalWidth > usableWidth) {
-            // 超出可用宽度不裁切：等比缩小字号，保证图上内容与答案一致
-            fontSize = Math.max(12, (int) Math.floor(fontSize * (double) usableWidth / totalWidth));
+        if (totalWidth > canvas.getWidth() - 2 * MARGIN) {
+            scale = (double) (canvas.getWidth() - 2 * MARGIN) / totalWidth;
+        }
+        // 纵向同样按字体度量贴合：字形框（ascent+descent）加基线抖动与字号抖动后仍须落在画布内，
+        // 否则带降部（g/q/y）的字符会被画到画布外（字体框远高于字号本身：Roboto ≈ 1.17em）
+        double glyphHeight = metrics.getAscent() + metrics.getDescent();
+        double heightBudget = canvas.getHeight() - 2 * image.getBaselineJitter();
+        scale = Math.min(scale, heightBudget / (glyphHeight * (1 + FONT_SIZE_JITTER_RATIO)));
+        if (scale < 1.0) {
+            fontSize = Math.max(12, (int) Math.floor(fontSize * scale));
             font = baseFont.deriveFont((float) fontSize);
             metrics = g.getFontMetrics(font);
             totalWidth = textWidth(text, metrics);
+            glyphHeight = metrics.getAscent() + metrics.getDescent();
         }
         int x = Math.max(MARGIN, (canvas.getWidth() - totalWidth) / 2);
-        int baseline = (canvas.getHeight() + fontSize) / 2 - 4;
+        // 基线按 ascent/descent 居中，而不是按字号估算（字号 ≈ 1.17×字形框，估算会把字压到画布下缘）
+        int baseline = (int) Math.round((canvas.getHeight() - glyphHeight) / 2 + metrics.getAscent());
         int sizeJitter = Math.max(1, (int) (fontSize * FONT_SIZE_JITTER_RATIO));
         for (int i = 0; i < text.length(); i++) {
             char glyphText = text.charAt(i);

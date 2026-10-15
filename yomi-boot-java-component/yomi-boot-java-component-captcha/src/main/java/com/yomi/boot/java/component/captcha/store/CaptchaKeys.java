@@ -7,6 +7,7 @@ import org.apache.commons.lang3.StringUtils;
  * 验证码相关存储键构造
  * <p>
  * 句柄为 128 位随机值（不可枚举），因此直接作为键后缀，答案不做散列（答案空间小，散列无收益）。
+ * 前缀的合法性在这里校验——它是唯一落键方，store=local 不构造本对象也不校验未使用的前缀。
  *
  * @author zwei
  */
@@ -17,12 +18,21 @@ public class CaptchaKeys {
     private final String prefix;
 
     public CaptchaKeys(String prefix) {
+        if (StringUtils.isBlank(prefix)) {
+            throw new IllegalStateException("yomi.captcha.store-prefix 不能为空");
+        }
+        if (!prefix.equals(prefix.trim())) {
+            throw new IllegalStateException("yomi.captcha.store-prefix 不能含首尾空白（当前 [" + prefix + "]）");
+        }
+        if (prefix.indexOf('{') >= 0 || prefix.indexOf('}') >= 0) {
+            // `${XXX}` 未解析时占位符会原样落到这里（Boot 绑定不强求解析），单独点名避免误导成"配了 hash tag"
+            boolean unresolvedPlaceholder = prefix.contains("${");
+            throw new IllegalStateException("yomi.captcha.store-prefix 不能包含 Redis hash tag 字符 { 或 }（当前 [" + prefix + "]）"
+                    + (unresolvedPlaceholder ? "：值形如 ${...} 说明占位符未解析，请检查对应配置项或环境变量是否存在" : ""));
+        }
         String normalized = normalizePrefix(prefix);
         if (StringUtils.isBlank(normalized)) {
-            throw new IllegalStateException("验证码存储前缀不能为空");
-        }
-        if (normalized.indexOf('{') >= 0 || normalized.indexOf('}') >= 0) {
-            throw new IllegalStateException("验证码存储前缀不能包含 Redis hash tag 字符 { 或 }");
+            throw new IllegalStateException("yomi.captcha.store-prefix 不能为空");
         }
         this.prefix = normalized;
     }

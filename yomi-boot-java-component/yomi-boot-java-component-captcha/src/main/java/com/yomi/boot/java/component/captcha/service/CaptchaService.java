@@ -111,6 +111,9 @@ public class CaptchaService implements ICaptchaService {
         }
         try {
             store.remove(captchaId);
+        } catch (CaptchaException e) {
+            // 存储层已带错误码（宿主自定义 CaptchaStore），再包一层会掩盖原始错误码
+            throw e;
         } catch (RuntimeException e) {
             throw CaptchaException.of(CaptchaErrorCode.INVALIDATE_FAILED, "验证码作废失败", e);
         }

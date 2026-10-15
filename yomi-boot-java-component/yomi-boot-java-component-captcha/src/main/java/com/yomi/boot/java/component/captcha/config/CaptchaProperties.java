@@ -67,6 +67,9 @@ public class CaptchaProperties {
 
     /**
      * 配置自检（装配期调用）
+     * <p>
+     * 只校验本类各参数的自洽性；{@code store-prefix} 的合法性由真正落键的 {@code CaptchaKeys} 校验
+     * （store=local 不落键，未配置/配错的前缀都不应阻断启动）。
      */
     public void validate() {
         requirePositive(ttl, "yomi.captcha.ttl");
@@ -75,10 +78,6 @@ public class CaptchaProperties {
         }
         if (defaultType == null) {
             throw new IllegalStateException("yomi.captcha.default-type 取值 text / arithmetic");
-        }
-        if (StringUtils.isNotBlank(storePrefix)
-                && (!storePrefix.equals(storePrefix.trim()) || storePrefix.indexOf('{') >= 0 || storePrefix.indexOf('}') >= 0)) {
-            throw new IllegalStateException("yomi.captcha.store-prefix 不能含首尾空白或 Redis hash tag 字符 { }");
         }
         image.validate();
         text.validate();
@@ -140,8 +139,14 @@ public class CaptchaProperties {
             if (StringUtils.isBlank(charset)) {
                 throw new IllegalStateException("yomi.captcha.text.charset 不能为空");
             }
-            if (charset.chars().anyMatch(Character::isWhitespace)) {
-                throw new IllegalStateException("yomi.captcha.text.charset 不能包含空白字符");
+            // 不可见字符（空白/控制/格式类，如不间断空格、零宽空格、BOM）图上画不出、用户也打不出，挑战必然失败
+            int invisible = charset.codePoints()
+                    .filter(c -> Character.isWhitespace(c) || Character.isSpaceChar(c) || Character.isISOControl(c)
+                            || Character.getType(c) == Character.FORMAT)
+                    .findFirst().orElse(-1);
+            if (invisible >= 0) {
+                throw new IllegalStateException("yomi.captcha.text.charset 不能包含不可见字符（空白/控制/格式类），当前含 U+"
+                        + String.format("%04X", invisible));
             }
             // 图片按 UTF-16 单字符绘制，增补平面字符（代理对）画不全、答案也拼不出来，启动期直接拒绝
             if (charset.chars().anyMatch(c -> Character.isSurrogate((char) c))) {
