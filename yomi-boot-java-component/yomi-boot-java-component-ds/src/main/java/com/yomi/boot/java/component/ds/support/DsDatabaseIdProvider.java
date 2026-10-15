@@ -38,13 +38,15 @@ public class DsDatabaseIdProvider extends VendorDatabaseIdProvider {
             // 故这里按"任何取不到方言的情形"统一处理：不注册方言语句，也不阻断启动（无数据源宿主是受支持形态）
             databaseId = super.getDatabaseId(dataSource);
         } catch (Exception e) {
-            log.debug("未取到数据库连接/方言标识，跳过方言解析（方言语句不注册）", e);
+            log.info("[ds] 未取到数据库连接，未解析数据源方言（方言语句不注册）");
+            log.debug("[ds] 方言解析失败明细", e);
             return null;
         }
         if (databaseId == null) {
             throw new IllegalStateException(
                     "无法识别数据源方言（只支持 MySQL / PostgreSQL）: " + describe(dataSource));
         }
+        log.info("[ds] 数据源方言: {}（mapper XML 按 databaseId 选择对应方言语句）", databaseId);
         return databaseId;
     }
 

@@ -1,6 +1,10 @@
 package com.yomi.boot.java.component.ds.support;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
@@ -15,7 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 方言标识解析：MySQL→{@code mysql}、PostgreSQL→{@code pgsql}（与 {@code sql/mysql|pgsql} 目录同名）；
- * 识别不了（第三方库或取连接失败）必须启动即失败——父类此时会静默返回 null，那样方言语句不会注册。
+ * 库连上但方言不认识必须启动即失败（父类此时会静默返回 null，那样方言语句不会注册）；
+ * 解析结果会在启动日志里展示（数据源类型）。
  */
 class DsDatabaseIdProviderTest {
 
@@ -25,6 +30,25 @@ class DsDatabaseIdProviderTest {
     void mapsSupportedDialectsToScriptDirectoryNames() {
         assertEquals("mysql", provider.getDatabaseId(productName("MySQL")));
         assertEquals("pgsql", provider.getDatabaseId(productName("PostgreSQL")));
+    }
+
+    /** 启动日志必须展示解析出的方言（运维可见的"数据源类型"） */
+    @Test
+    void logsResolvedDialectAtStartup() {
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        Logger logger = (Logger) LoggerFactory.getLogger(DsDatabaseIdProvider.class);
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            provider.getDatabaseId(productName("PostgreSQL"));
+
+            assertTrue(appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                            .anyMatch(message -> message.contains("数据源方言: pgsql")),
+                    "启动日志应展示数据源方言: " + appender.list);
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     @Test

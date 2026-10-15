@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 分页链自检的四种形态：正常在位放行、MP 默认链抢占则 fail-fast、
- * 宿主自管链只告警、一个链都没有则 fail-fast。
+ * 分页链自检的四种形态：正常在位放行；缺分页**一律 fail-fast**——MP 默认链抢占、
+ * 宿主自管链缺分页、一个链都没有，三种都拦启动（分页是硬依赖：按 Page 取批的语句靠它加 LIMIT）。
  */
 class MybatisPlusChainCheckerTest {
 
@@ -39,11 +39,22 @@ class MybatisPlusChainCheckerTest {
     }
 
     @Test
-    void warnsButAllowsWhenHostManagesItsOwnChain() {
+    void failsFastWhenHostManagedChainMissesPagination() {
         MybatisPlusChainChecker checker = new MybatisPlusChainChecker(context(Map.of(
                 "hostChain", chain(new BlockAttackInnerInterceptor()))));
 
-        assertDoesNotThrow(checker::afterSingletonsInstantiated, "宿主自管链是文档允许的用法，不能拦启动");
+        IllegalStateException ex = assertThrows(IllegalStateException.class, checker::afterSingletonsInstantiated);
+        assertTrue(ex.getMessage().contains("PaginationInnerInterceptor"), "要给出一条出路: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("按 Page 取批的语句"), "要说清为什么必须补: " + ex.getMessage());
+    }
+
+    /** 宿主自管链但补上了分页：放行 */
+    @Test
+    void passesWhenHostManagedChainHasPagination() {
+        MybatisPlusChainChecker checker = new MybatisPlusChainChecker(context(Map.of(
+                "hostChain", chain(new PaginationInnerInterceptor(), new BlockAttackInnerInterceptor()))));
+
+        assertDoesNotThrow(checker::afterSingletonsInstantiated);
     }
 
     @Test

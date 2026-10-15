@@ -16,7 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * 数据源信息展示：名称解析、连接目标格式化与占位约定
+ * 数据源信息展示：名称解析、连接目标格式化、类型展示与占位约定
  */
 class DsInfoTest {
 
@@ -41,15 +41,15 @@ class DsInfoTest {
         DynamicRoutingDataSource routing = new DynamicRoutingDataSource(List.of());
         routing.addDataSource("master", wrapped("master",
                 "jdbc:mysql://192.168.110.208:43307/yomi_boot_java?characterEncoding=UTF-8&useSSL=false", "admin"));
-        routing.addDataSource("backup", wrapped("backup", "jdbc:mysql://127.0.0.1:3306/backup", "backup"));
+        routing.addDataSource("backup", wrapped("backup", "jdbc:postgresql://127.0.0.1:5432/backup", "backup"));
 
         new DsInfo(List.of(routing)).init();
 
-        // 连接参数被剔除，仅保留 host:port/database；ItemDataSource 包装展开为真实连接池
+        // 连接参数被剔除，仅保留 host:port/database；类型取自 url 子协议；ItemDataSource 包装展开为真实连接池
         assertEquals(List.of(
-                "数据源连接信息 [backup: 127.0.0.1:3306/backup - backup]",
+                "数据源连接信息 [backup: 127.0.0.1:5432/backup - backup]，类型: postgresql",
                 "数据源连接池类型: com.zaxxer.hikari.HikariDataSource",
-                "数据源连接信息 [master: 192.168.110.208:43307/yomi_boot_java - admin]",
+                "数据源连接信息 [master: 192.168.110.208:43307/yomi_boot_java - admin]，类型: mysql",
                 "数据源连接池类型: com.zaxxer.hikari.HikariDataSource"), messages());
     }
 
@@ -58,7 +58,7 @@ class DsInfoTest {
         new DsInfo(List.of(hikari("report", "jdbc:mysql://127.0.0.1:3306/report", "report"))).init();
 
         assertEquals(List.of(
-                "数据源连接信息 [report: 127.0.0.1:3306/report - report]",
+                "数据源连接信息 [report: 127.0.0.1:3306/report - report]，类型: mysql",
                 "数据源连接池类型: com.zaxxer.hikari.HikariDataSource"), messages());
     }
 
@@ -67,7 +67,7 @@ class DsInfoTest {
         new DsInfo(List.of(hikari("h2db", "jdbc:h2:mem:test", "sa"))).init();
 
         assertEquals(List.of(
-                "数据源连接信息 [h2db: jdbc:h2:mem:test - sa]",
+                "数据源连接信息 [h2db: jdbc:h2:mem:test - sa]，类型: h2",
                 "数据源连接池类型: com.zaxxer.hikari.HikariDataSource"), messages());
     }
 
@@ -79,7 +79,7 @@ class DsInfoTest {
         new DsInfo(List.of(dataSource)).init();
 
         assertEquals(List.of(
-                "数据源连接信息 [empty: ~ - ~]",
+                "数据源连接信息 [empty: ~ - ~]，类型: ~",
                 "数据源连接池类型: com.zaxxer.hikari.HikariDataSource"), messages());
     }
 

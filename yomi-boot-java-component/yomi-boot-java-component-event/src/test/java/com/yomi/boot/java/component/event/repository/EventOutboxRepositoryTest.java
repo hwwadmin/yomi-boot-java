@@ -1,6 +1,7 @@
 package com.yomi.boot.java.component.event.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.yomi.boot.java.component.event.MybatisLambdaCache;
 import com.yomi.boot.java.component.event.entity.EventOutbox;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -87,6 +89,25 @@ class EventOutboxRepositoryTest {
         assertTrue(where.contains("delete_timeisnull"), where);
     }
 
+    /** 取批：一页 + 不要 count + 按 create_time 升序（上限靠分页拦截器落到 SQL 的 LIMIT） */
+    @Test
+    void fetchPendingTakesOneBoundedPageOrderedByCreateTime() {
+        Stub stub = new Stub().pendingRows(row(1L));
+        EventOutboxRepository repository = new EventOutboxRepository(stub.mapper());
+
+        List<EventOutbox> rows = repository.fetchPending("svc", 500);
+
+        assertEquals(List.of(1L), rows.stream().map(EventOutbox::getId).toList());
+        assertEquals(1, stub.pendingPages.size(), "取批只查一次");
+        assertEquals(500, stub.pendingPages.get(0).getSize(), "批量上限即页大小");
+        assertFalse(stub.pendingPages.get(0).searchCount(), "只取一页，不要 count 查询");
+        String where = compact(stub.pendingWrappers.get(0).getSqlSegment());
+        assertTrue(where.contains("service_name=#{"), where);
+        assertTrue(where.contains("status=#{"), where);
+        assertTrue(where.contains("delete_timeisnull"), where);
+        assertTrue(where.endsWith("orderbycreate_timeasc"), where);
+    }
+
     /** 超时回收查询：service_name + FETCHED + fetch_time < 阈值 + 未删除 */
     @Test
     void findFetchedTimeoutFiltersByStatusAndFetchTimeBefore() {
@@ -152,6 +173,8 @@ class EventOutboxRepositoryTest {
     private static final class Stub {
 
         private final List<EventOutbox> pendingRows = new ArrayList<>();
+        private final List<IPage<EventOutbox>> pendingPages = new ArrayList<>();
+        private final List<LambdaQueryWrapper<EventOutbox>> pendingWrappers = new ArrayList<>();
         private final List<LambdaUpdateWrapper<EventOutbox>> updates = new ArrayList<>();
         private final List<LambdaQueryWrapper<EventOutbox>> selectListWrappers = new ArrayList<>();
         private List<EventOutbox> selectListResult = List.of();
@@ -176,7 +199,13 @@ class EventOutboxRepositoryTest {
         EventOutboxMapper mapper() {
             return (EventOutboxMapper) Proxy.newProxyInstance(getClass().getClassLoader(),
                     new Class<?>[]{EventOutboxMapper.class}, (proxy, method, args) -> switch (method.getName()) {
-                        case "selectPending" -> List.copyOf(pendingRows);
+                        case "selectPage" -> {
+                            IPage<EventOutbox> page = (IPage<EventOutbox>) args[0];
+                            pendingPages.add(page);
+                            pendingWrappers.add((LambdaQueryWrapper<EventOutbox>) args[args.length - 1]);
+                            page.setRecords(List.copyOf(pendingRows));
+                            yield page;
+                        }
                         case "update" -> {
                             updates.add((LambdaUpdateWrapper<EventOutbox>) args[1]);
                             yield updateRows;

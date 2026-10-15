@@ -17,10 +17,6 @@ import java.util.List;
  */
 public interface EventOutboxMapper extends BaseMapper<EventOutbox> {
 
-    /** 按创建时间升序取 PENDING */
-    List<EventOutbox> selectPending(@Param("serviceName") String serviceName,
-                                    @Param("limit") int limit);
-
     /** 保留期清理：物理删除指定服务、指定状态且发送时间早于阈值的行 */
     int deleteSentSuccessBefore(@Param("serviceName") String serviceName,
                                 @Param("status") OutboxStatus status,

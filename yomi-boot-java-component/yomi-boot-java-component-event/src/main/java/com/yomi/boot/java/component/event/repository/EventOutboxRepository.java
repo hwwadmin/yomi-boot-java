@@ -33,10 +33,17 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         save(row);
     }
 
-    /** 查询 PENDING 行（不改状态） */
+    /** 查询 PENDING 行（不改状态）；批量上限由分页拦截器落到 SQL 的 LIMIT（缺拦截器由 ds 自检拦在启动期） */
     public List<EventOutbox> fetchPending(String serviceName, int limit) {
         Assert.isTrue(limit > 0, "fetch limit 必须大于 0");
-        return getMapper().selectPending(serviceName, limit);
+        return lambdaQuery()
+                .eq(EventOutbox::getServiceName, serviceName)
+                .eq(EventOutbox::getStatus, OutboxStatus.PENDING)
+                .isNull(EventOutbox::getDeleteTime)
+                .orderByAsc(EventOutbox::getCreateTime)
+                // 只取一页且不要 count：等价 LIMIT n 的单条查询
+                .page(page(1, limit).setSearchCount(false))
+                .getRecords();
     }
 
     /**

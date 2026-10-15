@@ -3,17 +3,6 @@
 <!-- sys_event_outbox 自定义 SQL -->
 <mapper namespace="com.yomi.boot.java.component.event.repository.mapper.EventOutboxMapper">
 
-    <select id="selectPending" resultType="com.yomi.boot.java.component.event.entity.EventOutbox">
-        SELECT id, service_name, event_id, topic, payload, status, fetch_time, sent_time,
-               create_time, create_by, update_time, update_by, delete_time, delete_by
-        FROM sys_event_outbox
-        WHERE service_name = #{serviceName}
-          AND status = 'PENDING'
-          AND delete_time IS NULL
-        ORDER BY create_time ASC
-        LIMIT #{limit}
-    </select>
-
     <!-- 保留期清理：只删已成功终态的行，PENDING/FETCHED/SENT_FAIL 与 DLQ 在途行不受影响。
          受限删除两库语法不同，按方言各写一条（databaseId 由 ds 组件的 DsDatabaseIdProvider 解析）：
          MySQL 用原生 DELETE ... LIMIT（走 idx_status_sent_time，按 limit 提前结束）；PG 无此语法，用 ctid 子查询限量

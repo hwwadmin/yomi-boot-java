@@ -89,14 +89,42 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
      */
     public List<EventOutboxDlq> fetchRetryable(String serviceName, int maxRetry, int limit, Instant now) {
         Assert.isTrue(limit > 0, "dlq limit 必须大于 0");
-        List<EventOutboxDlq> rows = new ArrayList<>(
-                getMapper().selectRetryableUnscheduled(serviceName, maxRetry, limit));
+        if (maxRetry <= 0) {
+            // 原 XML 的 `1 = 0` 分支：未达重试上限的条件恒不成立，直接不触库
+            return List.of();
+        }
+        List<EventOutboxDlq> rows = new ArrayList<>(selectUnscheduled(serviceName, maxRetry, limit));
         int remain = limit - rows.size();
         if (remain > 0) {
-            rows.addAll(getMapper().selectRetryableDue(serviceName, maxRetry, now, remain));
+            rows.addAll(selectDue(serviceName, maxRetry, now, remain));
         }
         rows.sort(Comparator.comparing(EventOutboxDlqRepository::readyTime));
         return rows;
+    }
+
+    /** 未排期（新建/人工复位）：按 create_time 有序，走 idx_service_name_create_time；上限由分页拦截器落到 LIMIT */
+    private List<EventOutboxDlq> selectUnscheduled(String serviceName, int maxRetry, int limit) {
+        return lambdaQuery()
+                .eq(EventOutboxDlq::getServiceName, serviceName)
+                .isNull(EventOutboxDlq::getDeleteTime)
+                .lt(EventOutboxDlq::getRetryCount, maxRetry)
+                .isNull(EventOutboxDlq::getRetryAfterTime)
+                .orderByAsc(EventOutboxDlq::getCreateTime)
+                .page(page(1, limit).setSearchCount(false))
+                .getRecords();
+    }
+
+    /** 已到退避窗口：按 retry_after_time 有序，走 idx_retry_after_time；上限由分页拦截器落到 LIMIT */
+    private List<EventOutboxDlq> selectDue(String serviceName, int maxRetry, Instant now, int limit) {
+        return lambdaQuery()
+                .eq(EventOutboxDlq::getServiceName, serviceName)
+                .isNull(EventOutboxDlq::getDeleteTime)
+                .lt(EventOutboxDlq::getRetryCount, maxRetry)
+                .le(EventOutboxDlq::getRetryAfterTime, now)
+                .orderByAsc(EventOutboxDlq::getRetryAfterTime)
+                .orderByAsc(EventOutboxDlq::getCreateTime)
+                .page(page(1, limit).setSearchCount(false))
+                .getRecords();
     }
 
     /** 就绪时间：已排期取 retry_after_time，未排期取 create_time（与原 ORDER BY COALESCE 同义） */

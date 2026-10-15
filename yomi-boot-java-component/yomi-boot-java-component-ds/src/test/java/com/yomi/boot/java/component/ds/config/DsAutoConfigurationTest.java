@@ -69,11 +69,31 @@ class DsAutoConfigurationTest {
                     assertNotNull(context.getBean(MybatisPlusInterceptor.class));
                     assertNotNull(context.getBean(DsPreheat.class));
                     assertNotNull(context.getBean(DsInfo.class));
-                    // 自动装配让位后容器里只有用户定义的那一份
+                    // 自动装配让位后容器里只有用户定义的那一份（标记拦截器只在宿主链里）
+                    assertTrue(interceptorClasses(context).contains(MarkerInnerInterceptor.class.getName()),
+                            "用的应是宿主定义的链: " + interceptorClasses(context));
                     assertTrue(context.getBeansOfType(MybatisPlusInterceptor.class).size() == 1);
                     assertTrue(context.getBeansOfType(DsPreheat.class).size() == 1);
                     assertTrue(context.getBeansOfType(DsInfo.class).size() == 1);
                 });
+    }
+
+    /** 链自检改为强制：宿主自定义链但没补分页 → 直接启动失败（不再只告警放行） */
+    @Test
+    void failsFastWhenHostChainMissesPagination() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
+                .withBean(DataSource.class, DsAutoConfigurationTest::stubDataSource)
+                .withBean(MybatisPlusInterceptor.class, MybatisPlusInterceptor::new)
+                .run(context -> {
+                    assertNotNull(context.getStartupFailure(), "缺分页必须拦启动");
+                    assertTrue(context.getStartupFailure().getMessage().contains("PaginationInnerInterceptor"),
+                            "报错要给出补分页的出路: " + context.getStartupFailure().getMessage());
+                });
+    }
+
+    /** 宿主自管链的标记拦截器：用于在断言里区分"用的是宿主那份链" */
+    static class MarkerInnerInterceptor implements InnerInterceptor {
     }
 
     /** 分页与防全表写随 ds 组件强制生效：旧开关（pagination.enabled=false）不得再关掉任何一项 */
@@ -312,9 +332,14 @@ class DsAutoConfigurationTest {
     @Configuration(proxyBeanMethods = false)
     static class UserBeans {
 
+        /** 宿主自管链必须自带分页：链自检对缺分页一律 fail-fast（组件里按 Page 取批的语句依赖它加 LIMIT） */
         @Bean
         MybatisPlusInterceptor mybatisPlusInterceptor() {
-            return new MybatisPlusInterceptor();
+            MybatisPlusInterceptor chain = new MybatisPlusInterceptor();
+            chain.addInnerInterceptor(new PaginationInnerInterceptor());
+            chain.addInnerInterceptor(new BlockAttackInnerInterceptor());
+            chain.addInnerInterceptor(new MarkerInnerInterceptor());
+            return chain;
         }
 
         @Bean

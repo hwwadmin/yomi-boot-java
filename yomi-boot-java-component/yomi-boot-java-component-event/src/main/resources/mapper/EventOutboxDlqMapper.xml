@@ -3,44 +3,8 @@
 <!-- sys_event_outbox_dlq 自定义 SQL -->
 <mapper namespace="com.yomi.boot.java.component.event.repository.mapper.EventOutboxDlqMapper">
 
-    <!--
-      DLQ 扫描拆两条（由仓储合并）：
-      COALESCE(retry_after_time, create_time) 这类排序表达式用不上索引，大表每轮都要全表排序；
-      两段各自按"已在索引里的列"排序（未排期走 idx_service_name_create_time，到期走 idx_retry_after_time）
-    -->
-    <select id="selectRetryableUnscheduled" resultType="com.yomi.boot.java.component.event.entity.EventOutboxDlq">
-        SELECT id, service_name, event_outbox_id, error_msg, retry_count, retry_last_time, retry_after_time,
-               create_time, create_by, update_time, update_by, delete_time, delete_by
-        FROM sys_event_outbox_dlq
-        WHERE service_name = #{serviceName}
-          AND delete_time IS NULL
-        <if test="maxRetry > 0">
-          AND retry_count &lt; #{maxRetry}
-        </if>
-        <if test="maxRetry &lt;= 0">
-          AND 1 = 0
-        </if>
-          AND retry_after_time IS NULL
-        ORDER BY create_time ASC
-        LIMIT #{limit}
-    </select>
-
-    <select id="selectRetryableDue" resultType="com.yomi.boot.java.component.event.entity.EventOutboxDlq">
-        SELECT id, service_name, event_outbox_id, error_msg, retry_count, retry_last_time, retry_after_time,
-               create_time, create_by, update_time, update_by, delete_time, delete_by
-        FROM sys_event_outbox_dlq
-        WHERE service_name = #{serviceName}
-          AND delete_time IS NULL
-        <if test="maxRetry > 0">
-          AND retry_count &lt; #{maxRetry}
-        </if>
-        <if test="maxRetry &lt;= 0">
-          AND 1 = 0
-        </if>
-          AND retry_after_time &lt;= #{now}
-        ORDER BY retry_after_time ASC, create_time ASC
-        LIMIT #{limit}
-    </select>
+    <!-- DLQ 扫描两段（未排期 / 已到期）改由仓储的 LambdaQueryWrapper + MP Page 表达：
+         两段各自按索引列排序（create_time / retry_after_time），上限由分页拦截器落到 LIMIT -->
 
     <!-- 人工复位：清零重试计数、清退避窗口，并去掉 [EXHAUSTED] 前缀 -->
     <update id="resetRetryCountInRange">

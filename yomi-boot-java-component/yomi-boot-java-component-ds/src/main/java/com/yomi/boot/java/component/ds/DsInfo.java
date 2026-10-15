@@ -18,8 +18,10 @@ import java.util.TreeMap;
 /**
  * 数据源信息展示
  * <p>
- * 启动时输出各数据源的连接目标与连接池类型，便于确认实际生效的数据源配置；
- * 与 {@link DsPreheat} 一致，dynamic-datasource 场景展开为真实子数据源
+ * 启动时输出各数据源的连接目标、类型与连接池类型，便于确认实际生效的数据源配置；
+ * 与 {@link DsPreheat} 一致，dynamic-datasource 场景展开为真实子数据源；
+ * 类型取自 JDBC url 的子协议（零连接开销）；真正用于选择方言语句的标识由
+ * {@code DsDatabaseIdProvider} 另打一条日志（它按活连接的产品名解析）
  *
  * @author zwei
  */
@@ -31,7 +33,7 @@ public class DsInfo {
     /** 容器内全部 {@link DataSource} Bean（含 dynamic-datasource 路由） */
     private final List<DataSource> dataSourceList;
 
-    /** 启动后打印各数据源连接目标、用户名与连接池类型 */
+    /** 启动后打印各数据源连接目标、类型、用户名与连接池类型 */
     @PostConstruct
     public void init() {
         Map<String, DataSource> dataSources = resolveDataSources(dataSourceList);
@@ -41,7 +43,8 @@ public class DsInfo {
         }
         dataSources.forEach((name, dataSource) -> {
             DataSource realDataSource = unwrapDataSource(dataSource);
-            log.info("数据源连接信息 [{}: {} - {}]", name, connectionTarget(realDataSource), username(realDataSource));
+            log.info("数据源连接信息 [{}: {} - {}]，类型: {}", name, connectionTarget(realDataSource),
+                    username(realDataSource), jdbcType(realDataSource));
             log.info("数据源连接池类型: {}", realDataSource.getClass().getName());
         });
     }
@@ -108,6 +111,20 @@ public class DsInfo {
             return hikari.getUsername();
         }
         return "~";
+    }
+
+    /**
+     * 数据源类型：取 JDBC url 的子协议（{@code jdbc:mysql://x} → {@code mysql}、{@code jdbc:postgresql://x}
+     * → {@code postgresql}、{@code jdbc:h2:mem:t} → {@code h2}）；取值不可用时以 ~ 占位
+     */
+    private static String jdbcType(DataSource dataSource) {
+        String jdbcUrl = dataSource instanceof HikariDataSource hikari ? hikari.getJdbcUrl() : null;
+        if (StringUtils.isBlank(jdbcUrl)) {
+            return "~";
+        }
+        String rest = StringUtils.substringAfter(jdbcUrl, "jdbc:");
+        String type = StringUtils.substringBefore(rest, ":");
+        return StringUtils.isBlank(type) || type.equals(rest) ? "~" : type;
     }
 
 }
