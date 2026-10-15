@@ -50,7 +50,14 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         List<Long> ids = pending.stream().map(EventOutbox::getId).toList();
         // 与 fetch_time 列（datetime(3)）对齐到毫秒，否则写库值被截断后按归属重查匹配不上
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        int updated = getMapper().markFetched(ids, OutboxStatus.PENDING, OutboxStatus.FETCHED, now, now);
+        // 用 mapper.update(null, wrapper) 而非 lambdaUpdate() 链：后者只返回 boolean，这里要受影响行数判抢占
+        int updated = getMapper().update(null, new LambdaUpdateWrapper<EventOutbox>()
+                .set(EventOutbox::getStatus, OutboxStatus.FETCHED)
+                .set(EventOutbox::getFetchTime, now)
+                .set(EventOutbox::getUpdateTime, now)
+                .eq(EventOutbox::getStatus, OutboxStatus.PENDING)
+                .isNull(EventOutbox::getDeleteTime)
+                .in(EventOutbox::getId, ids));
         if (updated == 0) {
             return List.of();
         }
@@ -74,7 +81,12 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
 
     /** 查询 FETCHED 超时未投递的行 */
     public List<EventOutbox> findFetchedTimeout(String serviceName, Instant fetchTimeBefore) {
-        return getMapper().selectFetchedTimeout(serviceName, OutboxStatus.FETCHED, fetchTimeBefore);
+        return lambdaQuery()
+                .eq(EventOutbox::getServiceName, serviceName)
+                .eq(EventOutbox::getStatus, OutboxStatus.FETCHED)
+                .lt(EventOutbox::getFetchTime, fetchTimeBefore)
+                .isNull(EventOutbox::getDeleteTime)
+                .list();
     }
 
     /** 将 FETCHED 批量重置为 PENDING（投递超时回收） */
@@ -82,7 +94,14 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         if (ids == null || ids.isEmpty()) {
             return;
         }
-        getMapper().resetFetchedToPending(ids, OutboxStatus.FETCHED, OutboxStatus.PENDING, Instant.now());
+        lambdaUpdate()
+                .set(EventOutbox::getStatus, OutboxStatus.PENDING)
+                .set(EventOutbox::getFetchTime, null)
+                .set(EventOutbox::getUpdateTime, Instant.now())
+                .eq(EventOutbox::getStatus, OutboxStatus.FETCHED)
+                .isNull(EventOutbox::getDeleteTime)
+                .in(EventOutbox::getId, ids)
+                .update();
     }
 
     /** 按主键更新并刷新 {@link EventOutbox#update()} */

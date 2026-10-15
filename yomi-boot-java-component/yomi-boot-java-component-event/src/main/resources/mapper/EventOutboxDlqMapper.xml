@@ -42,16 +42,7 @@
         LIMIT #{limit}
     </select>
 
-    <!-- 乐观抢占：避免多线程/多轮扫描对同一 DLQ 并行发 Kafka -->
-    <update id="claimInFlight">
-        UPDATE sys_event_outbox_dlq
-        SET retry_after_time = #{claimUntil},
-            update_time = #{updateTime}
-        WHERE id = #{id}
-          AND delete_time IS NULL
-          AND (retry_after_time IS NULL OR retry_after_time &lt;= #{now})
-    </update>
-
+    <!-- 人工复位：清零重试计数、清退避窗口，并去掉 [EXHAUSTED] 前缀 -->
     <update id="resetRetryCountInRange">
         UPDATE sys_event_outbox_dlq
         SET retry_count = 0,

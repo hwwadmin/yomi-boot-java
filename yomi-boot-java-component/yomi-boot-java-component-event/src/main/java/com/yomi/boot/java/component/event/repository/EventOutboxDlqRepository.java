@@ -3,6 +3,7 @@ package com.yomi.boot.java.component.event.repository;
 import com.yomi.boot.java.base.utils.Assert;
 import com.yomi.boot.java.component.ds.MyBatisDao;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yomi.boot.java.base.model.PageRequest;
 import com.yomi.boot.java.component.event.entity.EventOutbox;
@@ -53,7 +54,14 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
         Assert.nonNull(dlqId, "dlqId 不能为空");
         Instant now = Instant.now();
         Instant claimUntil = now.plus(lease);
-        int rows = getMapper().claimInFlight(dlqId, now, claimUntil, now);
+        // 用 mapper.update(null, wrapper) 而非 lambdaUpdate() 链：后者只返回 boolean，这里要行数判抢占成功
+        int rows = getMapper().update(null, new LambdaUpdateWrapper<EventOutboxDlq>()
+                .set(EventOutboxDlq::getRetryAfterTime, claimUntil)
+                .set(EventOutboxDlq::getUpdateTime, now)
+                .eq(EventOutboxDlq::getId, dlqId)
+                .isNull(EventOutboxDlq::getDeleteTime)
+                .and(w -> w.isNull(EventOutboxDlq::getRetryAfterTime)
+                        .or().le(EventOutboxDlq::getRetryAfterTime, now)));
         return rows == 1;
     }
 

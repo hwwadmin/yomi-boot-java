@@ -33,12 +33,4 @@ public interface EventOutboxDlqMapper extends BaseMapper<EventOutboxDlq> {
                                @Param("to") Instant to,
                                @Param("updateTime") Instant updateTime);
 
-    /**
-     * 抢占 DLQ 投递权：将 {@code retry_after_time} 推到未来，仅当当前可重试时更新成功
-     */
-    int claimInFlight(@Param("id") Long id,
-                      @Param("now") Instant now,
-                      @Param("claimUntil") Instant claimUntil,
-                      @Param("updateTime") Instant updateTime);
-
 }

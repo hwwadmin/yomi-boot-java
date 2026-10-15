@@ -1,5 +1,6 @@
 package com.yomi.boot.java.component.idempotency.repository;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.yomi.boot.java.base.utils.Assert;
 import com.yomi.boot.java.component.ds.MyBatisDao;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyStatus;
@@ -32,8 +33,15 @@ public class IdempotencyRecordRepository extends MyBatisDao<IdempotencyRecordMap
     /** 业务成功后更新状态与结果 */
     public void markCompleted(Long id, String resultType, String resultPayload) {
         Assert.nonNull(id, "幂等记录ID不能为空");
-        int rows = getMapper().markCompleted(id, resultType, resultPayload,
-                IdempotencyStatus.PROCESSING, IdempotencyStatus.COMPLETED, Instant.now());
+        // 用 mapper.update(null, wrapper) 而非 lambdaUpdate() 链：后者只返回 boolean，这里要行数判"未生效"
+        int rows = getMapper().update(null, new LambdaUpdateWrapper<IdempotencyRecord>()
+                .set(IdempotencyRecord::getStatus, IdempotencyStatus.COMPLETED)
+                .set(IdempotencyRecord::getResultType, resultType)
+                .set(IdempotencyRecord::getResultPayload, resultPayload)
+                .set(IdempotencyRecord::getUpdateTime, Instant.now())
+                .eq(IdempotencyRecord::getId, id)
+                .eq(IdempotencyRecord::getStatus, IdempotencyStatus.PROCESSING)
+                .isNull(IdempotencyRecord::getDeleteTime));
         Assert.isTrue(rows == 1, "幂等记录状态更新未生效");
     }
 

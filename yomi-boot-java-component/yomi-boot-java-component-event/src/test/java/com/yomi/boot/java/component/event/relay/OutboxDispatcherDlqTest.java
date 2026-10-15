@@ -1,5 +1,6 @@
 package com.yomi.boot.java.component.event.relay;
 
+import com.yomi.boot.java.component.event.MybatisLambdaCache;
 import com.yomi.boot.java.component.event.config.EventProperties;
 import com.yomi.boot.java.component.event.entity.EventOutbox;
 import com.yomi.boot.java.component.event.entity.EventOutboxDlq;
@@ -8,6 +9,7 @@ import com.yomi.boot.java.component.event.repository.EventOutboxDlqRepository;
 import com.yomi.boot.java.component.event.repository.EventOutboxRepository;
 import com.yomi.boot.java.component.event.repository.mapper.EventOutboxDlqMapper;
 import com.yomi.boot.java.component.event.repository.mapper.EventOutboxMapper;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -26,6 +28,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class OutboxDispatcherDlqTest {
 
     private final EventProperties properties = new EventProperties();
+
+    @BeforeAll
+    static void registerEntities() {
+        MybatisLambdaCache.register(EventOutboxDlq.class);
+    }
 
     @Test
     void claimNotAcquiredLeavesRowUntouched() {
@@ -179,7 +186,8 @@ class OutboxDispatcherDlqTest {
         EventOutboxDlqMapper dlqMapper() {
             return (EventOutboxDlqMapper) Proxy.newProxyInstance(OutboxDispatcherDlqTest.class.getClassLoader(),
                     new Class<?>[]{EventOutboxDlqMapper.class}, (proxy, method, args) -> switch (method.getName()) {
-                        case "claimInFlight" -> claimResult;
+                        // 抢占 in-flight 现由仓储的 LambdaUpdateWrapper 表达（update 两参重载），仅此一处用它
+                        case "update" -> claimResult;
                         case "selectById" -> {
                             dlqReads.add((Long) args[0]);
                             if (dlqReadFailure != null) {

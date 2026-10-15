@@ -15,14 +15,6 @@ import java.time.Instant;
  */
 public interface IdempotencyRecordMapper extends BaseMapper<IdempotencyRecord> {
 
-    /** 处理中 → 已完成，并写入结果快照 */
-    int markCompleted(@Param("id") Long id,
-                      @Param("resultType") String resultType,
-                      @Param("resultPayload") String resultPayload,
-                      @Param("processingStatus") int processingStatus,
-                      @Param("completedStatus") int completedStatus,
-                      @Param("updateTime") Instant updateTime);
-
     /** 物理删除超时仍处于处理中的记录 */
     int deleteStaleProcessing(@Param("processingStatus") int processingStatus,
                               @Param("before") Instant before,

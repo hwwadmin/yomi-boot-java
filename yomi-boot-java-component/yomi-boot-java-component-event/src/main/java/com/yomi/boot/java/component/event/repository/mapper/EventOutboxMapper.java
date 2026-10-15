@@ -21,24 +21,6 @@ public interface EventOutboxMapper extends BaseMapper<EventOutbox> {
     List<EventOutbox> selectPending(@Param("serviceName") String serviceName,
                                     @Param("limit") int limit);
 
-    /** 乐观：仅当前状态匹配时批量改 FETCHED */
-    int markFetched(@Param("ids") List<Long> ids,
-                    @Param("fromStatus") OutboxStatus fromStatus,
-                    @Param("toStatus") OutboxStatus toStatus,
-                    @Param("fetchTime") Instant fetchTime,
-                    @Param("updateTime") Instant updateTime);
-
-    /** FETCHED 且抓取时间早于阈值 */
-    List<EventOutbox> selectFetchedTimeout(@Param("serviceName") String serviceName,
-                                           @Param("status") OutboxStatus status,
-                                           @Param("fetchTimeBefore") Instant fetchTimeBefore);
-
-    /** 超时回收：清空 fetch_time 并改回 PENDING */
-    int resetFetchedToPending(@Param("ids") List<Long> ids,
-                              @Param("status") OutboxStatus status,
-                              @Param("toStatus") OutboxStatus toStatus,
-                              @Param("updateTime") Instant updateTime);
-
     /** 保留期清理：物理删除指定服务、指定状态且发送时间早于阈值的行 */
     int deleteSentSuccessBefore(@Param("serviceName") String serviceName,
                                 @Param("status") OutboxStatus status,

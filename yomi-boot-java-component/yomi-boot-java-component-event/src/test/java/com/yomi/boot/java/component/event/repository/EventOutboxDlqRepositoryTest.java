@@ -1,17 +1,22 @@
 package com.yomi.boot.java.component.event.repository;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.yomi.boot.java.base.exception.AssertException;
+import com.yomi.boot.java.component.event.MybatisLambdaCache;
 import com.yomi.boot.java.component.event.entity.EventOutboxDlq;
 import com.yomi.boot.java.component.event.repository.mapper.EventOutboxDlqMapper;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,6 +31,34 @@ class EventOutboxDlqRepositoryTest {
 
     private static final Instant NOW = Instant.parse("2026-10-14T02:00:00Z");
     private static final String MAPPER_XML = "mapper/EventOutboxDlqMapper.xml";
+
+    @BeforeAll
+    static void registerEntities() {
+        MybatisLambdaCache.register(EventOutboxDlq.class);
+    }
+
+    /** 抢占 in-flight：SET 推退避窗口与更新时间，WHERE 带"可重试"守卫；只有更新到恰好 1 行才算抢到 */
+    @Test
+    void tryClaimInFlightPushesRetryWindowWithRetryableGuard() {
+        FakeMapper mapper = new FakeMapper();
+        EventOutboxDlqRepository repository = new EventOutboxDlqRepository(mapper.stub());
+
+        assertTrue(repository.tryClaimInFlight(7L, Duration.ofMinutes(5)));
+
+        assertEquals(List.of("update"), mapper.calls);
+        String set = compact(mapper.claimWrapper.getSqlSet());
+        assertTrue(set.contains("retry_after_time=#{"), set);
+        assertTrue(set.contains("update_time=#{"), set);
+        String where = compact(mapper.claimWrapper.getSqlSegment());
+        assertTrue(where.contains("id=#{"), where);
+        assertTrue(where.contains("delete_timeisnull"), where);
+        assertTrue(where.contains("retry_after_timeisnull"), where);
+        assertTrue(where.contains("retry_after_time<=#{"),
+                "已排期但已过退避窗口的行也应可抢占: " + where);
+
+        mapper.claimRows = 0;
+        assertFalse(repository.tryClaimInFlight(7L, Duration.ofMinutes(5)), "未更新到行即抢占失败");
+    }
 
     /** 两段合并后按"就绪时间"（retry_after_time，未排期取 create_time）升序 */
     @Test
@@ -119,6 +152,8 @@ class EventOutboxDlqRepositoryTest {
         List<EventOutboxDlq> unscheduled = List.of();
         List<EventOutboxDlq> due = List.of();
         int dueLimit;
+        LambdaUpdateWrapper<EventOutboxDlq> claimWrapper;
+        int claimRows = 1;
 
         EventOutboxDlqMapper stub() {
             return (EventOutboxDlqMapper) Proxy.newProxyInstance(
@@ -137,9 +172,20 @@ class EventOutboxDlqRepositoryTest {
                             calls.add("resetRetryCountInRange");
                             yield 1;
                         }
+                        case "update" -> {
+                            // 抢占 in-flight 现由仓储的 LambdaUpdateWrapper 表达（两参重载），args[0] 为空实体
+                            calls.add("update");
+                            claimWrapper = (LambdaUpdateWrapper<EventOutboxDlq>) args[1];
+                            yield claimRows;
+                        }
                         default -> null;
                     });
         }
+    }
+
+    /** SQL 片段比较前压掉空白并统一小写，避免断言绑在 MP 的排版/大小写细节上 */
+    private static String compact(String sql) {
+        return sql == null ? "" : sql.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
     private static String readMapperXml() throws IOException {
