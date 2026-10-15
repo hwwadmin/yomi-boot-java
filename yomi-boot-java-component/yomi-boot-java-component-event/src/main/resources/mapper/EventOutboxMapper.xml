@@ -50,13 +50,17 @@
         </foreach>
     </update>
 
-    <!-- 保留期清理：只删已成功终态的行，PENDING/FETCHED/SENT_FAIL 与 DLQ 在途行不受影响 -->
+    <!-- 保留期清理：只删已成功终态的行，PENDING/FETCHED/SENT_FAIL 与 DLQ 在途行不受影响
+         外层 IN + 派生表包一层：DELETE ... LIMIT 是 MySQL 专有（PG 报语法错误），派生表形式两边通用 -->
     <delete id="deleteSentSuccessBefore">
         DELETE FROM sys_event_outbox
-        WHERE service_name = #{serviceName}
-          AND status = #{status}
-          AND sent_time &lt; #{sentTimeBefore}
-        LIMIT #{limit}
+        WHERE id IN (SELECT id FROM (
+            SELECT id FROM sys_event_outbox
+            WHERE service_name = #{serviceName}
+              AND status = #{status}
+              AND sent_time &lt; #{sentTimeBefore}
+            LIMIT #{limit}
+        ) AS expired_ids)
     </delete>
 
 </mapper>

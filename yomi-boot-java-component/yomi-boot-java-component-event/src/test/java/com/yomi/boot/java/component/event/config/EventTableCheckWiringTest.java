@@ -1,6 +1,6 @@
 package com.yomi.boot.java.component.event.config;
 
-import com.yomi.boot.java.component.ds.support.TableExistingChecker;
+import com.yomi.boot.java.component.ds.support.TableInitializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.ObjectProvider;
@@ -18,32 +18,32 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * event 启动期建表检查的接线验证：发件箱侧覆盖 outbox + dlq，收件箱侧覆盖 inbox。
  * <p>轻量反射式（不启动整个上下文）：直接调用装配类的 @Bean 方法并执行检查，
- * 从 stub DataSource 上记录实际执行过的表名。
+ * 从 stub DataSource 上记录实际执行过的表名（stub 全部表都存在 → 只探活、不建表）。
  */
 class EventTableCheckWiringTest {
 
     @Test
-    void publisherCheckerCoversOutboxTables() {
+    void publisherInitializerCoversOutboxTables() {
         List<String> executedSql = new ArrayList<>();
-        TableExistingChecker checker = new EventAutoConfiguration.PublisherConfiguration()
-                .eventOutboxTableExistingChecker(providerOf(recordingDataSource(executedSql)));
+        TableInitializer initializer = new EventAutoConfiguration.PublisherConfiguration()
+                .eventOutboxTableInitializer(providerOf(recordingDataSource(executedSql)));
 
-        checker.afterSingletonsInstantiated();
+        initializer.afterSingletonsInstantiated();
 
         assertEquals(Set.of("sys_event_outbox", "sys_event_outbox_dlq"), tables(executedSql),
-                "发件箱侧表清单必须与 sql/sys_event.sql 一致");
+                "发件箱侧表清单必须与 sql/mysql|pgsql/sys_event.sql 一致");
     }
 
     @Test
-    void consumerCheckerCoversInboxTable() {
+    void consumerInitializerCoversInboxTable() {
         List<String> executedSql = new ArrayList<>();
-        TableExistingChecker checker = new EventAutoConfiguration.ConsumerConfiguration()
-                .eventInboxTableExistingChecker(providerOf(recordingDataSource(executedSql)));
+        TableInitializer initializer = new EventAutoConfiguration.ConsumerConfiguration()
+                .eventInboxTableInitializer(providerOf(recordingDataSource(executedSql)));
 
-        checker.afterSingletonsInstantiated();
+        initializer.afterSingletonsInstantiated();
 
         assertEquals(Set.of("sys_event_inbox"), tables(executedSql),
-                "收件箱侧表清单必须与 sql/sys_event.sql 一致");
+                "收件箱侧表清单必须与 sql/mysql|pgsql/sys_event.sql 一致");
     }
 
     /** 声明事件组件依赖的表名 */

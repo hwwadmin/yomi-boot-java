@@ -1,3 +1,4 @@
+-- MySQL 建表脚本（PostgreSQL 版见同组件 sql/pgsql/sys_rbac.sql；启动期缺表时按当前数据库自动执行，也可手工执行）
 -- RBAC 权限模型（字段与实体一一对应；status：0 禁用 / 1 启用）
 
 CREATE TABLE IF NOT EXISTS `sys_rbac_perm`

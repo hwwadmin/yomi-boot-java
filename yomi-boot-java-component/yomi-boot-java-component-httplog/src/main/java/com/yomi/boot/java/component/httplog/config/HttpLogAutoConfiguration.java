@@ -3,7 +3,7 @@ package com.yomi.boot.java.component.httplog.config;
 import com.yomi.boot.java.component.desensitize.IDesensitizeService;
 import com.yomi.boot.java.component.desensitize.DesensitizeStrategyRegistry;
 import com.yomi.boot.java.component.desensitize.config.DesensitizeAutoConfiguration;
-import com.yomi.boot.java.component.ds.support.TableExistingChecker;
+import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.httplog.IHttpLogService;
 import com.yomi.boot.java.component.httplog.collect.HttpLogContextEnricher;
 import com.yomi.boot.java.component.httplog.collect.HttpLogFilter;
@@ -138,10 +138,10 @@ public class HttpLogAutoConfiguration {
         return new HttpLogService(httpLogRepository, httpLogKeys);
     }
 
-    /** 启动期校验 sys_http_log 是否存在 */
+    /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_http_log.sql 自动创建 */
     @Bean
-    public TableExistingChecker httpLogTableExistingChecker(ObjectProvider<DataSource> dataSourceProvider) {
-        return new TableExistingChecker(dataSourceProvider, "HTTP请求日志", "sql/sys_http_log.sql",
+    public TableInitializer httpLogTableInitializer(ObjectProvider<DataSource> dataSourceProvider) {
+        return new TableInitializer(dataSourceProvider, "HTTP请求日志", "sys_http_log.sql",
                 List.of("sys_http_log"));
     }
 

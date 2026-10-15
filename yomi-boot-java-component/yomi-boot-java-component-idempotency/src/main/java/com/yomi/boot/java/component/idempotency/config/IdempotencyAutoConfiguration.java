@@ -1,6 +1,6 @@
 package com.yomi.boot.java.component.idempotency.config;
 
-import com.yomi.boot.java.component.ds.support.TableExistingChecker;
+import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.idempotency.annotation.IdempotentAop;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyGuard;
 import com.yomi.boot.java.component.idempotency.repository.IdempotencyRecordRepository;
@@ -141,7 +141,8 @@ public class IdempotencyAutoConfiguration {
         }
         if (mapperProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
-                    "yomi.idempotency.enabled=true 需要 IdempotencyRecordMapper：请执行 sql/sys_idempotency_record.sql；"
+                    "yomi.idempotency.enabled=true 需要 IdempotencyRecordMapper：请执行组件 jar 内 "
+                            + "sql/mysql/sys_idempotency_record.sql 或 sql/pgsql/sys_idempotency_record.sql；"
                             + "Mapper 由 component-idempotency 自动配置扫描，无需宿主配置 @MapperScan");
         }
         log.info("[幂等]守卫已启用: storePrefix={}, resultCacheTtl={}, recordRetention={}, staleCleanerEnabled={}",
@@ -167,10 +168,10 @@ public class IdempotencyAutoConfiguration {
                 + "要关闭清理请设 yomi.idempotency.stale-cleaner-enabled=false");
     }
 
-    /** 启动期建表检查：缺表直接启动失败（fail-fast） */
+    /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_idempotency_record.sql 自动创建 */
     @Bean
-    public TableExistingChecker idempotencyTableExistingChecker(ObjectProvider<DataSource> dataSourceProvider) {
-        return new TableExistingChecker(dataSourceProvider, "幂等", "sql/sys_idempotency_record.sql",
+    public TableInitializer idempotencyTableInitializer(ObjectProvider<DataSource> dataSourceProvider) {
+        return new TableInitializer(dataSourceProvider, "幂等", "sys_idempotency_record.sql",
                 List.of("sys_idempotency_record"));
     }
 

@@ -2,6 +2,7 @@ package com.yomi.boot.java.component.ds.config;
 
 import com.yomi.boot.java.component.ds.DsInfo;
 import com.yomi.boot.java.component.ds.DsPreheat;
+import com.yomi.boot.java.component.ds.support.InstantJdbcTypeHandler;
 import com.yomi.boot.java.component.ds.support.MybatisPlusChainChecker;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
@@ -23,6 +24,7 @@ import java.util.List;
  * {@code com.yomi}（继续扫描也不冲突：Spring 对同一配置类去重，
  * 带 {@code @ConditionalOnMissingBean} 的兜底 Bean 会让位给扫描注册的实例）。
  * {@link MybatisPlusConfig}（分页 + 防全表写）无开关、随组件强制生效；
+ * {@link InstantJdbcTypeHandler}（Instant 写库，MySQL/PG 通用）同样无开关、强制生效；
  * 仅数据源预热保留 {@code yomi.boot.ds.preheat.enabled} 开关
  * <p>
  * <b>必须排在 MyBatis-Plus 的 {@code MybatisPlusInnerInterceptorAutoConfiguration} 之前</b>：
@@ -57,6 +59,13 @@ public class DsAutoConfiguration {
     @ConditionalOnMissingBean(MybatisPlusChainChecker.class)
     public MybatisPlusChainChecker mybatisPlusChainChecker(ApplicationContext context) {
         return new MybatisPlusChainChecker(context);
+    }
+
+    /** Instant 写库处理器：覆盖 MyBatis 内置实现（其 setObject(Instant) 在 PG 驱动上直接报错）；MP 收集 TypeHandler Bean 注册 */
+    @Bean
+    @ConditionalOnMissingBean(InstantJdbcTypeHandler.class)
+    public InstantJdbcTypeHandler instantJdbcTypeHandler() {
+        return new InstantJdbcTypeHandler();
     }
 
 }

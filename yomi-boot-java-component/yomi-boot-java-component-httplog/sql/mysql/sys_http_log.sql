@@ -1,3 +1,4 @@
+-- MySQL 建表脚本（PostgreSQL 版见同组件 sql/pgsql/sys_http_log.sql；启动期缺表时按当前数据库自动执行，也可手工执行）
 -- HTTP请求日志表：字段与 HttpLogEntity 一一对应
 -- append-only：delete_time/delete_by 恒为空，保留期清理走物理删除（yomi.httplog.retention）
 CREATE TABLE IF NOT EXISTS `sys_http_log`

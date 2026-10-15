@@ -1,6 +1,6 @@
 package com.yomi.boot.java.component.rbac.config;
 
-import com.yomi.boot.java.component.ds.support.TableExistingChecker;
+import com.yomi.boot.java.component.ds.support.TableInitializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.ObjectProvider;
@@ -20,24 +20,24 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * rbac 启动期建表检查的接线验证：检查器必须覆盖全部 6 张表。
  * <p>轻量反射式（不启动整个上下文）：直接调用装配类的 @Bean 方法并执行检查，
- * 从 stub DataSource 上记录实际执行过的表名。
+ * 从 stub DataSource 上记录实际执行过的表名（stub 全部表都存在 → 只探活、不建表）。
  */
 class RbacTableCheckWiringTest {
 
     @Test
-    void checkerCoversAllSixRbacTables() {
+    void initializerCoversAllSixRbacTables() {
         List<String> executedSql = new ArrayList<>();
-        TableExistingChecker checker = new RbacAutoConfiguration()
-                .rbacTableExistingChecker(providerOf(recordingDataSource(executedSql)));
+        TableInitializer initializer = new RbacAutoConfiguration()
+                .rbacTableInitializer(providerOf(recordingDataSource(executedSql)));
 
-        checker.afterSingletonsInstantiated();
+        initializer.afterSingletonsInstantiated();
 
         Set<String> tables = executedSql.stream()
                 .map(sql -> sql.substring("SELECT 1 FROM ".length(), sql.indexOf(" WHERE")))
                 .collect(java.util.stream.Collectors.toSet());
         assertEquals(Set.of("sys_rbac_perm", "sys_rbac_perm_group", "sys_rbac_role",
                 "sys_rbac_user_role_rel", "sys_rbac_role_group_rel", "sys_rbac_group_perm_rel"), tables,
-                "表清单必须与 sql/sys_rbac.sql 完全一致");
+                "表清单必须与 sql/mysql|pgsql/sys_rbac.sql 完全一致");
     }
 
     /** 记录执行过的 SQL、并假定所有表都存在 */

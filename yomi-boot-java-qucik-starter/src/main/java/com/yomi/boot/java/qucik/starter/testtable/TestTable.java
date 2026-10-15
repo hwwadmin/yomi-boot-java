@@ -8,7 +8,7 @@ import lombok.ToString;
 import lombok.experimental.Accessors;
 
 /**
- * 测试表实体（建表脚本 sql/test_table.sql）
+ * 测试表实体（建表脚本 sql/mysql|pgsql/test_table.sql）
  *
  * @author zwei
  */

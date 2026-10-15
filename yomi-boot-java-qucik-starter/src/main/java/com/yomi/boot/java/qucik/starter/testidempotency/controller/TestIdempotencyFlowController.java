@@ -19,7 +19,7 @@ import java.util.Objects;
 /**
  * 幂等组件流程测试：一次调用完成「首调 → 同键重放 → 新键再调」并逐步断言。
  * <p>
- * 前置：{@code yomi.idempotency.enabled=true}、Redis/Redisson、已执行 component-idempotency/sql/sys_idempotency_record.sql
+ * 前置：{@code yomi.idempotency.enabled=true}、Redis/Redisson（组件表由启动期自动创建，脚本 component-idempotency/sql/mysql|pgsql/sys_idempotency_record.sql）
  * <ul>
  *     <li>POST /test/ds/test-idempotency/annotation：{@link com.yomi.boot.java.component.idempotency.annotation.Idempotent}</li>
  *     <li>POST /test/ds/test-idempotency/utils：{@link IdempotencyUtils}</li>

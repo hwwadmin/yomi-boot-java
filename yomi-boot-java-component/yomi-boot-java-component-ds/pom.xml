@@ -49,6 +49,13 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- postgresql（与 mysql 并列：宿主按依赖的库换数据源即可，版本由 Boot BOM 管理） -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- auto-configuration 测试（ApplicationContextRunner 及其 assertj 契约） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

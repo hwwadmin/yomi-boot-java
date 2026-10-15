@@ -1,6 +1,6 @@
 package com.yomi.boot.java.component.rbac.config;
 
-import com.yomi.boot.java.component.ds.support.TableExistingChecker;
+import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.rbac.IRbacAdminService;
 import com.yomi.boot.java.component.rbac.IRbacAuthService;
 import com.yomi.boot.java.component.rbac.cache.RbacProjectionKeys;
@@ -122,7 +122,8 @@ public class RbacAutoConfiguration {
         T mapper = mapperProvider.getIfAvailable();
         if (mapper == null) {
             throw new IllegalStateException("yomi.rbac.enabled=true 需要 " + mapperName
-                    + "：请执行 sql/sys_rbac.sql（含内置超管种子）；Mapper 由 component-rbac 自动配置扫描，无需宿主配置 @MapperScan");
+                    + "：请执行组件 jar 内 sql/mysql/sys_rbac.sql 或 sql/pgsql/sys_rbac.sql（含内置超管种子）；"
+                    + "Mapper 由 component-rbac 自动配置扫描，无需宿主配置 @MapperScan");
         }
         return mapper;
     }
@@ -242,7 +243,8 @@ public class RbacAutoConfiguration {
         }
         if (authMapperProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
-                    "yomi.rbac.enabled=true 需要 RbacAuthMapper：请执行 sql/sys_rbac.sql（含内置超管种子）；"
+                    "yomi.rbac.enabled=true 需要 RbacAuthMapper：请执行组件 jar 内 "
+                            + "sql/mysql/sys_rbac.sql 或 sql/pgsql/sys_rbac.sql（含内置超管种子）；"
                             + "Mapper 由 component-rbac 自动配置扫描，无需宿主配置 @MapperScan");
         }
         log.info("[RBAC]已启用: storePrefix={}, projectionEnabled={}, httpPathStyle={}",
@@ -250,10 +252,11 @@ public class RbacAutoConfiguration {
         return new RbacBootstrap();
     }
 
-    /** 启动期建表检查：缺表直接启动失败（fail-fast），避免"应用起来了但所有请求 403" */
+    /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_rbac.sql 自动创建
+     *（含内置超管种子），避免"应用起来了但所有请求 403" */
     @Bean
-    public TableExistingChecker rbacTableExistingChecker(ObjectProvider<DataSource> dataSourceProvider) {
-        return new TableExistingChecker(dataSourceProvider, "RBAC", "sql/sys_rbac.sql", List.of(
+    public TableInitializer rbacTableInitializer(ObjectProvider<DataSource> dataSourceProvider) {
+        return new TableInitializer(dataSourceProvider, "RBAC", "sys_rbac.sql", List.of(
                 "sys_rbac_perm", "sys_rbac_perm_group", "sys_rbac_role",
                 "sys_rbac_user_role_rel", "sys_rbac_role_group_rel", "sys_rbac_group_perm_rel"));
     }

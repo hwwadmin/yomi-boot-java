@@ -20,18 +20,26 @@
           AND delete_time IS NULL
     </update>
 
-    <!-- 与框架约定一致：仅物理删，避免软删占用唯一键 -->
+    <!-- 与框架约定一致：仅物理删，避免软删占用唯一键
+         外层 IN + 派生表包一层：DELETE ... LIMIT 是 MySQL 专有（PG 报语法错误），派生表形式两边通用；
+         单语句执行保证"选中即删除"谓词原子求值（拆成两阶段会有 select 与 delete 之间状态漂移的风险） -->
     <delete id="deleteStaleProcessing">
         DELETE FROM sys_idempotency_record
-        WHERE status = #{processingStatus}
-          AND update_time &lt; #{before}
-        LIMIT #{limit}
+        WHERE id IN (SELECT id FROM (
+            SELECT id FROM sys_idempotency_record
+            WHERE status = #{processingStatus}
+              AND update_time &lt; #{before}
+            LIMIT #{limit}
+        ) AS stale_ids)
     </delete>
 
     <delete id="deleteExpired">
         DELETE FROM sys_idempotency_record
-        WHERE expire_time &lt; #{before}
-        LIMIT #{limit}
+        WHERE id IN (SELECT id FROM (
+            SELECT id FROM sys_idempotency_record
+            WHERE expire_time &lt; #{before}
+            LIMIT #{limit}
+        ) AS expired_ids)
     </delete>
 
 </mapper>

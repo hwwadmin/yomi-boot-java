@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 且接口可重复调用（每次调用数据自清理，互不干扰）
  * <p>
  * 运行前需手动启动应用（mvn -o spring-boot:run -pl yomi-boot-java-qucik-starter），
- * 并保证 test_table 表已创建（sql/test_table.sql）
+ * 并保证 test_table 表已创建（sql/mysql|pgsql/test_table.sql）
  *
  * @author zwei
  */

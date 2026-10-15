@@ -11,7 +11,7 @@ import lombok.experimental.Accessors;
 import java.time.Instant;
 
 /**
- * 表 sys_event_outbox；建表脚本 {@code sql/sys_event.sql}
+ * 表 sys_event_outbox；建表脚本 {@code sql/mysql|pgsql/sys_event.sql}
  *
  * @author zwei
  */

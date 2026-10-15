@@ -269,6 +269,12 @@
                     <exclude>**/*.properties</exclude>
                 </excludes>
             </resource>
+            <!-- 各模块根目录 sql/{mysql,pgsql}/ 建表脚本：打进 jar 的 sql/ 下，供启动期按当前数据库方言自动建表 -->
+            <resource>
+                <directory>sql</directory>
+                <targetPath>sql</targetPath>
+                <filtering>false</filtering>
+            </resource>
         </resources>
         <plugins>
             <plugin>

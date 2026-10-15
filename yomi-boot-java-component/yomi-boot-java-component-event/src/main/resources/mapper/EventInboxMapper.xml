@@ -3,12 +3,17 @@
 <!-- sys_event_inbox 自定义 SQL -->
 <mapper namespace="com.yomi.boot.java.component.event.repository.mapper.EventInboxMapper">
 
-    <!-- 保留期清理：物理删除（与幂等组件清理一致，避免软删行长期占用表空间） -->
+    <!-- 保留期清理：物理删除（与幂等组件清理一致，避免软删行长期占用表空间）
+         外层 IN + 派生表包一层：DELETE ... LIMIT 是 MySQL 专有（PG 报语法错误），派生表形式两边通用；
+         派生表带 LIMIT 不会被 MySQL 合并优化，故不触发"不能在子查询里读取目标表"的限制 -->
     <delete id="deleteCreatedBefore">
         DELETE FROM sys_event_inbox
-        WHERE service_name = #{serviceName}
-          AND create_time &lt; #{createTimeBefore}
-        LIMIT #{limit}
+        WHERE id IN (SELECT id FROM (
+            SELECT id FROM sys_event_inbox
+            WHERE service_name = #{serviceName}
+              AND create_time &lt; #{createTimeBefore}
+            LIMIT #{limit}
+        ) AS expired_ids)
     </delete>
 
 </mapper>
