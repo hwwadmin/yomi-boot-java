@@ -66,6 +66,11 @@ public class IdempotencyAutoConfiguration {
         return new IdempotencyRedisStore(stringRedisTemplate, keys, properties);
     }
 
+    /**
+     * 事务模板解析：容器里有（宿主自定义或 Boot 标准 {@code transactionTemplate}）即原样复用、保留宿主语义——
+     * 占位、业务与写回同一事务，必须用应用的事务管理器；没有才按事务管理器自建默认 REQUIRED 私有模板（不注册为
+     * Bean，不占用 Boot 标准 Bean 名）；模板/管理器多候选且无 {@code @Primary} 时启动失败并点名候选，不静默挑一个
+     */
     @Bean
     @ConditionalOnMissingBean
     public IdempotencyGuard idempotencyGuard(IIdempotencyRecordRepository repository,
