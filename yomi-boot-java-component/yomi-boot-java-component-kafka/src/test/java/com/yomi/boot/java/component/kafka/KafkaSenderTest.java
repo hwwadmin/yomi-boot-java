@@ -5,11 +5,15 @@ import org.apache.kafka.common.header.internals.RecordHeader;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -106,6 +110,70 @@ class KafkaSenderTest {
                 .send();
 
         assertSame(future, actual);
+    }
+
+    @Test
+    void headerRejectsBlankNameAndNullValue() {
+        KafkaSyncSender sender = KafkaUtils.sync().topic("t").payload("p");
+        assertEquals("Kafka header 名称不能为空",
+                assertThrows(IllegalArgumentException.class, () -> sender.header(" ", new byte[] {1})).getMessage());
+        assertEquals("Kafka header 名称不能为空",
+                assertThrows(IllegalArgumentException.class, () -> sender.header(null, new byte[] {1})).getMessage());
+        assertEquals("Kafka header 值不能为 null, name=traceId",
+                assertThrows(IllegalArgumentException.class, () -> sender.header("traceId", null)).getMessage());
+    }
+
+    @Test
+    void headersMapRejectsInvalidEntryWithoutPartialApply() {
+        Map<String, byte[]> withNullValue = new LinkedHashMap<>();
+        withNullValue.put("ok", new byte[] {1});
+        withNullValue.put("traceId", null);
+
+        SendResult<String, Object> sendResult = mock(SendResult.class);
+        when(kafkaTemplate.send(any(ProducerRecord.class))).thenReturn(CompletableFuture.completedFuture(sendResult));
+
+        ArgumentCaptor<ProducerRecord<String, Object>> captor = ArgumentCaptor.forClass(ProducerRecord.class);
+        KafkaSyncSender sender = KafkaUtils.sync().topic("t").payload("p").header("keep", new byte[] {2});
+        assertEquals("Kafka header 值不能为 null, name=traceId",
+                assertThrows(IllegalArgumentException.class, () -> sender.headers(withNullValue)).getMessage());
+
+        sender.send();
+        verify(kafkaTemplate).send(captor.capture());
+        assertTrue(captor.getValue().headers().headers("keep").iterator().hasNext());
+        assertFalse(captor.getValue().headers().headers("ok").iterator().hasNext());
+        assertFalse(captor.getValue().headers().headers("traceId").iterator().hasNext());
+    }
+
+    @Test
+    void headersIterableRejectsInvalidHeader() {
+        KafkaSyncSender sender = KafkaUtils.sync().topic("t").payload("p");
+        assertEquals("Kafka header 名称不能为空",
+                assertThrows(IllegalArgumentException.class,
+                        () -> sender.headers(List.of(new RecordHeader("", new byte[] {1})))).getMessage());
+        assertEquals("Kafka header 值不能为 null, name=traceId",
+                assertThrows(IllegalArgumentException.class,
+                        () -> sender.headers(List.of(new RecordHeader("traceId", null)))).getMessage());
+        assertEquals("Kafka header 不能为 null",
+                assertThrows(IllegalArgumentException.class,
+                        () -> sender.headers(Arrays.asList(new RecordHeader("ok", new byte[] {1}), null))).getMessage());
+    }
+
+    @Test
+    void headersIterableLandsOnRecordAfterMap() {
+        SendResult<String, Object> sendResult = mock(SendResult.class);
+        when(kafkaTemplate.send(any(ProducerRecord.class))).thenReturn(CompletableFuture.completedFuture(sendResult));
+
+        ArgumentCaptor<ProducerRecord<String, Object>> captor = ArgumentCaptor.forClass(ProducerRecord.class);
+        KafkaUtils.sync().topic("t").payload("p")
+                .header("traceId", "1".getBytes(StandardCharsets.UTF_8))
+                .headers(List.of(new RecordHeader("traceId", "2".getBytes(StandardCharsets.UTF_8))))
+                .send();
+
+        verify(kafkaTemplate).send(captor.capture());
+        List<String> values = new ArrayList<>();
+        captor.getValue().headers().headers("traceId")
+                .forEach(header -> values.add(new String(header.value(), StandardCharsets.UTF_8)));
+        assertEquals(List.of("1", "2"), values);
     }
 
     @Test

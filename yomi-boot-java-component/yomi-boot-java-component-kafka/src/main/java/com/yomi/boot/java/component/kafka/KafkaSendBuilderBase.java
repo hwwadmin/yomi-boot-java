@@ -5,7 +5,9 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Header;
 import org.springframework.kafka.core.KafkaTemplate;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -43,8 +45,8 @@ abstract class KafkaSendBuilderBase<T extends KafkaSendBuilderBase<T>> {
     /** 自定义 Header（Map 形式） */
     private Map<String, byte[]> headerMap;
 
-    /** 自定义 Header（Iterable 形式） */
-    private Iterable<Header> headerIterable;
+    /** 自定义 Header（Iterable 形式，调用时已校验并复制） */
+    private List<Header> headerIterable;
 
     /** 返回子类实例，用于链式类型 */
     protected abstract T self();
@@ -84,40 +86,58 @@ abstract class KafkaSendBuilderBase<T extends KafkaSendBuilderBase<T>> {
         return self();
     }
 
-    /** 追加一条 Header */
+    /** 追加一条 Header；名称为空或值为 null 时抛 {@link IllegalArgumentException} */
     public T header(String name, byte[] value) {
         ensureOpen();
-        if (StringUtils.isNotBlank(name) && value != null) {
-            if (headerMap == null) {
-                headerMap = new LinkedHashMap<>();
-            }
-            headerMap.put(name, value);
+        validateHeader(name, value);
+        if (headerMap == null) {
+            headerMap = new LinkedHashMap<>();
         }
+        headerMap.put(name, value);
         return self();
     }
 
-    /** 批量追加 Header（与 {@link #header} 合并，同名后者覆盖） */
+    /** 批量追加 Header（与 {@link #header} 合并，同名后者覆盖）；任一条不合法即抛，不部分生效 */
     public T headers(Map<String, byte[]> headers) {
         ensureOpen();
         if (headers == null || headers.isEmpty()) {
             return self();
         }
+        headers.forEach(KafkaSendBuilderBase::validateHeader);
         if (headerMap == null) {
             headerMap = new LinkedHashMap<>();
         }
-        headers.forEach((name, value) -> {
-            if (StringUtils.isNotBlank(name) && value != null) {
-                headerMap.put(name, value);
-            }
-        });
+        headerMap.putAll(headers);
         return self();
     }
 
-    /** 追加 Header 列表（在 Map 之后写入 Record） */
+    /** 追加 Header 列表（在 Map 之后写入 Record）；调用时即校验并复制，任一条不合法即抛 */
     public T headers(Iterable<Header> headers) {
         ensureOpen();
-        this.headerIterable = headers;
+        if (headers == null) {
+            this.headerIterable = null;
+            return self();
+        }
+        List<Header> validated = new ArrayList<>();
+        for (Header header : headers) {
+            if (header == null) {
+                throw new IllegalArgumentException("Kafka header 不能为 null");
+            }
+            validateHeader(header.key(), header.value());
+            validated.add(header);
+        }
+        this.headerIterable = validated;
         return self();
+    }
+
+    /** Header 名称与值校验：不合法直接抛，不静默丢弃 */
+    private static void validateHeader(String name, byte[] value) {
+        if (StringUtils.isBlank(name)) {
+            throw new IllegalArgumentException("Kafka header 名称不能为空");
+        }
+        if (value == null) {
+            throw new IllegalArgumentException("Kafka header 值不能为 null, name=" + name);
+        }
     }
 
     /** 已结束的 sender 不允许再配置 */

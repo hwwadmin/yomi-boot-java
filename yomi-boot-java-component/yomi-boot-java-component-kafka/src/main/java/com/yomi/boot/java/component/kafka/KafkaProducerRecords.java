@@ -1,6 +1,5 @@
 package com.yomi.boot.java.component.kafka;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Header;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -39,23 +38,19 @@ final class KafkaProducerRecords {
             Map<String, byte[]> headerMap,
             Iterable<Header> headerIterable) {
         if (headerMap != null) {
-            headerMap.forEach((name, value) -> {
-                if (StringUtils.isNotBlank(name) && value != null) {
-                    record.headers().add(name, value);
-                }
-            });
+            headerMap.forEach((name, value) -> record.headers().add(name, value));
         }
         if (headerIterable != null) {
             for (Header header : headerIterable) {
-                if (header != null && StringUtils.isNotBlank(header.key()) && header.value() != null) {
-                    record.headers().add(header.key(), header.value());
-                }
+                record.headers().add(header.key(), header.value());
             }
         }
     }
 
     /**
      * 同步等待发送完成；超时或失败抛 {@link IllegalStateException}，消息中带 topic。
+     * <p>元数据等待发生在 {@code template.send} 内部（最长客户端 max.block.ms），先于 {@code get(timeout)}；
+     * 该阶段超时会同步抛错，并被归为"发送失败"而不是"发送超时"。</p>
      */
     static SendResult<String, Object> awaitSend(
             KafkaTemplate<String, Object> template,
