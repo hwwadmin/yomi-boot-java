@@ -63,7 +63,8 @@ import java.util.Map;
 @Slf4j
 @AutoConfiguration
 @MapperScan("com.yomi.boot.java.component.event.repository.mapper")
-@AutoConfigureAfter({RedisAutoConfiguration.class, RoundRobinAutoConfiguration.class})
+@AutoConfigureAfter(value = {RedisAutoConfiguration.class, RoundRobinAutoConfiguration.class},
+        name = "org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration")
 @EnableConfigurationProperties(EventProperties.class)
 @ConditionalOnExpression("'${yomi.event.publisher-enabled:false}' == 'true' or '${yomi.event.consumer-enabled:false}' == 'true'")
 public class EventAutoConfiguration {
@@ -146,6 +147,13 @@ public class EventAutoConfiguration {
         }
     }
 
+    /**
+     * 兜底事务模板：容器里已有（Boot 标准 Bean 或宿主自定义）即按 {@code @ConditionalOnMissingBean} 原样复用，
+     * 都没有才注册默认 REQUIRED 模板。消费侧 inbox 插入与业务写入必须同事务，所以只认应用的事务管理器：
+     * 多个管理器无 {@code @Primary} 时启动失败点名候选，不会静默挑一个。
+     * <p>类上的 {@code @AutoConfigureAfter(Boot TransactionAutoConfiguration)} 不可删：不加时按类名字母序
+     * 组件会先于 Boot 注册，抢占容器级 {@code transactionTemplate} Bean 名。
+     */
     @Bean
     @ConditionalOnMissingBean(TransactionTemplate.class)
     public TransactionTemplate eventTransactionTemplate(PlatformTransactionManager transactionManager) {
