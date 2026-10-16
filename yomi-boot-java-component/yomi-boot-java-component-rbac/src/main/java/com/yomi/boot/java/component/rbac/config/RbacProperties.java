@@ -38,7 +38,7 @@ public class RbacProperties {
     /** HTTP 鉴权使用的路径（与登记 API 权限时一致） */
     private RbacHttpPathStyle httpPathStyle = RbacHttpPathStyle.REQUEST_URI;
 
-    /** 不做 RBAC 鉴权的路径（需与 token 放行路径对齐） */
+    /** 不做 RBAC 鉴权的路径（需与 token 放行路径对齐）；Spring PathPattern 语法，不能含首尾空格 */
     private List<String> skipAuthorizePaths = new ArrayList<>();
 
     /** 是否注册 roundrobin 定时全量刷新投影；默认关闭 */
@@ -47,7 +47,7 @@ public class RbacProperties {
     /** 定时刷新间隔；默认 60 秒 */
     private Duration scheduledRefreshInterval = Duration.ofSeconds(60);
 
-    /** 启用时校验 TTL、定时刷新间隔等 */
+    /** 启用时校验 TTL、定时刷新间隔、放行路径等 */
     public void validate() {
         if (!enabled) {
             return;
@@ -57,6 +57,12 @@ public class RbacProperties {
         }
         if (projectionTtl == null || projectionTtl.isZero() || projectionTtl.isNegative()) {
             throw new IllegalStateException("yomi.rbac.projection-ttl 必须大于 0");
+        }
+        // 首尾空格型笔误 Spring 照单全收：既不报错也永不命中，放行路径会静默变"全量 403"，只能启动期拦
+        for (String skipPath : skipAuthorizePaths) {
+            if (skipPath == null || !skipPath.equals(skipPath.trim())) {
+                throw new IllegalStateException("yomi.rbac.skip-authorize-paths 不能为空或含首尾空格: [" + skipPath + "]");
+            }
         }
         if (!scheduledRefreshEnabled) {
             return;

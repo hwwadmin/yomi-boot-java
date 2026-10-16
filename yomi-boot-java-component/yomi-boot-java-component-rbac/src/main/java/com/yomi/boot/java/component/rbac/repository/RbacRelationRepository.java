@@ -9,6 +9,7 @@ import com.yomi.boot.java.component.rbac.repository.mapper.RbacGroupPermRelMappe
 import com.yomi.boot.java.component.rbac.repository.mapper.RbacRoleGroupRelMapper;
 import com.yomi.boot.java.component.rbac.repository.mapper.RbacUserRoleRelMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,9 +18,12 @@ import java.util.Map;
 
 /**
  * 关系表读写（物理覆盖）；Bean 由 {@code RbacAutoConfiguration} 注册，不做组件扫描
+ * <p>"先删后插"必须原子，故整类带 REQUIRED 事务：组件内服务方法自带事务时汇入，
+ * 宿主绕过管理服务直接调端口时也能自成事务，不会留下"已删未插"的绑定丢失
  *
  * @author zwei
  */
+@Transactional(rollbackFor = Exception.class)
 @RequiredArgsConstructor
 public class RbacRelationRepository implements IRbacRelationRepository {
 

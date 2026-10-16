@@ -10,6 +10,10 @@ import java.util.Map;
  * <p>
  * 组件内其余代码（管理服务/快照/投影）一律经本接口访问，**不得越过仓储直接调用 Mapper**；
  * 默认实现 {@link RbacRelationRepository}，宿主可自行实现本接口并注册 Bean 顶替。
+ * <p>
+ * 写方法（{@code replace*} / {@code deleteRoleRelations}）语义是原子的：默认实现整类带 REQUIRED 事务，
+ * 调用方已有事务时汇入，没有也能自成事务——宿主直接调用端口不会留下"已删未插"的绑定丢失；
+ * 自行实现本接口的宿主需自行保证同样的原子性。
  *
  * @author zwei
  */

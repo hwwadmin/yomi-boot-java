@@ -25,9 +25,11 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.support.StaticApplicationContext;
+import org.springframework.core.env.MapPropertySource;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -76,6 +78,35 @@ class RbacAutoConfigurationTest {
 
         assertTrue(error.getMessage().contains("sys_rbac.sql"), error.getMessage());
         assertTrue(error.getMessage().contains("自动配置扫描"), error.getMessage());
+    }
+
+    /** 放行路径带首尾空格：Spring 的 excludePathPatterns 不报错也永不命中（静默全量 403），装配期必须拦下 */
+    @Test
+    void whitespaceSkipAuthorizePathFailsFastAtStartup() {
+        runner().withBean(SqlSessionFactory.class, RbacAutoConfigurationTest::sqlSessionFactoryStub)
+                .withInitializer(context -> context.getEnvironment().getPropertySources()
+                        .addFirst(rawPropertySource("whitespace-skip", "yomi.rbac.skip-authorize-paths[0]", " /api/public ")))
+                .run(context -> {
+                    Throwable failure = context.getStartupFailure();
+                    assertNotNull(failure, "含首尾空格的 skip 路径应启动失败，实际启动成功");
+                    String message = allMessages(failure);
+                    assertTrue(message.contains("skip-authorize-paths"), message);
+                    assertTrue(message.contains(" /api/public "), message);
+                });
+    }
+
+    /** TestPropertyValues 会 trim 值（改不出首尾空格），故直接塞原始 PropertySource */
+    private static MapPropertySource rawPropertySource(String name, String key, String value) {
+        return new MapPropertySource(name, Map.of(key, value));
+    }
+
+    /** 拼接异常链上的全部消息：装配期异常被 BeanCreationException 包装 */
+    private static String allMessages(Throwable failure) {
+        StringBuilder message = new StringBuilder();
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            message.append(current.getMessage()).append('\n');
+        }
+        return message.toString();
     }
 
     /** 让装配类扫出的 Mapper 能实例化：真实 Configuration + 空 DataSource（不触库，仅是 Mapper 代理的宿主） */
