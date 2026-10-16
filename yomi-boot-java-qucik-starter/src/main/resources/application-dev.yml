@@ -138,7 +138,7 @@ yomi:
     # 幂等记录在库中的保留时长
     record-retention: 7d
     # 抢幂等锁最长等待
-    lock-wait: 30s
+    lock-wait: 3s
     # 持锁租期；0 表示看门狗自动续期
     lock-lease: 0s
     # 是否定时清理僵死的「处理中」记录

@@ -104,7 +104,7 @@ yomi:
     store-prefix: "yomi:idempotency:${spring.application.name}"
     result-cache-ttl: 5m
     record-retention: 7d
-    lock-wait: 30s
+    lock-wait: 3s
     lock-lease: 0s
     stale-cleaner-enabled: true
     scan-interval: 10m

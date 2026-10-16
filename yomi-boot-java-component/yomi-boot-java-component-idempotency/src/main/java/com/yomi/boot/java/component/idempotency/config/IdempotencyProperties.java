@@ -29,7 +29,7 @@ public class IdempotencyProperties {
     private Duration recordRetention = Duration.ofDays(7);
 
     /** 抢分布式锁最长等待 */
-    private Duration lockWait = Duration.ofSeconds(30);
+    private Duration lockWait = Duration.ofSeconds(3);
 
     /** 持锁租期；0 表示 Redisson 看门狗续期 */
     private Duration lockLease = Duration.ZERO;
