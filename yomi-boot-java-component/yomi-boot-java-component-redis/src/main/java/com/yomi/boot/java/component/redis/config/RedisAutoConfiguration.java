@@ -25,7 +25,6 @@ import org.springframework.context.annotation.Import;
 @Import({
         RedisConfig.class,
         RedissonConfig.class,
-        SessionConfig.class,
         StreamConfiguration.class,
         RateLimitConfig.class,
         RedisSupport.class,
