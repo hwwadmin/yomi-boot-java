@@ -13,10 +13,12 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import java.time.Duration;
 
 /**
- * redis配置
+ * redis 配置
  * <p>
- * 激活条件为"存在 {@link RedisConnectionFactory}"（而非 {@code spring.data.redis.host}）：
- * host / url / sentinel / cluster 或宿主自建 factory 都能让组件正常装配
+ * 激活条件与组件其余成员一致（{@link RedisConfiguredCondition}）：配置了 {@code spring.data.redis.*}
+ * 连接目标（host / url / sentinel / cluster / masterreplica 任一）才装配。仅宿主自建
+ * {@link RedisConnectionFactory} 而不配连接目标属性时组件保持不激活——这正是不能按
+ * {@code @ConditionalOnBean(RedisConnectionFactory.class)} 激活的原因（Boot 默认 localhost 工厂会误触发）
  *
  * @author zwei
  */

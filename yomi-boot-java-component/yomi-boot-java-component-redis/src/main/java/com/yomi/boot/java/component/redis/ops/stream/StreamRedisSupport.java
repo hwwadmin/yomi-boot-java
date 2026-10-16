@@ -32,6 +32,12 @@ public class StreamRedisSupport {
     /** 补投单次认领的消息条数上限 */
     public static final int DEFAULT_CLAIM_BATCH = 100;
 
+    /**
+     * 毒消息阈值：单条消息累计投递次数达到该值仍未 ACK，则跳过重投并告警
+     * （不 ACK 不删，仍在 PEL，需人工处理）
+     */
+    public static final int DEFAULT_MAX_DELIVERY_ATTEMPTS = 10;
+
     /** Stream 读写 */
     private final StringRedisTemplate redisTemplate;
 
@@ -143,18 +149,38 @@ public class StreamRedisSupport {
 
     /**
      * 认领 PEL 中超过 {@code minIdle} 未确认的消息并重新投递（补投入口，供调用方定时触发，如 roundrobin 任务）。
-     * <p>处理成功自动 ACK；失败继续留在 PEL。返回本次重新处理的消息条数</p>
+     * <p>处理成功自动 ACK；失败不 ACK（留 PEL 等下一轮）。单轮只扫描 PEL 头部
+     * {@link #DEFAULT_CLAIM_BATCH} 条，累计投递次数达到 {@link #DEFAULT_MAX_DELIVERY_ATTEMPTS}
+     * 的毒消息跳过重投并告警（见 {@link RedeliverResult}）</p>
      */
-    public int claimAndRedeliver(String streamKey, String group, String consumerName, Duration minIdle,
-                                 StreamMessageHandler handler) {
-        return claimAndRedeliver(streamKey, group, consumerName, minIdle, DEFAULT_CLAIM_BATCH, handler);
+    public RedeliverResult claimAndRedeliver(String streamKey, String group, String consumerName, Duration minIdle,
+                                             StreamMessageHandler handler) {
+        return claimAndRedeliver(streamKey, group, consumerName, minIdle, DEFAULT_CLAIM_BATCH,
+                DEFAULT_MAX_DELIVERY_ATTEMPTS, handler);
     }
 
     /**
      * 同 {@link #claimAndRedeliver(String, String, String, Duration, StreamMessageHandler)}，并限制单次认领条数
      */
-    public int claimAndRedeliver(String streamKey, String group, String consumerName, Duration minIdle,
-                                 int maxCount, StreamMessageHandler handler) {
+    public RedeliverResult claimAndRedeliver(String streamKey, String group, String consumerName, Duration minIdle,
+                                             int maxCount, StreamMessageHandler handler) {
+        return claimAndRedeliver(streamKey, group, consumerName, minIdle, maxCount,
+                DEFAULT_MAX_DELIVERY_ATTEMPTS, handler);
+    }
+
+    /**
+     * 同 {@link #claimAndRedeliver(String, String, String, Duration, int, StreamMessageHandler)}，
+     * 并可指定毒消息阈值。
+     * <p>
+     * 认领范围是 PEL 头部前 {@code maxCount} 条（XPENDING 按消息 ID 升序）：累计投递次数已达
+     * {@code maxDeliveryAttempts} 的消息本轮跳过并打 WARN（传 {@link Integer#MAX_VALUE} 表示一直重投）；
+     * 头部堆积的毒消息超过 {@code maxCount} 时后面的积压本轮轮不到，需人工处理
+     * （XPENDING 查看，XCLAIM 重投或 XACK 丢弃）</p>
+     *
+     * @param maxDeliveryAttempts 毒消息阈值（含本轮之前已在 PEL 的投递次数），必须大于 0
+     */
+    public RedeliverResult claimAndRedeliver(String streamKey, String group, String consumerName, Duration minIdle,
+                                             int maxCount, int maxDeliveryAttempts, StreamMessageHandler handler) {
         requireStreamKey(streamKey);
         requireText(group, "group");
         requireText(consumerName, "consumerName");
@@ -163,34 +189,50 @@ public class StreamRedisSupport {
         if (maxCount <= 0) {
             throw new IllegalArgumentException("maxCount 必须大于 0");
         }
+        if (maxDeliveryAttempts <= 0) {
+            throw new IllegalArgumentException("maxDeliveryAttempts 必须大于 0");
+        }
 
         PendingMessages pending = redisTemplate.opsForStream()
                 .pending(streamKey, group, Range.unbounded(), maxCount);
         if (pending == null || pending.isEmpty()) {
-            return 0;
+            return new RedeliverResult(0, 0, 0, 0);
         }
         List<RecordId> stale = new ArrayList<>();
+        int skipped = 0;
         for (PendingMessage message : pending) {
-            if (message.getElapsedTimeSinceLastDelivery().compareTo(minIdle) >= 0) {
-                stale.add(message.getId());
+            if (message.getElapsedTimeSinceLastDelivery().compareTo(minIdle) < 0) {
+                continue;
             }
+            if (message.getTotalDeliveryCount() >= maxDeliveryAttempts) {
+                skipped++;
+                log.warn("[redis] Stream 消息累计投递 {} 次仍未 ACK，跳过重投（视为毒消息；消息仍在 PEL，"
+                                + "可用 XPENDING 查看、XCLAIM 人工重投或 XACK 丢弃）: stream={}, group={}, id={}",
+                        message.getTotalDeliveryCount(), streamKey, group, message.getId().getValue());
+                continue;
+            }
+            stale.add(message.getId());
         }
         if (stale.isEmpty()) {
-            return 0;
+            return new RedeliverResult(0, 0, 0, skipped);
         }
 
         List<MapRecord<String, Object, Object>> claimed = redisTemplate.opsForStream()
                 .claim(streamKey, group, consumerName, minIdle, stale.toArray(new RecordId[0]));
         if (claimed == null || claimed.isEmpty()) {
-            return 0;
+            return new RedeliverResult(0, 0, 0, skipped);
         }
-        int processed = 0;
+        int acked = 0;
+        int failed = 0;
         for (MapRecord<String, Object, Object> record : claimed) {
-            processWithAck(record.getStream(), group, record.getId().getValue(), toStringBody(record.getValue()),
-                    handler);
-            processed++;
+            if (processWithAck(record.getStream(), group, record.getId().getValue(), toStringBody(record.getValue()),
+                    handler)) {
+                acked++;
+            } else {
+                failed++;
+            }
         }
-        return processed;
+        return new RedeliverResult(acked + failed, acked, failed, skipped);
     }
 
     /** Stream 字段值在 Redis 中恒为字符串，转回 String 视图 */

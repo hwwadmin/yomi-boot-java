@@ -11,6 +11,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 单轮抢锁与任务执行
@@ -24,11 +25,23 @@ public class RoundRobinTick {
     /** 分布式锁续期间隔 */
     private static final Duration LOCK_CHECK_INTERVAL = Duration.ofMillis(50);
 
+    /** 存活检测延迟告警阈值（10 个检测周期）：超过说明调度池繁忙（慢 Redis 会占满池线程） */
+    private static final long WATCH_LAG_WARN_NANOS = LOCK_CHECK_INTERVAL.toNanos() * 10;
+
     /** 频率锁与执行锁 */
     private final RoundRobinLockClient lockClient;
 
     /** max-hold 与丢锁检测 */
     private final ScheduledExecutorService scheduler;
+
+    /** 存活检测上次执行时刻（纳秒）；0 表示还没跑过 */
+    private final AtomicLong watchLastRunNanos = new AtomicLong();
+
+    /** 存活检测连续失败中（失败只报首条，恢复时补一条） */
+    private final AtomicBoolean watchFailing = new AtomicBoolean();
+
+    /** 已就"检测延迟"告警过（同一次拥堵只报一条，间隔回归正常后复位） */
+    private final AtomicBoolean watchLagging = new AtomicBoolean();
 
     /**
      * @return 是否成功持执行锁并运行了任务
@@ -67,8 +80,8 @@ public class RoundRobinTick {
                 scheduleUnavailable = true;
             }
             if (!scheduleUnavailable) {
-                // 任务异常向上抛出，由 RoundRobinLoop 统计连续失败并退避
-                runTaskSafely(runCtx, config.getName(), task);
+                // 任务异常与 Error 都向上抛出：由 RoundRobinLoop 统计连续失败并退避、兜住 worker 线程
+                task.run(runCtx);
                 return true;
             }
         } finally {
@@ -102,24 +115,56 @@ public class RoundRobinTick {
                                                  AtomicBoolean taskRunning) {
         long periodMs = LOCK_CHECK_INTERVAL.toMillis();
         return scheduler.scheduleAtFixedRate(() -> {
+            long nowNanos = System.nanoTime();
+            long lastNanos = watchLastRunNanos.getAndSet(nowNanos);
+            // 首次执行（lastNanos=0）没有间隔可算，取 -1 交给 reportWatchLag 跳过
+            long gapNanos = lastNanos == 0 ? -1 : nowNanos - lastNanos;
             try {
-                if (lockClient.isHeldByWorkerThread(lock, workerThreadId)) {
-                    return;
-                }
                 // 顺序不能反：必须先探活、后读任务状态。任务返回后才出现的字段缺失是本轮 unlock 自己删的，
                 // 若先读状态，那一跳（检测的 Redis 往返落在 unlock 之后）仍会误报丢锁
-                if (!taskRunning.get()) {
-                    return;
-                }
-                if (lockLost.compareAndSet(false, true)) {
+                boolean held = lockClient.isHeldByWorkerThread(lock, workerThreadId);
+                if (!held && taskRunning.get() && lockLost.compareAndSet(false, true)) {
                     logLockLost(config);
                     runCtx.cancel();
                 }
+                reportWatchHealthy(config);
+                reportWatchLag(config, gapNanos);
             } catch (Exception e) {
-                // 定时任务内捕获异常并打日志，避免后续周期被取消
-                log.warn("RoundRobin[{}] 执行锁存活检测失败，下个周期继续检测", config.getName(), e);
+                // 定时任务内捕获异常并打日志，避免后续周期被取消；持续故障只报首条（50ms 周期会把日志刷爆）
+                if (watchFailing.compareAndSet(false, true)) {
+                    log.warn("RoundRobin[{}] 执行锁存活检测失败（持续失败不再逐条打印，恢复时提示）："
+                            + "慢 Redis 会让检测与 max-hold 都延迟，届时丢锁发现变晚", config.getName(), e);
+                }
             }
         }, periodMs, periodMs, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * 检测间隔显著超出周期时告警一次：延迟是本方法量出来的——
+     * 它没有异常可捕获（池被慢 Redis 占满时只是"跑晚了"），不量出来就是静默降级
+     */
+    void reportWatchLag(RoundRobinConfig config, long gapNanos) {
+        if (gapNanos < 0) {
+            return;
+        }
+        if (gapNanos >= WATCH_LAG_WARN_NANOS) {
+            if (watchLagging.compareAndSet(false, true)) {
+                log.warn("RoundRobin[{}] 执行锁存活检测延迟 {}ms（周期 {}ms）：调度线程池繁忙（慢 Redis 或任务数过多会占满池线程），"
+                                + "丢锁发现与 max-hold 取消都会变晚；业务线程不受影响（独立虚拟线程）、锁续期由 Redisson 内部完成；"
+                                + "需要更大并发可用同名 roundRobinScheduler Bean 顶替内置池",
+                        config.getName(), Duration.ofNanos(gapNanos).toMillis(), LOCK_CHECK_INTERVAL.toMillis());
+            }
+            return;
+        }
+        // 间隔回归正常：下一次拥堵可以再报一条
+        watchLagging.set(false);
+    }
+
+    /** 检测恢复正常时补一条（持续失败期间只报了首条） */
+    private void reportWatchHealthy(RoundRobinConfig config) {
+        if (watchFailing.compareAndSet(true, false)) {
+            log.warn("RoundRobin[{}] 执行锁存活检测已恢复（此前失败只报了首条）", config.getName());
+        }
     }
 
     /**
@@ -159,20 +204,6 @@ public class RoundRobinTick {
                         + "另一实例可能正在并发执行同一任务（已取消任务上下文）；"
                         + "请缩短任务、调大 exec-lock-ttl，或开启 exec-watchdog 改为续期模式",
                 config.getName(), config.getExecLockTtl());
-    }
-
-    /**
-     * 执行任务：{@link Exception} 向上抛，由 {@link RoundRobinLoop} 记录并按连续失败退避；
-     * {@link Error} 记录 panic 日志后不向外抛，避免 worker 线程退出
-     */
-    private void runTaskSafely(RoundRobinContext ctx, String name, RoundRobinHandler task) throws Exception {
-        try {
-            task.run(ctx);
-        } catch (Exception e) {
-            throw e;
-        } catch (Throwable t) {
-            log.error("RoundRobin[{}] 轮询任务 panic", name, t);
-        }
     }
 
     /** 取消 ScheduledFuture 且不中断运行中任务 */

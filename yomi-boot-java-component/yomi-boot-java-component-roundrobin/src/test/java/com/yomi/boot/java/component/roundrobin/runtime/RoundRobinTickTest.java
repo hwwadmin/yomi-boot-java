@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -97,19 +98,125 @@ class RoundRobinTickTest {
         assertEquals(1, lockClient.unlocked.size(), "执行锁必须释放（不能抛到 try 之外导致泄漏）");
     }
 
-    /** Error 记录 panic 日志，worker 线程继续运行 */
+    /**
+     * 任务 Error 向上抛（worker 存活由 {@link RoundRobinLoop} 兜住并计入连续失败），执行锁必须释放。
+     * <p>旧行为是"吞掉记成功"：tick 返回 true，Loop 把连续失败清零、按正常频率无限重试</p>
+     */
     @Test
-    void errorInTaskIsSwallowedSoWorkerSurvives() {
+    void taskErrorPropagatesAndLockIsReleased() {
         scheduler = Executors.newScheduledThreadPool(1);
         HeldLockClient lockClient = new HeldLockClient();
         RoundRobinTick tick = new RoundRobinTick(lockClient, scheduler);
 
-        boolean executed = assertDoesNotThrow(() -> tick.tick(new CancellationToken(), config(true), ctx -> {
-            throw new NoClassDefFoundError("boom");
-        }));
+        NoClassDefFoundError panic = assertThrows(NoClassDefFoundError.class,
+                () -> tick.tick(new CancellationToken(), config(true), ctx -> {
+                    throw new NoClassDefFoundError("boom");
+                }));
 
-        assertTrue(executed, "Error 被吞后视为本轮已执行（worker 继续存活）");
-        assertEquals(1, lockClient.unlocked.size());
+        assertEquals("boom", panic.getMessage());
+        assertEquals(1, lockClient.unlocked.size(), "任务 panic 也必须释放执行锁");
+    }
+
+    /**
+     * 存活检测持续失败只报首条（50ms 周期逐条报会把日志刷爆），恢复时补一条
+     */
+    @Test
+    void watchFailureIsReportedOnceUntilRecovered() {
+        AtomicReference<Runnable> watch = new AtomicReference<>();
+        scheduler = trapWatchScheduler(watch);
+        AtomicBoolean failProbe = new AtomicBoolean(true);
+        HeldLockClient lockClient = new HeldLockClient() {
+            @Override
+            public boolean isHeldByWorkerThread(RLock lock, long workerThreadId) {
+                if (failProbe.get()) {
+                    throw new IllegalStateException("redis 抖动");
+                }
+                return true;
+            }
+        };
+
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinTick.class);
+        logger.addAppender(appender);
+        try {
+            // 让检测任务建起来（tick 内注册进 trap 调度器）
+            assertDoesNotThrow(() -> tickQuietly(lockClient, ctx -> {
+            }));
+            watch.get().run();
+            watch.get().run();
+            watch.get().run();
+            failProbe.set(false);
+            watch.get().run();
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        String logs = appender.list.stream().map(event -> event.getLevel() + " " + event.getFormattedMessage())
+                .collect(Collectors.joining("\n"));
+        assertEquals(1, logs.lines().filter(line -> line.contains("执行锁存活检测失败")).count(),
+                "连续失败只报首条: " + logs);
+        assertTrue(logs.contains("执行锁存活检测已恢复"), "恢复时必须补一条: " + logs);
+    }
+
+    /**
+     * 检测延迟必须被量出来（池被慢 Redis 占满时只是"跑晚了"，没有异常可捕获）：
+     * 同一次拥堵只报一条，间隔回归正常后可再报
+     */
+    @Test
+    void watchLagIsReportedOncePerIncident() {
+        scheduler = Executors.newScheduledThreadPool(1);
+        RoundRobinTick tick = new RoundRobinTick(new HeldLockClient(), scheduler);
+
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinTick.class);
+        logger.addAppender(appender);
+        try {
+            tick.reportWatchLag(config(true), -1);                                  // 首次执行：不算间隔
+            tick.reportWatchLag(config(true), Duration.ofSeconds(1).toNanos());     // 拥堵：报一条
+            tick.reportWatchLag(config(true), Duration.ofSeconds(2).toNanos());     // 同一次拥堵：不重复
+            tick.reportWatchLag(config(true), Duration.ofMillis(50).toNanos());     // 回归正常：复位
+            tick.reportWatchLag(config(true), Duration.ofSeconds(1).toNanos());     // 再次拥堵：可再报
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .collect(Collectors.joining("\n"));
+        assertEquals(2, logs.lines().filter(line -> line.contains("执行锁存活检测延迟")).count(),
+                "每次拥堵只报一条、恢复后可再报: " + logs);
+        assertTrue(logs.contains("roundRobinScheduler"), "告警应给出扩容出路: " + logs);
+    }
+
+    /** 检测间隔真被拖长时（走真实计时）也必须告警 */
+    @Test
+    void watchLagIsDetectedFromMeasuredGap() throws Exception {
+        AtomicReference<Runnable> watch = new AtomicReference<>();
+        scheduler = trapWatchScheduler(watch);
+
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinTick.class);
+        logger.addAppender(appender);
+        try {
+            assertDoesNotThrow(() -> tickQuietly(new HeldLockClient(), ctx -> {
+            }));
+            watch.get().run();                      // 首跑只记时刻
+            Thread.sleep(600);                      // 模拟池繁忙：检测被拖后远超 10 个周期（500ms）
+            watch.get().run();
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .collect(Collectors.joining("\n"));
+        assertTrue(logs.contains("执行锁存活检测延迟"), "按真实间隔量出的延迟必须告警: " + logs);
+    }
+
+    /** 跑一次 tick（仅用于把检测任务注册进 trap 调度器），本轮异常交给调用方处理 */
+    private void tickQuietly(RoundRobinLockClient lockClient, RoundRobinHandler task) throws Exception {
+        new RoundRobinTick(lockClient, scheduler).tick(new CancellationToken(), config(true), task);
     }
 
     /**

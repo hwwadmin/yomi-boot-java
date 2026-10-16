@@ -10,7 +10,9 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
@@ -58,8 +60,10 @@ public class RequestLimitAop {
             throw new IllegalArgumentException("@RequestLimit 注解只能用于方法上");
 
         Object[] args = point.getArgs();
-        Method method = signature.getMethod();
-        RequestLimit redisLimit = method.getDeclaredAnnotation(RequestLimit.class);
+        // 按“最具体方法”（实现类方法）解析注解与参数名：宿主配 spring.aop.proxy-target-class=false 时
+        // signature 拿到的是接口方法，注解只写在实现类方法上时直接取会为空
+        Method method = AopUtils.getMostSpecificMethod(signature.getMethod(), point.getTarget().getClass());
+        RequestLimit redisLimit = AnnotatedElementUtils.findMergedAnnotation(method, RequestLimit.class);
         // generate key
         String key;
         if (redisLimit.key().contains("#")) {

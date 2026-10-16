@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
@@ -77,6 +78,31 @@ class RedisAutoConfigurationTest {
     void assemblesWithClusterForm() {
         runner().withPropertyValues("spring.data.redis.cluster.nodes=127.0.0.1:7000,127.0.0.1:7001")
                 .run(this::assertComponentAssembled);
+    }
+
+    @Test
+    void sessionIntegrationFollowsServletWebApplicationCondition() {
+        // 非 Web / 纯 WebFlux 宿主：servlet 专用的 Session 集成不得装配
+        runner().withPropertyValues("spring.data.redis.host=127.0.0.1").run(context -> {
+            if (context.getStartupFailure() != null) {
+                throw new AssertionError("非 Web 上下文装配不应失败", context.getStartupFailure());
+            }
+            assertFalse(context.containsBean("springSessionRepositoryFilter"),
+                    "非 servlet 宿主不得装配 SessionRepositoryFilter（纯 WebFlux 下 servlet API 可能缺失，会启动失败）");
+        });
+
+        // servlet Web 应用：Session 集成必须装配（条件不得误关 servlet 宿主）
+        new WebApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(DataRedisAutoConfiguration.class, RedisAutoConfiguration.class))
+                .withBean(RedissonClient.class, RedisAutoConfigurationTest::proxyClient)
+                .withPropertyValues("spring.data.redis.host=127.0.0.1")
+                .run(context -> {
+                    if (context.getStartupFailure() != null) {
+                        throw new AssertionError("servlet 宿主装配不应失败", context.getStartupFailure());
+                    }
+                    assertTrue(context.containsBean("springSessionRepositoryFilter"),
+                            "servlet Web 应用必须装配会话过滤器");
+                });
     }
 
     /** 断言测试条件：ComponentAssembled */

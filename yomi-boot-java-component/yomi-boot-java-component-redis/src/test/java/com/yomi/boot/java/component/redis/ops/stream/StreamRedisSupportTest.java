@@ -25,7 +25,8 @@ import static org.junit.jupiter.api.Assertions.*;
  *   <li>listen 必须注册"手动 ack"订阅（消息进 PEL），不得再用 receiveAutoAck（NOACK 异常即丢）；</li>
  *   <li>handler 成功 → 立即 XACK；handler 失败 → 不 ACK、异常不逃逸（逃逸会因 cancelOnError 默认值取消整个订阅）；</li>
  *   <li>订阅永不被处理/读取异常取消；</li>
- *   <li>claimAndRedeliver 认领超时未确认消息并重新投递，成功自动 ACK。</li>
+ *   <li>claimAndRedeliver 认领超时未确认消息并重新投递，成功自动 ACK；</li>
+ *   <li>返回值区分"认领/成功/失败/跳过"，毒消息（投递次数超限）跳过重投不再占用认领窗口。</li>
  * </ol>
  */
 class StreamRedisSupportTest {
@@ -104,12 +105,39 @@ class StreamRedisSupportTest {
         StreamRedisSupport support = new StreamRedisSupport(template, new StubContainer());
         List<String> handled = new ArrayList<>();
 
-        int processed = support.claimAndRedeliver("orders", "grp", "c-1", Duration.ofMinutes(5),
+        RedeliverResult result = support.claimAndRedeliver("orders", "grp", "c-1", Duration.ofMinutes(5),
                 (stream, id, body) -> handled.add(id));
 
-        assertEquals(1, processed);
+        assertEquals(1, result.claimed());
+        assertEquals(1, result.acked(), "重投成功必须计入 acked");
+        assertEquals(0, result.failed());
+        assertEquals(0, result.skipped());
         assertEquals(List.of("2-0"), handled, "超时未确认的消息必须被重新交给 handler");
         assertEquals(List.of("2-0"), template.acks, "重投成功后自动 ACK");
+    }
+
+    @Test
+    void claimAndRedeliverDistinguishesAckedFromFailed() {
+        StubTemplate template = new StubTemplate();
+        template.pending = new PendingMessages("grp", List.of(
+                new PendingMessage(RecordId.of("2-0"), Consumer.from("grp", "c-dead"), Duration.ofMinutes(10), 1),
+                new PendingMessage(RecordId.of("3-0"), Consumer.from("grp", "c-dead"), Duration.ofMinutes(10), 1)));
+        template.claimed = List.of(
+                MapRecord.create("orders", Map.of("payload", "ok")).withId(RecordId.of("2-0")),
+                MapRecord.create("orders", Map.of("payload", "boom")).withId(RecordId.of("3-0")));
+        StreamRedisSupport support = new StreamRedisSupport(template, new StubContainer());
+
+        RedeliverResult result = support.claimAndRedeliver("orders", "grp", "c-1", Duration.ofMinutes(5),
+                (stream, id, body) -> {
+                    if ("boom".equals(body.get(StreamRedisSupport.PAYLOAD_FIELD))) {
+                        throw new IllegalStateException("模拟业务处理失败");
+                    }
+                });
+
+        assertEquals(2, result.claimed(), "认领条数=成功+失败");
+        assertEquals(1, result.acked());
+        assertEquals(1, result.failed(), "处理失败不得计成成功：调用方据 failed 告警/决定是否人工介入");
+        assertEquals(List.of("2-0"), template.acks, "只有处理成功的消息被 ACK");
     }
 
     @Test
@@ -119,13 +147,34 @@ class StreamRedisSupportTest {
                 RecordId.of("3-0"), Consumer.from("grp", "c-2"), Duration.ofSeconds(10), 1)));
         StreamRedisSupport support = new StreamRedisSupport(template, new StubContainer());
 
-        int processed = support.claimAndRedeliver("orders", "grp", "c-1", Duration.ofMinutes(5),
+        RedeliverResult result = support.claimAndRedeliver("orders", "grp", "c-1", Duration.ofMinutes(5),
                 (stream, id, body) -> {
                     throw new AssertionError("未超时的消息不应被认领");
                 });
 
-        assertEquals(0, processed, "未达到 minIdle 的消息不认领（避免与在途处理重复）");
-        assertTrue(template.claimed.isEmpty(), "无超时消息时不应触发 XCLAIM");
+        assertEquals(0, result.claimed(), "未达到 minIdle 的消息不认领（避免与在途处理重复）");
+        assertFalse(template.claimCalled, "无超时消息时不应触发 XCLAIM");
+    }
+
+    @Test
+    void claimAndRedeliverSkipsPoisonMessagesBeyondDeliveryLimit() {
+        StubTemplate template = new StubTemplate();
+        // 毒消息在 PEL 头部：累计投递次数已达阈值，跳过重投；后面的正常积压必须仍能认领
+        template.pending = new PendingMessages("grp", List.of(
+                new PendingMessage(RecordId.of("1-0"), Consumer.from("grp", "c-dead"), Duration.ofMinutes(30),
+                        StreamRedisSupport.DEFAULT_MAX_DELIVERY_ATTEMPTS),
+                new PendingMessage(RecordId.of("2-0"), Consumer.from("grp", "c-dead"), Duration.ofMinutes(30), 3)));
+        template.claimed = List.of(MapRecord.create("orders", Map.of("payload", "stuck")).withId(RecordId.of("2-0")));
+        StreamRedisSupport support = new StreamRedisSupport(template, new StubContainer());
+        List<String> handled = new ArrayList<>();
+
+        RedeliverResult result = support.claimAndRedeliver("orders", "grp", "c-1", Duration.ofMinutes(5),
+                (stream, id, body) -> handled.add(id));
+
+        assertEquals(List.of("2-0"), template.claimIds, "投递次数超限的毒消息不得再被 XCLAIM");
+        assertEquals(1, result.skipped(), "跳过的毒消息条数必须如实返回（据此告警）");
+        assertEquals(1, result.acked());
+        assertEquals(List.of("2-0"), handled);
     }
 
     /** 驱动 Stream 测试消费循环 */
@@ -138,10 +187,12 @@ class StreamRedisSupportTest {
         return MapRecord.create("orders", Map.of(StreamRedisSupport.PAYLOAD_FIELD, payload)).withId(RecordId.of(id));
     }
 
-    /** 覆盖 opsForStream：记录 ACK、编排 pending/claim 结果，其余命令成功返回 */
+    /** 覆盖 opsForStream：记录 ACK/XCLAIM、编排 pending/claim 结果，其余命令成功返回 */
     static class StubTemplate extends StringRedisTemplate {
 
         final List<String> acks = new ArrayList<>();
+        final List<String> claimIds = new ArrayList<>();
+        boolean claimCalled;
         PendingMessages pending = new PendingMessages("grp", List.of());
         List<MapRecord<String, String, String>> claimed = List.of();
         boolean failAck;
@@ -162,7 +213,16 @@ class StreamRedisSupportTest {
                             yield 1L;
                         }
                         case "pending" -> pending;
-                        case "claim" -> claimed;
+                        case "claim" -> {
+                            claimCalled = true;
+                            Object last = args[args.length - 1];
+                            if (last instanceof RecordId[] ids) {
+                                for (RecordId id : ids) {
+                                    claimIds.add(id.getValue());
+                                }
+                            }
+                            yield claimed;
+                        }
                         case "createGroup" -> null;
                         default -> null;
                     });

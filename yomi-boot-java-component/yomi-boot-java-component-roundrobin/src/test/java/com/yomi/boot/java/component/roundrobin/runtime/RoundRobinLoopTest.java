@@ -18,10 +18,12 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 任务异常触发连续失败计数与指数退避，避免高频重试
+ * 任务异常触发连续失败计数与指数退避；任务/框架层 Error 一视同仁（不得吞成"本轮成功"）；
+ * 循环自身出错必须亮着退出（日志与正常停机可区分）
  */
 class RoundRobinLoopTest {
 
@@ -57,7 +59,125 @@ class RoundRobinLoopTest {
             logger.detachAppender(appender);
         }
 
-        String logs = appender.list.stream().map(event -> {
+        String logs = logs(appender);
+        assertTrue(runs.get() >= 2, "任务应被重复执行（失败后仍要按退避节奏重试）");
+        assertTrue(logs.contains("consecutiveErrors=1"), "第一次失败必须计入连续失败并退避: " + logs);
+        assertTrue(logs.contains("退避"), "日志应给出本次退避时长: " + logs);
+        assertTrue(logs.contains("下游故障"), "日志应带上原始异常: " + logs);
+    }
+
+    /**
+     * 任务恒抛 Error（如 NoClassDefFoundError）必须与 Exception 同等计入连续失败并退避：
+     * 旧行为把它吞成"本轮成功"，于是按正常频率无限重试、监控上看不出异常
+     */
+    @Test
+    void taskErrorsAreCountedAndBackedOff() throws Exception {
+        scheduler = Executors.newScheduledThreadPool(1);
+        CancellationToken token = new CancellationToken();
+        AtomicInteger runs = new AtomicInteger();
+        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient(), scheduler));
+
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
+        logger.addAppender(appender);
+        try {
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, config(), ctx -> {
+                if (runs.incrementAndGet() >= 2) {
+                    token.cancel();
+                }
+                throw new NoClassDefFoundError("boom");
+            }));
+            worker.join(10_000);
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        String logs = logs(appender);
+        assertTrue(runs.get() >= 2, "worker 不得因任务 Error 退出（否则第 2 轮不会再执行）: " + logs);
+        assertTrue(logs.contains("consecutiveErrors=1"), "任务 Error 必须计入连续失败并退避: " + logs);
+        assertTrue(logs.contains("NoClassDefFoundError"), "日志必须带上原始 Error: " + logs);
+    }
+
+    /**
+     * 框架层 Error（示例为锁客户端抛 StackOverflowError，实际如 Redisson 栈内 OOM）：
+     * 同样计入连续失败并退避，worker 不退出
+     */
+    @Test
+    void frameworkErrorsAreCountedAndBackedOff() throws Exception {
+        scheduler = Executors.newScheduledThreadPool(1);
+        CancellationToken token = new CancellationToken();
+        AtomicInteger failures = new AtomicInteger();
+        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(
+                new HeldLockClient() {
+                    @Override
+                    public boolean tryAcquireFrequency(RoundRobinConfig config) {
+                        if (failures.incrementAndGet() >= 2) {
+                            token.cancel();
+                        }
+                        throw new StackOverflowError("框架层 Error");
+                    }
+                }, scheduler));
+
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
+        logger.addAppender(appender);
+        try {
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, config(), ctx -> {
+            }));
+            worker.join(10_000);
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        String logs = logs(appender);
+        assertTrue(failures.get() >= 2, "框架层 Error 后 worker 必须继续跑下一轮: " + logs);
+        assertTrue(logs.contains("consecutiveErrors=1"), "框架层 Error 必须计入连续失败: " + logs);
+    }
+
+    /**
+     * 循环自身的节奏代码出错（这里用缺 jitter 配置触发 NPE 代跑"框架层错误逃出单轮容错"这条路径）：
+     * worker 线程结束，但不能与正常停机同形——必须留 ERROR 与"异常退出"标记
+     */
+    @Test
+    void abnormalExitIsLoggedWhenErrorEscapesRoundTolerance() throws Exception {
+        scheduler = Executors.newScheduledThreadPool(1);
+        CancellationToken token = new CancellationToken();
+        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient(), scheduler));
+        // randomDelayMin=null：validate() 会拦住真实配置，此处刻意构造以触发节奏代码抛错
+        RoundRobinConfig broken = RoundRobinConfig.builder()
+                .name("broken-task")
+                .frequency(Duration.ofMillis(50))
+                .randomDelayMax(Duration.ofMillis(60))
+                .wakeUpInterval(Duration.ofMillis(50))
+                .execLockTtl(Duration.ofSeconds(30))
+                .execWatchdog(true)
+                .lockWait(Duration.ZERO)
+                .shutdownAwait(Duration.ofSeconds(1))
+                .build();
+
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
+        logger.addAppender(appender);
+        try {
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, broken, ctx -> {
+            }));
+            worker.join(10_000);
+            assertFalse(worker.isAlive(), "节奏代码出错后 worker 必须退出（不得静默续跑或挂死）");
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        String logs = logs(appender);
+        assertTrue(logs.contains("轮询循环异常退出"), "异常退出必须记 ERROR 并写明后果: " + logs);
+        assertTrue(logs.contains("（异常退出）"), "停机日志形态必须与正常停机可区分: " + logs);
+    }
+
+    /** 收集日志：消息 + 顶层异常类/信息 */
+    private static String logs(ListAppender<ILoggingEvent> appender) {
+        return appender.list.stream().map(event -> {
             String message = event.getFormattedMessage();
             if (event.getThrowableProxy() != null) {
                 message += " | " + event.getThrowableProxy().getClassName()
@@ -65,10 +185,6 @@ class RoundRobinLoopTest {
             }
             return message;
         }).collect(Collectors.joining("\n"));
-        assertTrue(runs.get() >= 2, "任务应被重复执行（失败后仍要按退避节奏重试）");
-        assertTrue(logs.contains("consecutiveErrors=1"), "第一次失败必须计入连续失败并退避: " + logs);
-        assertTrue(logs.contains("退避"), "日志应给出本次退避时长: " + logs);
-        assertTrue(logs.contains("下游故障"), "日志应带上原始异常: " + logs);
     }
 
     /** 构造 RoundRobin 测试配置 */

@@ -97,9 +97,11 @@ class StreamRedisIntegrationTest {
                     "处理成功的消息应已 ACK 且不在 PEL 中");
 
             // 认领重投：这次 handler 处理成功 → 出 PEL
-            int processed = support.claimAndRedeliver(stream, group, "c-recover", Duration.ZERO,
+            RedeliverResult result = support.claimAndRedeliver(stream, group, "c-recover", Duration.ZERO,
                     (key, id, body) -> handled.add(id));
-            assertEquals(1, processed, "应认领到 1 条超时未确认的消息");
+            assertEquals(1, result.claimed(), "应认领到 1 条超时未确认的消息");
+            assertEquals(1, result.acked(), "重投的这条必须处理成功（acked 与 failed 必须分得开）");
+            assertEquals(0, result.failed());
             assertTrue(handled.contains(failId), "重投必须再次交给 handler");
             assertTrue(awaitCondition(() -> claimedPending(stream, group, failId).isEmpty()),
                     "重投成功后消息必须离开 PEL");
