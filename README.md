@@ -13,7 +13,7 @@
 
 [`_prompts/`](_prompts/) 是一套给 AI 用的协作说明（写需求 → 出方案 → 审方案 → 写代码）和 Java 规范，用在**业务项目**里；本仓库只管组件，不写业务功能。
 
-用法：业务项目把本仓挂成 submodule（或设 `YOMI_PROMPTS_ROOT` 指向本仓根），在 AI 对话里依次用 `prd_spec` → `create_spec` → `audit_spec` → `do_spec`，产出的文档和代码落在业务项目根目录。细则见 [AI 开发工作流说明](docs/AI开发工作流说明.md)。
+用法：业务项目把本仓 `_prompts/` **整体拷入工程根目录**，在 AI 对话里依次用 `prd_spec` → `create_spec` → `audit_spec` → `do_spec`，产出的文档和代码落在工程根目录。细则见 [AI 开发工作流说明](docs/AI开发工作流说明.md)。
 
 ### 模块说明
 

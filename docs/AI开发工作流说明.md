@@ -17,18 +17,9 @@
 
 ---
 
-## `_prompts` 如何被找到
+## 提示词工程如何使用
 
-AI 执行任一指令前须定位 `_prompts`（与各 command 第 1 步一致），按顺序尝试：
-
-1. 当前打开工程的根目录 `_prompts/`
-2. 环境变量 `YOMI_PROMPTS_ROOT`（指向含 `_prompts` 的 `yomi-boot-java` 根或其父路径）
-3. Git submodule / 同级克隆的 `yomi-boot-java/_prompts/`
-4. （可选）`yomi-boot-java-prompts` 依赖包内的 `_prompts/`
-
-均未找到则终止并列出已尝试路径。定位成功后：**Skill / knowledge 相对该 `_prompts` 根**；**PRD、spec、tasks 等产物写入当前业务工程根**（在 boot 库维护场景下即本仓库根）。
-
-业务工程通常将本仓 `_prompts` 作为 submodule 或设置 `YOMI_PROMPTS_ROOT`，在 IDE 中打开业务工程工作区即可使用同一套指令。
+业务工程直接把本仓 `_prompts/` **整体拷入工程根目录**即可，无外部查找：`_prompts/skills/`、`_prompts/knowledge/` 均相对工程根；PRD、spec、tasks 等产物（`_doc/`、`_feat-doc/`、`_task-doc/`、`_quality-doc/`、`_ipc-doc/`）同样落在工程根。
 
 ---
 
