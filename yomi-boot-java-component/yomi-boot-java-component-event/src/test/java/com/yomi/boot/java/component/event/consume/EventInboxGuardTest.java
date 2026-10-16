@@ -1,5 +1,6 @@
 package com.yomi.boot.java.component.event.consume;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -29,11 +30,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 收件箱守卫的锁语义：
+ * 收件箱守卫语义：
  * <ul>
- *   <li>Redis/Redisson 故障（锁不可用）→ 降级为无锁 + inbox 唯一键兜底（WARN），不把消息全卡在 RETRY；</li>
+ *   <li>锁语义：Redis/Redisson 故障（锁不可用）→ 降级为无锁 + inbox 唯一键兜底（WARN），不把消息全卡在 RETRY；</li>
  *   <li>抢锁失败（其他实例在消费）→ 已入 inbox 则 SUCCESS、否则 RETRY（行为不变）；</li>
- *   <li>无锁路径下重复投递仍只消费一次（inbox 行已存在或唯一键冲突都按重复跳过）。</li>
+ *   <li>无锁路径下重复投递仍只消费一次（inbox 行已存在或唯一键冲突都按重复跳过）；</li>
+ *   <li>普通路径（onMessageNormal）不写 inbox：解析失败 DROP、业务异常仅日志仍 SUCCESS
+ *       （失败不重投，仅用于可丢弃或可补偿场景），带 eventId 必有 WARN。</li>
  * </ul>
  */
 class EventInboxGuardTest {
@@ -131,7 +134,68 @@ class EventInboxGuardTest {
         assertEquals(List.of(), inbox.inserts);
     }
 
+    // ===== 普通路径（onMessageNormal）：不写 inbox，失败仅日志不重投 =====
+
+    /** 业务异常只记 ERROR，仍返回 SUCCESS；不写 inbox（失败不重投，仅用于可丢弃或可补偿场景） */
+    @Test
+    void normalPathHandlerFailureIsLoggedAndReturnsSuccess() {
+        FakeInbox inbox = new FakeInbox();
+        EventInboxGuard guard = new EventInboxGuard(inbox.repo(), new EventKeys("test"), new EventProperties(), null);
+        AtomicInteger invocations = new AtomicInteger();
+
+        ListAppender<ILoggingEvent> logs = attachLogs();
+        EventConsumeResult result;
+        try {
+            result = guard.onMessageNormal(body("evt-1"), evt -> {
+                invocations.incrementAndGet();
+                throw new IllegalStateException("业务失败");
+            });
+        } finally {
+            detachLogs(logs);
+        }
+
+        assertEquals(EventConsumeResult.SUCCESS, result, "普通路径失败不返回 RETRY：无 inbox 兜底，重投可能重复副作用");
+        assertEquals(1, invocations.get(), "handler 必须被调用一次且异常不逃逸");
+        assertEquals(List.of(), inbox.inserts, "普通路径不写 inbox");
+        assertTrue(logs.list.stream().anyMatch(e -> e.getLevel() == Level.ERROR
+                && e.getFormattedMessage().contains("普通消费业务异常")), "失败必须留 ERROR: " + messages(logs));
+    }
+
+    /** 带 eventId 的普通消费必须 WARN 点名 onMessage（幂等路径的运行时护栏） */
+    @Test
+    void normalPathWarnsOnEventId() {
+        EventInboxGuard guard = normalGuard();
+        List<String> handled = new ArrayList<>();
+
+        ListAppender<ILoggingEvent> logs = attachLogs();
+        try {
+            assertEquals(EventConsumeResult.SUCCESS,
+                    guard.onMessageNormal(body("evt-1"), evt -> handled.add(evt.getEventId())));
+        } finally {
+            detachLogs(logs);
+        }
+
+        assertEquals(List.of("evt-1"), handled, "WARN 不改变执行，只提示改用 onMessage");
+        assertTrue(logs.list.stream().anyMatch(e -> e.getLevel() == Level.WARN
+                && e.getFormattedMessage().contains("onMessage")), "带 eventId 必须 WARN 点名 onMessage: " + messages(logs));
+    }
+
+    /** 普通路径解析失败丢弃，不执行 handler */
+    @Test
+    void normalPathDropsUnparsableBody() {
+        EventInboxGuard guard = normalGuard();
+        AtomicInteger invocations = new AtomicInteger();
+
+        assertEquals(EventConsumeResult.DROP, guard.onMessageNormal("not-json", evt -> invocations.incrementAndGet()));
+        assertEquals(0, invocations.get());
+    }
+
     // ===== 夹具 =====
+
+    /** 普通路径不碰 inbox/锁/事务，仓储与事务模板传 null 即可 */
+    private static EventInboxGuard normalGuard() {
+        return new EventInboxGuard(null, new EventKeys("test"), new EventProperties(), null);
+    }
 
     private static String body(String eventId) {
         return "{\"eventId\":\"" + eventId + "\",\"topic\":\"topic-a\",\"payload\":\"p\"}";

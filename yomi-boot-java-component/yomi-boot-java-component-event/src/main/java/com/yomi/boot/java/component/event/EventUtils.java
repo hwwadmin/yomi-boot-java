@@ -122,7 +122,8 @@ public final class EventUtils {
 
     /**
      * 非幂等消费：不写 inbox；业务异常仅打日志，仍返回 SUCCESS
-     * <p>消息带 eventId 时会 WARN，一般应使用 {@link #onMessage(String, EventHandler)}</p>
+     * <p>仅用于可丢弃或可补偿场景（失败不重投）；消息带 eventId 时会 WARN，一般应使用
+     * {@link #onMessage(String, EventHandler)} 幂等路径</p>
      */
     public static EventConsumeResult onMessageNormal(String body, EventHandler handler) {
         return inboxGuard().onMessageNormal(body, handler);

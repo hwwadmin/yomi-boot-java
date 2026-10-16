@@ -76,7 +76,8 @@ public class EventInboxGuard {
 
     /**
      * 非幂等消费：解析失败丢弃；业务异常只打日志，仍返回 SUCCESS
-     * <p>带 eventId 时会 WARN，提示改用本类的 {@link #onMessage(String, EventHandler)}</p>
+     * <p>仅用于可丢弃或可补偿场景（失败不重投）；带 eventId 时会 WARN，提示改用本类的
+     * {@link #onMessage(String, EventHandler)} 幂等路径</p>
      */
     public EventConsumeResult onMessageNormal(String body, EventHandler handler) {
         var parsed = WireEventParser.parse(body, false);
