@@ -155,6 +155,7 @@ public abstract class MyBatisDao<M extends BaseMapper<T>, T extends BaseEntity> 
 
     /**
      * 更新（id不存在时抛出异常）
+     * 批量见 updateBatch：id不存在的行静默跳过，不抛错
      */
     public void update(T entity) {
         Assert.nonNull(entity, "{}不能为空", getTableDesc());
@@ -166,6 +167,8 @@ public abstract class MyBatisDao<M extends BaseMapper<T>, T extends BaseEntity> 
 
     /**
      * 批量更新
+     * id不存在的行静默跳过：不校验受影响行数、不抛错（受影响行数可由 BatchResult.getUpdateCounts() 自查），
+     * 需要"未命中即失败"的严格语义请用单条 update()
      */
     public void updateBatch(Collection<T> entityList) {
         if (CollectionUtils.isEmpty(entityList)) return;
@@ -176,6 +179,7 @@ public abstract class MyBatisDao<M extends BaseMapper<T>, T extends BaseEntity> 
     /**
      * 保存/更新
      * id为空新增，id非空更新（不查库校验存在性，id不存在时更新失败抛错）
+     * 批量见 saveOrUpdateBatch：id不存在的更新行静默跳过、不补插
      */
     public void saveOrUpdate(T entity) {
         Assert.nonNull(entity, "{}不能为空", getTableDesc());
@@ -189,6 +193,7 @@ public abstract class MyBatisDao<M extends BaseMapper<T>, T extends BaseEntity> 
     /**
      * 批量保存/更新
      * id为空的新增、id非空的更新，分组后各执行一次批量SQL，避免逐条查库判断存在性
+     * id非空但库中不存在的行更新未命中，静默跳过（不补插、不抛错），与单条 saveOrUpdate() 的抛错语义不同
      */
     public void saveOrUpdateBatch(Collection<T> entityList) {
         if (CollectionUtils.isEmpty(entityList)) return;
