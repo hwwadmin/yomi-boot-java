@@ -60,16 +60,30 @@ public class OutboxRelayCoordinator {
         }
     }
 
-    /** 将长时间停留在 FETCHED 的行重置为 PENDING */
+    /**
+     * 将长时间停留在 FETCHED 的行重置为 PENDING
+     * <p>按批回收：Kafka 长时间不可用时 FETCHED 行会持续累积（每轮抓取 fetchBatchSize 行），
+     * 一次把全部行读进内存、并把等量 id 压进单条 UPDATE 会撑爆参数上限（PG 65535 绑定参数）
+     */
     public void recoverFetchedTimeout(RoundRobinContext ctx) {
         Instant before = Instant.now().minus(properties.getFetchedTimeout());
-        List<EventOutbox> rows = outboxRepository.findFetchedTimeout(eventKeys.getServiceName(), before);
-        if (rows.isEmpty()) {
-            return;
+        String serviceName = eventKeys.getServiceName();
+        int batchSize = properties.getFetchBatchSize();
+        int recovered = 0;
+        while (!ctx.isCancelled()) {
+            List<EventOutbox> rows = outboxRepository.findFetchedTimeout(serviceName, before, batchSize);
+            if (rows.isEmpty()) {
+                break;
+            }
+            outboxRepository.resetFetchedBatch(rows.stream().map(EventOutbox::getId).toList());
+            recovered += rows.size();
+            if (rows.size() < batchSize) {
+                break;
+            }
         }
-        log.warn("[事件]FETCHED 超时回收 count={}, service={}", rows.size(), eventKeys.getServiceName());
-        List<Long> ids = rows.stream().map(EventOutbox::getId).toList();
-        outboxRepository.resetFetchedBatch(ids);
+        if (recovered > 0) {
+            log.warn("[事件]FETCHED 超时回收 count={}, service={}", recovered, serviceName);
+        }
     }
 
     /** 扫描 DLQ 并重试 Kafka 发送 */

@@ -67,10 +67,11 @@ public class HttpLogRepository implements IHttpLogRepository {
         mapper.insert(entity);
     }
 
-    /** 查询超过保留期的 id 列表 */
+    /** 查询超过保留期的 id 列表（只要一批 id：关掉 count，否则每批都多扫一遍整个过期区间） */
     @Override
     public List<Long> selectExpiredIds(String serviceName, Instant before, int limit) {
         Page<HttpLogEntity> page = new Page<>(1, Math.min(Math.max(limit, 1), PageRequest.MAX_PAGE_SIZE));
+        page.setSearchCount(false);
         return mapper.selectPage(page, new LambdaQueryWrapper<HttpLogEntity>()
                         .select(HttpLogEntity::getId)
                         .eq(HttpLogEntity::getServiceName, serviceName)

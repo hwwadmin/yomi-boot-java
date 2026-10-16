@@ -26,10 +26,10 @@ public interface IEventOutboxRepository {
     /** 查询 PENDING 并批量标记 FETCHED；并发下可能部分行已被其他实例抓取 */
     List<EventOutbox> fetchAndMark(String serviceName, int limit);
 
-    /** 查询长时间停留在 FETCHED 的行（回收候选） */
-    List<EventOutbox> findFetchedTimeout(String serviceName, Instant fetchTimeBefore);
+    /** 查询长时间停留在 FETCHED 的行（回收候选，单批上限 limit，按 id 升序便于分批翻页） */
+    List<EventOutbox> findFetchedTimeout(String serviceName, Instant fetchTimeBefore, int limit);
 
-    /** 按 id 批量重置为 PENDING */
+    /** 按 id 批量重置为 PENDING（内部按固定分片下发，超大 id 列表不会撑成单条巨型 IN） */
     void resetFetchedBatch(List<Long> ids);
 
     /** 按主键更新并刷新 update 审计字段 */

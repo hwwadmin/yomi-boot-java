@@ -3,6 +3,9 @@ package com.yomi.boot.java.component.rbac.repository;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yomi.boot.java.component.rbac.entity.RbacPerm;
 
+import java.util.Collection;
+import java.util.List;
+
 /**
  * 权限仓储（端口）：sys_rbac_perm 的持久化唯一出入口
  * <p>
@@ -21,6 +24,9 @@ public interface IRbacPermRepository {
 
     /** 查启用状态的权限；不存在返回 null */
     RbacPerm findActive(Long id);
+
+    /** 按主键批量查未删除权限（一次查库；结果不含已软删行，顺序不保证，空入参返回空列表） */
+    List<RbacPerm> listActiveByIds(Collection<Long> ids);
 
     /** 按编码查权限；不存在返回 null */
     RbacPerm findByCode(String code);

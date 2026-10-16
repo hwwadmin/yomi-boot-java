@@ -17,6 +17,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,7 +44,8 @@ class RbacRelationRepositoryTransactionTest {
             IRbacRelationRepository repository = context.getBean(IRbacRelationRepository.class);
 
             repository.replaceUserRoles(7L, List.of(11L, 12L), 99L);
-            assertEquals(List.of("delete:inTx", "insert:inTx", "insert:inTx"), mappers.statements);
+            assertEquals(List.of("delete:inTx", "insert:inTx#2"), mappers.statements,
+                    "两条绑定走一条批量插入语句");
             assertEquals(List.of("begin", "commit"), tx.events);
 
             mappers.statements.clear();
@@ -51,7 +53,7 @@ class RbacRelationRepositoryTransactionTest {
             repository.replaceRoleGroups(1L, List.of(21L), 99L);
             repository.replaceGroupPerms(2L, List.of(31L), 99L);
             repository.deleteRoleRelations(3L);
-            assertEquals(List.of("delete:inTx", "insert:inTx", "delete:inTx", "insert:inTx",
+            assertEquals(List.of("delete:inTx", "insert:inTx#1", "delete:inTx", "insert:inTx#1",
                     "delete:inTx", "delete:inTx"), mappers.statements);
             assertEquals(List.of("begin", "commit", "begin", "commit", "begin", "commit"), tx.events);
         }
@@ -60,16 +62,16 @@ class RbacRelationRepositoryTransactionTest {
     @Test
     void failedInsertRollsBackWholeReplace() {
         RecordingMappers mappers = new RecordingMappers();
-        mappers.failInsertAt = 2;
+        mappers.failInsertAt = 1;
         RecordingTxManager tx = new RecordingTxManager();
         try (AnnotationConfigApplicationContext context = context(mappers, tx)) {
             IRbacRelationRepository repository = context.getBean(IRbacRelationRepository.class);
 
             assertThrows(IllegalStateException.class, () -> repository.replaceUserRoles(7L, List.of(11L, 12L), 99L));
 
-            assertEquals(List.of("delete:inTx", "insert:inTx", "insert:inTx"), mappers.statements,
-                    "删除与插入都必须在同一事务里执行");
-            assertEquals(List.of("begin", "rollback"), tx.events, "中途失败必须整体回滚");
+            assertEquals(List.of("delete:inTx", "insert:inTx#2"), mappers.statements,
+                    "删除与批量插入都必须在同一事务里执行（批量失败即整条语句失败）");
+            assertEquals(List.of("begin", "rollback"), tx.events, "写入失败必须整体回滚");
         }
     }
 
@@ -114,7 +116,7 @@ class RbacRelationRepositoryTransactionTest {
         }
     }
 
-    /** 代理 Mapper：记录语句与"是否在事务中"，可指定第 N 条 insert 失败 */
+    /** 代理 Mapper：记录语句（含批量条数）与"是否在事务中"，可指定第 N 次 insert 调用失败 */
     static class RecordingMappers {
 
         final List<String> statements = new ArrayList<>();
@@ -136,14 +138,23 @@ class RbacRelationRepositoryTransactionTest {
                             yield 1;
                         }
                         case "insert" -> {
-                            statements.add(flag("insert"));
+                            statements.add(flag("insert") + "#" + batchSize(args));
                             if (++inserts == failInsertAt) {
-                                throw new IllegalStateException("模拟第 " + failInsertAt + " 条 insert 失败");
+                                throw new IllegalStateException("模拟第 " + failInsertAt + " 次 insert 调用失败");
                             }
-                            yield 1;
+                            // 批量插入返回 List<BatchResult>，单条插入返回 int：按返回类型给空值
+                            yield method.getReturnType() == List.class ? List.of() : 1;
                         }
                         default -> null;
                     });
+        }
+
+        /** 批量插入的入参是集合，记录元素个数；单条插入记为 1 */
+        private static int batchSize(Object[] args) {
+            if (args != null && args.length > 0 && args[0] instanceof Collection<?> rows) {
+                return rows.size();
+            }
+            return 1;
         }
 
         private static String flag(String statement) {

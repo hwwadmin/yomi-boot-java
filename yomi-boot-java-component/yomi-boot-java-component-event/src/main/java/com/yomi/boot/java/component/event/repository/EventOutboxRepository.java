@@ -23,6 +23,9 @@ import java.util.List;
 public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOutbox>
         implements IEventOutboxRepository {
 
+    /** 重置 FETCHED 行时单条 IN 列表的分片大小（PG 扩展协议绑定参数上限 65535，这里留足余量） */
+    private static final int RESET_FETCHED_CHUNK = 1_000;
+
     public EventOutboxRepository(EventOutboxMapper mapper) {
         super(mapper);
     }
@@ -86,29 +89,39 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         return pending;
     }
 
-    /** 查询 FETCHED 超时未投递的行 */
-    public List<EventOutbox> findFetchedTimeout(String serviceName, Instant fetchTimeBefore) {
+    /**
+     * 查询 FETCHED 超时未投递的行（单批上限 limit，按 id 升序）
+     * <p>Kafka 长时间不可用时 FETCHED 行按抓取速率累积，一次全量加载会把几万行读进内存、
+     * 并把等量 id 塞进重置语句，故与取批同纪律：一页 + 不要 count
+     */
+    public List<EventOutbox> findFetchedTimeout(String serviceName, Instant fetchTimeBefore, int limit) {
+        Assert.isTrue(limit > 0, "回收 limit 必须大于 0");
         return lambdaQuery()
                 .eq(EventOutbox::getServiceName, serviceName)
                 .eq(EventOutbox::getStatus, OutboxStatus.FETCHED)
                 .lt(EventOutbox::getFetchTime, fetchTimeBefore)
                 .isNull(EventOutbox::getDeleteTime)
-                .list();
+                .orderByAsc(EventOutbox::getId)
+                .page(page(1, limit).setSearchCount(false))
+                .getRecords();
     }
 
-    /** 将 FETCHED 批量重置为 PENDING（投递超时回收） */
+    /** 将 FETCHED 批量重置为 PENDING（投递超时回收）；id 按固定分片下发，单条 IN 列表不会无界增长 */
     public void resetFetchedBatch(List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             return;
         }
-        lambdaUpdate()
-                .set(EventOutbox::getStatus, OutboxStatus.PENDING)
-                .set(EventOutbox::getFetchTime, null)
-                .set(EventOutbox::getUpdateTime, Instant.now())
-                .eq(EventOutbox::getStatus, OutboxStatus.FETCHED)
-                .isNull(EventOutbox::getDeleteTime)
-                .in(EventOutbox::getId, ids)
-                .update();
+        for (int from = 0; from < ids.size(); from += RESET_FETCHED_CHUNK) {
+            List<Long> chunk = ids.subList(from, Math.min(from + RESET_FETCHED_CHUNK, ids.size()));
+            lambdaUpdate()
+                    .set(EventOutbox::getStatus, OutboxStatus.PENDING)
+                    .set(EventOutbox::getFetchTime, null)
+                    .set(EventOutbox::getUpdateTime, Instant.now())
+                    .eq(EventOutbox::getStatus, OutboxStatus.FETCHED)
+                    .isNull(EventOutbox::getDeleteTime)
+                    .in(EventOutbox::getId, chunk)
+                    .update();
+        }
     }
 
     /** 按主键更新并刷新 {@link EventOutbox#update()} */

@@ -36,6 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_sys_http_log_create_time ON sys_http_log (create_
 CREATE INDEX IF NOT EXISTS idx_sys_http_log_trace_id ON sys_http_log (trace_id);
 CREATE INDEX IF NOT EXISTS idx_sys_http_log_service_time ON sys_http_log (service_name, create_time);
 CREATE INDEX IF NOT EXISTS idx_sys_http_log_status_time ON sys_http_log (status, create_time);
+CREATE INDEX IF NOT EXISTS idx_sys_http_log_service_user_time ON sys_http_log (service_name, user_id, create_time);
 COMMENT ON TABLE sys_http_log IS 'HTTP请求日志表';
 COMMENT ON COLUMN sys_http_log.id IS '主键ID（雪花ID）';
 COMMENT ON COLUMN sys_http_log.service_name IS '归属业务系统名称';

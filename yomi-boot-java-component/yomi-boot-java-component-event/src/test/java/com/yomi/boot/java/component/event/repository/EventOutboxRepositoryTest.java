@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.LongStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -108,21 +109,26 @@ class EventOutboxRepositoryTest {
         assertTrue(where.endsWith("orderbycreate_timeasc"), where);
     }
 
-    /** 超时回收查询：service_name + FETCHED + fetch_time < 阈值 + 未删除 */
+    /** 超时回收查询：service_name + FETCHED + fetch_time < 阈值 + 未删除；一页 + 不要 count + 按 id 升序 */
     @Test
     void findFetchedTimeoutFiltersByStatusAndFetchTimeBefore() {
-        Stub stub = new Stub().selectListResult(List.of(row(1L)));
+        Stub stub = new Stub().pendingRows(row(1L));
         EventOutboxRepository repository = new EventOutboxRepository(stub.mapper());
 
-        List<EventOutbox> rows = repository.findFetchedTimeout("svc", FETCH_BEFORE);
+        List<EventOutbox> rows = repository.findFetchedTimeout("svc", FETCH_BEFORE, 500);
 
-        assertEquals(1, rows.size());
-        LambdaQueryWrapper<EventOutbox> query = stub.selectListWrappers.get(0);
+        assertEquals(List.of(1L), rows.stream().map(EventOutbox::getId).toList());
+        assertEquals(1, stub.pendingPages.size(), "回收只查一页");
+        // 回收批量即页大小：积压几万行时不会被一次性全量读进内存
+        assertEquals(500, stub.pendingPages.get(0).getSize(), "单批上限即页大小");
+        assertFalse(stub.pendingPages.get(0).searchCount(), "只取一页，不要 count 查询");
+        LambdaQueryWrapper<EventOutbox> query = stub.pendingWrappers.get(0);
         String where = compact(query.getSqlSegment());
         assertTrue(where.contains("service_name=#{"), where);
         assertTrue(where.contains("status=#{"), where);
         assertTrue(where.contains("fetch_time<#{"), where);
         assertTrue(where.contains("delete_timeisnull"), where);
+        assertTrue(where.endsWith("orderbyidasc"), where);
         assertTrue(query.getParamNameValuePairs().values().contains(OutboxStatus.FETCHED));
         assertTrue(query.getParamNameValuePairs().values().contains(FETCH_BEFORE));
     }
@@ -153,11 +159,34 @@ class EventOutboxRepositoryTest {
         assertTrue(empty.updates.isEmpty(), "空入参不应触库");
     }
 
+    /** 大 id 列表必须分片下发：单条 IN 的绑定参数会撞上 PG 65535 上限（MySQL 则是超长语句） */
+    @Test
+    void resetFetchedBatchChunksLargeIdLists() {
+        Stub stub = new Stub();
+        EventOutboxRepository repository = new EventOutboxRepository(stub.mapper());
+        List<Long> ids = LongStream.rangeClosed(1, 2_500).boxed().toList();
+
+        repository.resetFetchedBatch(ids);
+
+        assertEquals(3, stub.updates.size(), "2500 个 id 按 1000 一片下发");
+        assertEquals(List.of(1_000, 1_000, 500), stub.updates.stream()
+                .map(update -> inListSize(update.getSqlSegment())).toList(), "每片 IN 的元素个数");
+    }
+
     // ===== 夹具 =====
 
     /** SQL 片段比较前压掉空白并统一小写，避免断言绑在 MP 的排版/大小写细节上 */
     private static String compact(String sql) {
         return sql == null ? "" : sql.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
+    }
+
+    /** 数出 IN 列表的元素个数（MP 把 in 展开为逐项占位符，逗号数 + 1） */
+    private static int inListSize(String sqlSegment) {
+        String compacted = compact(sqlSegment);
+        int start = compacted.indexOf("idin(");
+        int end = compacted.indexOf(')', start);
+        String inside = compacted.substring(start, end);
+        return (int) inside.chars().filter(ch -> ch == ',').count() + 1;
     }
 
     private static EventOutbox row(long id) {

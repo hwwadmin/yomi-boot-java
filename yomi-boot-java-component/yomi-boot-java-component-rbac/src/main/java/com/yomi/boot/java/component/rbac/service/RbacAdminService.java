@@ -251,11 +251,9 @@ public class RbacAdminService implements IRbacAdminService {
             throw RbacBiz.of(RbacErrorCode.PERM_GROUP_NOT_FOUND);
         }
         List<Long> ids = RbacSupport.uniqueIds(permIds);
-        for (Long permId : ids) {
-            RbacPerm perm = permRepository.findActive(permId);
-            if (perm == null || !perm.exist()) {
-                throw RbacBiz.of(RbacErrorCode.PERM_NOT_FOUND);
-            }
+        // 一次批量校验存在性：逐条查库会随绑定条数线性放大
+        if (permRepository.listActiveByIds(ids).size() != ids.size()) {
+            throw RbacBiz.of(RbacErrorCode.PERM_NOT_FOUND);
         }
         relationRepository.replaceGroupPerms(groupId, ids, actorId);
     }
@@ -393,11 +391,9 @@ public class RbacAdminService implements IRbacAdminService {
             throw RbacBiz.of(RbacErrorCode.ROLE_NOT_FOUND);
         }
         List<Long> ids = RbacSupport.uniqueIds(groupIds);
-        for (Long groupId : ids) {
-            RbacPermGroup group = permGroupRepository.findActive(groupId);
-            if (group == null || !group.exist()) {
-                throw RbacBiz.of(RbacErrorCode.PERM_GROUP_NOT_FOUND);
-            }
+        // 一次批量校验存在性：逐条查库会随绑定条数线性放大
+        if (permGroupRepository.listActiveByIds(ids).size() != ids.size()) {
+            throw RbacBiz.of(RbacErrorCode.PERM_GROUP_NOT_FOUND);
         }
         relationRepository.replaceRoleGroups(roleId, ids, actorId);
     }
@@ -409,16 +405,13 @@ public class RbacAdminService implements IRbacAdminService {
             throw RbacBiz.of(RbacErrorCode.INVALID_INPUT);
         }
         List<Long> roleIds = RbacSupport.uniqueIds(input.getRoleIds());
-        boolean willHaveSuper = false;
-        for (Long roleId : roleIds) {
-            RbacRole role = roleRepository.findActive(roleId);
-            if (role == null || !role.exist()) {
-                throw RbacBiz.of(RbacErrorCode.ROLE_NOT_FOUND);
-            }
-            if (RbacSupport.isSuperRole(role) && RbacStatus.ACTIVE.getCode() == RbacSupport.statusOrDefault(role.getStatus())) {
-                willHaveSuper = true;
-            }
+        // 一次批量取回角色：既做存在性校验，也在内存里判超管
+        List<RbacRole> roles = roleRepository.listActiveByIds(roleIds);
+        if (roles.size() != roleIds.size()) {
+            throw RbacBiz.of(RbacErrorCode.ROLE_NOT_FOUND);
         }
+        boolean willHaveSuper = roles.stream().anyMatch(role -> RbacSupport.isSuperRole(role)
+                && RbacStatus.ACTIVE.getCode() == RbacSupport.statusOrDefault(role.getStatus()));
         boolean actorHasSuper = authRepository.userHasEnabledSuperAdmin(input.getActorId());
         if (willHaveSuper && !actorHasSuper) {
             throw RbacBiz.of(RbacErrorCode.GRANT_SUPER_DENIED);

@@ -8,6 +8,9 @@ import com.yomi.boot.java.component.rbac.enums.RbacBuiltinRole;
 import com.yomi.boot.java.component.rbac.repository.mapper.RbacRoleMapper;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Collection;
+import java.util.List;
+
 /**
  * sys_rbac_role 数据访问；Bean 由 {@code RbacAutoConfiguration} 注册，不做组件扫描
  *
@@ -27,6 +30,11 @@ public class RbacRoleRepository extends MyBatisDao<RbacRoleMapper, RbacRole>
         }
         RbacRole entity = getMapper().selectById(id);
         return entity != null && entity.exist() ? entity : null;
+    }
+
+    /** 按主键批量查询未删除的角色（一次查库，不随角色数增长） */
+    public List<RbacRole> listActiveByIds(Collection<Long> ids) {
+        return listByIds(ids);
     }
 
     /** 按编码查询未删除的角色 */

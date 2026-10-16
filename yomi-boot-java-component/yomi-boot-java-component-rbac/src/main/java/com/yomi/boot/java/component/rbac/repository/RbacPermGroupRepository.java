@@ -7,6 +7,9 @@ import com.yomi.boot.java.component.rbac.entity.RbacPermGroup;
 import com.yomi.boot.java.component.rbac.repository.mapper.RbacPermGroupMapper;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Collection;
+import java.util.List;
+
 /**
  * sys_rbac_perm_group 数据访问；Bean 由 {@code RbacAutoConfiguration} 注册，不做组件扫描
  *
@@ -26,6 +29,11 @@ public class RbacPermGroupRepository extends MyBatisDao<RbacPermGroupMapper, Rba
         }
         RbacPermGroup entity = getMapper().selectById(id);
         return entity != null && entity.exist() ? entity : null;
+    }
+
+    /** 按主键批量查询未删除的权限组（一次查库，不随权限组数增长） */
+    public List<RbacPermGroup> listActiveByIds(Collection<Long> ids) {
+        return listByIds(ids);
     }
 
     /** 按编码查询未删除的权限组 */

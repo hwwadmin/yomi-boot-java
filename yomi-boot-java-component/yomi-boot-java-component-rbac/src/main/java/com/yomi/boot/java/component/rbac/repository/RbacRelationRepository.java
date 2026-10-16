@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 关系表读写（物理覆盖）；Bean 由 {@code RbacAutoConfiguration} 注册，不做组件扫描
@@ -67,6 +69,10 @@ public class RbacRelationRepository implements IRbacRelationRepository {
     public void replaceUserRoles(long userId, List<Long> roleIds, long actorId) {
         userRoleRelMapper.delete(new LambdaQueryWrapper<RbacUserRoleRel>().eq(RbacUserRoleRel::getUserId, userId));
         List<Long> ids = roleIds == null ? List.of() : roleIds;
+        if (ids.isEmpty()) {
+            return;
+        }
+        List<RbacUserRoleRel> rows = new ArrayList<>(ids.size());
         for (Long roleId : ids) {
             RbacUserRoleRel row = new RbacUserRoleRel();
             row.init();
@@ -74,14 +80,19 @@ public class RbacRelationRepository implements IRbacRelationRepository {
             row.setRoleId(roleId);
             row.setCreateBy(actorId > 0 ? actorId : null);
             row.setUpdateBy(actorId > 0 ? actorId : null);
-            userRoleRelMapper.insert(row);
+            rows.add(row);
         }
+        userRoleRelMapper.insert(rows);
     }
 
     /** 先删后插，覆盖角色权限组 */
     public void replaceRoleGroups(long roleId, List<Long> groupIds, long actorId) {
         roleGroupRelMapper.delete(new LambdaQueryWrapper<RbacRoleGroupRel>().eq(RbacRoleGroupRel::getRoleId, roleId));
         List<Long> ids = groupIds == null ? List.of() : groupIds;
+        if (ids.isEmpty()) {
+            return;
+        }
+        List<RbacRoleGroupRel> rows = new ArrayList<>(ids.size());
         for (Long groupId : ids) {
             RbacRoleGroupRel row = new RbacRoleGroupRel();
             row.init();
@@ -89,14 +100,19 @@ public class RbacRelationRepository implements IRbacRelationRepository {
             row.setGroupId(groupId);
             row.setCreateBy(actorId > 0 ? actorId : null);
             row.setUpdateBy(actorId > 0 ? actorId : null);
-            roleGroupRelMapper.insert(row);
+            rows.add(row);
         }
+        roleGroupRelMapper.insert(rows);
     }
 
     /** 先删后插，覆盖组内权限 */
     public void replaceGroupPerms(long groupId, List<Long> permIds, long actorId) {
         groupPermRelMapper.delete(new LambdaQueryWrapper<RbacGroupPermRel>().eq(RbacGroupPermRel::getGroupId, groupId));
         List<Long> ids = permIds == null ? List.of() : permIds;
+        if (ids.isEmpty()) {
+            return;
+        }
+        List<RbacGroupPermRel> rows = new ArrayList<>(ids.size());
         for (Long permId : ids) {
             RbacGroupPermRel row = new RbacGroupPermRel();
             row.init();
@@ -104,8 +120,9 @@ public class RbacRelationRepository implements IRbacRelationRepository {
             row.setPermId(permId);
             row.setCreateBy(actorId > 0 ? actorId : null);
             row.setUpdateBy(actorId > 0 ? actorId : null);
-            groupPermRelMapper.insert(row);
+            rows.add(row);
         }
+        groupPermRelMapper.insert(rows);
     }
 
     /** 物理删除角色的全部绑定：角色-权限组、用户-角色（与 deleteRole 同事务调用） */
@@ -126,13 +143,13 @@ public class RbacRelationRepository implements IRbacRelationRepository {
         }
         List<RbacUserRoleRel> rels = userRoleRelMapper.selectList(new LambdaQueryWrapper<RbacUserRoleRel>()
                 .in(RbacUserRoleRel::getUserId, userIds));
-        Map<Long, RbacRole> roleById = new HashMap<>();
-        for (RbacUserRoleRel rel : rels) {
-            roleById.computeIfAbsent(rel.getRoleId(), roleRepository::findActive);
-        }
+        // 角色一次批量取回：逐角色查库会随"涉及的角色数 + 引用已软删角色的关系行数"线性放大
+        Map<Long, RbacRole> roleById = roleRepository.listActiveByIds(
+                        rels.stream().map(RbacUserRoleRel::getRoleId).distinct().toList())
+                .stream().collect(Collectors.toMap(RbacRole::getId, Function.identity(), (a, b) -> a));
         for (RbacUserRoleRel rel : rels) {
             RbacRole role = roleById.get(rel.getRoleId());
-            if (role != null && role.exist()) {
+            if (role != null) {
                 out.computeIfAbsent(rel.getUserId(), k -> new ArrayList<>()).add(role);
             }
         }

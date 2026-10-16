@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS `sys_http_log`
     KEY `idx_create_time` (`create_time`),
     KEY `idx_trace_id` (`trace_id`),
     KEY `idx_service_time` (`service_name`, `create_time`),
-    KEY `idx_status_time` (`status`, `create_time`)
+    KEY `idx_status_time` (`status`, `create_time`),
+    KEY `idx_service_user_time` (`service_name`, `user_id`, `create_time`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='HTTP请求日志表';
