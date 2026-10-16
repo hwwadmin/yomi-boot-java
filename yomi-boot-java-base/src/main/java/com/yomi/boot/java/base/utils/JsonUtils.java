@@ -2,7 +2,6 @@ package com.yomi.boot.java.base.utils;
 
 import com.yomi.boot.java.base.enums.DateFormat;
 import com.yomi.boot.java.base.exception.UtilsException;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.json.JsonReadFeature;
@@ -18,7 +17,6 @@ import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * JSON(jackson)工具类
@@ -29,8 +27,6 @@ public abstract class JsonUtils {
 
     /** 默认紧凑输出的 JsonMapper */
     private static final JsonMapper objectMapper = createObjectMapper();
-    /** 带缩进的 JsonMapper（日志/调试用） */
-    private static final JsonMapper prettyObjectMapper = createObjectMapper(true);
     /** Map<String, Object> 目标类型：键为 JSON 字段名，值按 Object 解析 */
     private static final JavaType mapOfType = objectMapper.getTypeFactory()
             .constructMapType(Map.class, String.class, Object.class);
@@ -47,17 +43,6 @@ public abstract class JsonUtils {
     public static String toJson(Object object) {
         try {
             return objectMapper.writeValueAsString(object);
-        } catch (JacksonException e) {
-            throw UtilsException.exception(e, "json 解析失败");
-        }
-    }
-
-    /**
-     * 对象序列化为 JSON 字符串（pretty-print 格式，带缩进换行），建议仅用于日志/调试输出
-     */
-    public static String toJsonPretty(Object object) {
-        try {
-            return prettyObjectMapper.writeValueAsString(object);
         } catch (JacksonException e) {
             throw UtilsException.exception(e, "json 解析失败");
         }
@@ -96,12 +81,6 @@ public abstract class JsonUtils {
         } catch (JacksonException e) {
             throw UtilsException.exception(e, "Json字符串解析错误，解析" + type.getTypeName());
         }
-    }
-
-    /** 先序列化为 JSON 再按目标类型反序列化 */
-    public static <T, K> T convert(K k, TypeReference<T> type) {
-        String json = toJson(k);
-        return parse(json, type);
     }
 
     /**
@@ -152,88 +131,6 @@ public abstract class JsonUtils {
         } catch (Exception e) {
             throw UtilsException.exception(e, "Json字符串解析为Map错误");
         }
-    }
-
-    /**
-     * Json字符串解析为javaBean对象
-     */
-    public static <T> T jsonStr2Bean(String jsonString, Class<T> clazz) {
-        if (StringUtils.isBlank(jsonString)) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(jsonString, clazz);
-        } catch (Exception e) {
-            throw UtilsException.exception(e, "Json字符串解析为javaBean对象错误");
-        }
-    }
-
-    /**
-     * javaBean对象解析为Json字符串
-     * 包含MAP集合等
-     */
-    public static <T> String bean2JsonStr(T object) {
-        if (Objects.isNull(object)) {
-            return "{}";
-        }
-        try {
-            return objectMapper.writeValueAsString(object);
-        } catch (Exception e) {
-            throw UtilsException.exception(e, "javaBean对象解析为Json字符串错误");
-        }
-    }
-
-    /**
-     * List<T>解析为Json字符串
-     */
-    public static <T> String list2JsonStr(List<T> objects) {
-        if (CollectionUtils.isEmpty(objects)) {
-            return "[]";
-        }
-        try {
-            return objectMapper.writeValueAsString(objects);
-        } catch (Exception e) {
-            throw UtilsException.exception(e, "List<T>解析为Json字符串错误");
-        }
-    }
-
-    /**
-     * MAP集合转javaBean对象
-     * <p>
-     * 解析失败抛 {@link UtilsException}
-     */
-    public static <T> T map2bean(Map<String, Object> map, Class<T> clazz) {
-        try {
-            if (Maps.isEmpty(map)) {
-                return ReflectUtils.newInstance(clazz);
-            }
-            return jsonStr2Bean(bean2JsonStr(map), clazz);
-        } catch (UtilsException e) {
-            throw e;
-        } catch (Exception e) {
-            throw UtilsException.exception(e, "MAP集合转javaBean对象异常");
-        }
-    }
-
-    /**
-     * javaBean对象转MAP集合
-     * <p>
-     * 解析失败抛 {@link UtilsException}
-     */
-    public static Map<String, Object> bean2map(Object bean) {
-        try {
-            return jsonStr2Map(bean2JsonStr(bean));
-        } catch (UtilsException e) {
-            throw e;
-        } catch (Exception e) {
-            throw UtilsException.exception(e, "bean转换map集合对象异常");
-        }
-    }
-
-    /** 构造带一个类型参数的泛型 JavaType（如 {@code List<Foo>}） */
-    public static JavaType constructParametricType(Class<?> parametrized, Type type) {
-        JavaType javaType = objectMapper.getTypeFactory().constructType(type);
-        return objectMapper.getTypeFactory().constructParametricType(parametrized, javaType);
     }
 
     /**

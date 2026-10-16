@@ -1,4 +1,7 @@
-package com.yomi.boot.java.component.desensitize;
+package com.yomi.boot.java.component.desensitize.service;
+
+import com.yomi.boot.java.component.desensitize.DesensitizeStrategyRegistry;
+import com.yomi.boot.java.component.desensitize.IDesensitizeService;
 
 /**
  * 脱敏服务默认实现：委托策略中心 {@link DesensitizeStrategyRegistry}

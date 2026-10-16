@@ -31,7 +31,7 @@ class JsonUtilsTest {
     record ModeBean(Mode mode) {
     }
 
-    /** public字段 + 无参构造，供 map2bean 反射路径使用 */
+    /** public字段 + 无参构造，供 map 转 bean 往返用例使用 */
     static class Bean {
         public int x;
         public String name;
@@ -47,7 +47,6 @@ class JsonUtilsTest {
     @Test
     void parseBlankReturnsNull() {
         assertNull(JsonUtils.parse(" ", Point.class));
-        assertNull(JsonUtils.jsonStr2Bean(" ", Point.class));
     }
 
     @Test
@@ -97,9 +96,7 @@ class JsonUtilsTest {
 
     @Test
     void nullAndEmptyConventions() {
-        assertEquals("{}", JsonUtils.bean2JsonStr(null));
-        assertEquals("[]", JsonUtils.list2JsonStr(null));
-        assertEquals("[]", JsonUtils.list2JsonStr(List.of()));
+        assertEquals("null", JsonUtils.toJson(null));
         assertTrue(JsonUtils.jsonStr2List(" ").isEmpty());
         assertTrue(JsonUtils.jsonStr2Map(" ").isEmpty());
         assertTrue(JsonUtils.jsonStr2List(null, Point.class).isEmpty());
@@ -137,28 +134,18 @@ class JsonUtilsTest {
     }
 
     @Test
-    void map2beanAndBean2map() {
+    void mapToBeanRoundTrip() {
         Map<String, Object> map = Maps.of();
         map.put("x", 3);
         map.put("name", "n");
-        Bean bean = JsonUtils.map2bean(map, Bean.class);
+        // map 转 bean：先序列化为 JSON 再按目标类型解析
+        Bean bean = JsonUtils.parse(JsonUtils.toJson(map), Bean.class);
         assertEquals(3, bean.x);
         assertEquals("n", bean.name);
-        // 空 map → 反射实例化，不抛异常
-        Bean empty = JsonUtils.map2bean(Maps.of(), Bean.class);
-        assertEquals(0, empty.x);
-        assertNull(empty.name);
 
-        Map<String, Object> back = JsonUtils.bean2map(bean);
+        Map<String, Object> back = JsonUtils.jsonStr2Map(JsonUtils.toJson(bean));
         assertEquals(3, back.get("x"));
         assertEquals("n", back.get("name"));
-    }
-
-    @Test
-    void convertWithTypeReference() {
-        assertEquals(List.of("a", "b"),
-                JsonUtils.convert(List.of("a", "b"), new tools.jackson.core.type.TypeReference<List<String>>() {
-                }));
     }
 
 }

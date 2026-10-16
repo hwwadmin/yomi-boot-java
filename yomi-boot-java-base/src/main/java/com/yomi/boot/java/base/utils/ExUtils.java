@@ -50,16 +50,10 @@ public class ExUtils {
     }
 
     /**
-     * 判断是否由指定异常类引起
+     * 判断是否由指定异常类引起（可传多个类型，任一命中即真）
      */
-    public static boolean isCausedBy(Throwable throwable, Class<? extends Exception> causeClasses) {
-        return getCausedBy(throwable, causeClasses) != null;
-    }
-
-    /**
-     * 判断是否由指定异常类引起
-     */
-    public static boolean isCausedBy(Throwable throwable, Class<? extends Exception>[] causeClasses) {
+    @SafeVarargs
+    public static boolean isCausedBy(Throwable throwable, Class<? extends Exception>... causeClasses) {
         if (causeClasses == null || causeClasses.length == 0) {
             return false;
         }
@@ -86,7 +80,7 @@ public class ExUtils {
         }
         if (StringUtils.isBlank(exceptionMsg)) return DEFAULT_EXCEPTION_MSG;
         String[] msgLines = exceptionMsg.split("\\r?\\n", 2);
-        String firstLine = msgLines.length > 0 ? msgLines[0].trim() : DEFAULT_EXCEPTION_MSG;
+        String firstLine = msgLines[0].trim();
         int colonSeparatorIndex = firstLine.indexOf(": ");
         return colonSeparatorIndex > -1 && colonSeparatorIndex < firstLine.length() - 2 ? firstLine.substring(colonSeparatorIndex + 2).trim() : firstLine;
     }

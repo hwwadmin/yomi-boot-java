@@ -5,7 +5,6 @@ import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
 import org.springframework.http.MediaType;
-import org.springframework.util.FastByteArrayOutputStream;
 
 import java.io.IOException;
 import java.io.OutputStreamWriter;
@@ -25,14 +24,8 @@ import java.util.Map;
  */
 public class CachingResponseWrapper extends HttpServletResponseWrapper {
 
-    /** 缓存上限（字节） */
-    private final int limit;
-
-    /** 缓存（最多 limit 字节） */
-    private final FastByteArrayOutputStream cache = new FastByteArrayOutputStream(256);
-
-    /** 是否已截断 */
-    private boolean truncated;
+    /** tee 旁路缓冲（上限内保留副本，写满仅标记截断） */
+    private final TeeBytes teeBytes;
 
     /** 记录到的响应头（保持写入顺序；同名以最后值为准） */
     private final Map<String, String> headers = new LinkedHashMap<>();
@@ -45,7 +38,7 @@ public class CachingResponseWrapper extends HttpServletResponseWrapper {
 
     public CachingResponseWrapper(HttpServletResponse response, int limit) {
         super(response);
-        this.limit = limit;
+        this.teeBytes = new TeeBytes(limit);
     }
 
     /** 返回 tee 输出流，多次调用同一实例 */
@@ -130,7 +123,7 @@ public class CachingResponseWrapper extends HttpServletResponseWrapper {
 
     /** 已缓存的响应体文本；无数据返回 null */
     public String cachedBody() {
-        byte[] bytes = cache.toByteArray();
+        byte[] bytes = teeBytes.toByteArray();
         if (bytes.length == 0) {
             return null;
         }
@@ -161,7 +154,7 @@ public class CachingResponseWrapper extends HttpServletResponseWrapper {
 
     /** 是否被截断（仅影响日志副本，真实响应始终完整） */
     public boolean isTruncated() {
-        return truncated;
+        return teeBytes.isTruncated();
     }
 
     /**
@@ -215,24 +208,6 @@ public class CachingResponseWrapper extends HttpServletResponseWrapper {
         }
     }
 
-    /** tee 缓存：写满上限后仅标记截断，不再缓存（透传不受影响） */
-    private void tee(byte[] b, int off, int len) throws IOException {
-        if (truncated) {
-            return;
-        }
-        int remaining = limit - cache.size();
-        if (remaining <= 0) {
-            truncated = true;
-            return;
-        }
-        if (len > remaining) {
-            cache.write(b, off, remaining);
-            truncated = true;
-        } else {
-            cache.write(b, off, len);
-        }
-    }
-
     /** 先写真实响应再旁路缓存：客户端数据完整性不依赖日志逻辑 */
     private final class TeeServletOutputStream extends ServletOutputStream {
 
@@ -248,14 +223,14 @@ public class CachingResponseWrapper extends HttpServletResponseWrapper {
         public void write(int b) throws IOException {
             delegate.write(b);
             byte[] one = {(byte) b};
-            tee(one, 0, 1);
+            teeBytes.tee(one, 0, 1);
         }
 
         /** 写客户端并 tee 缓存字节块 */
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
             delegate.write(b, off, len);
-            tee(b, off, len);
+            teeBytes.tee(b, off, len);
         }
 
         /** 委托原流 flush */

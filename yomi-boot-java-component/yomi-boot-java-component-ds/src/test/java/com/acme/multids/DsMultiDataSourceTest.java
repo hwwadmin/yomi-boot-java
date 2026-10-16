@@ -7,7 +7,6 @@ import com.yomi.boot.java.component.ds.support.DsMaster;
 import com.yomi.boot.java.component.ds.testmapper.reportstyle.ReportTestMapper;
 import com.yomi.boot.java.component.ds.testmapper.masterstyle.ComponentStyleTestMapper;
 import org.apache.ibatis.mapping.DatabaseIdProvider;
-import org.apache.ibatis.plugin.Interceptor;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.type.TypeHandler;
 import org.junit.jupiter.api.Test;

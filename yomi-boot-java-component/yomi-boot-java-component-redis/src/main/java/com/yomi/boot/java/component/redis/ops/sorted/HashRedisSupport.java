@@ -65,7 +65,7 @@ public class HashRedisSupport {
     public <T> T get(final String key, final String hKey, final Class<T> clazz) {
         Object value = get(key, hKey);
         if (Objects.isNull(value)) return null;
-        return JsonUtils.jsonStr2Bean(JsonUtils.bean2JsonStr(value), clazz);
+        return JsonUtils.parse(JsonUtils.toJson(value), clazz);
     }
 
     /**
@@ -75,7 +75,7 @@ public class HashRedisSupport {
         // 只是个提供了list的反序列化方法，如果不是list数据不要用这个方法
         Object value = get(key, hKey);
         if (Objects.isNull(value)) return Lists.of();
-        return JsonUtils.jsonStr2List(JsonUtils.bean2JsonStr(value), clazz);
+        return JsonUtils.jsonStr2List(JsonUtils.toJson(value), clazz);
     }
 
     /**
@@ -107,7 +107,7 @@ public class HashRedisSupport {
 
     /** MGET 批量取值并反序列化 */
     public <T> List<T> multiGet(final String key, final Collection<String> hKeys, final Class<T> clazz) {
-        return JsonUtils.jsonStr2List(JsonUtils.bean2JsonStr(multiGet(key, hKeys)), clazz);
+        return JsonUtils.jsonStr2List(JsonUtils.toJson(multiGet(key, hKeys)), clazz);
     }
 
 }

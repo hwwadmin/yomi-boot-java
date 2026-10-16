@@ -85,10 +85,4 @@ public abstract class Maps {
         return newMap;
     }
 
-    /** 将原始 Map 转为 {@code Map<Object, Object>}（供遗留 API 使用） */
-    @SuppressWarnings("unchecked, rawtypes")
-    public static Map<Object, Object> pack(Map map) {
-        return map;
-    }
-
 }

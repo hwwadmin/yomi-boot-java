@@ -6,7 +6,6 @@ import com.yomi.boot.java.component.event.model.OutboxStatus;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.Instant;
-import java.util.List;
 
 /**
  * sys_event_outbox 的 Mapper：**仅供 {@link EventOutboxRepository} 使用**

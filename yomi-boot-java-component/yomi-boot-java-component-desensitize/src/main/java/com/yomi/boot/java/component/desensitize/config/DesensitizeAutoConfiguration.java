@@ -1,6 +1,6 @@
 package com.yomi.boot.java.component.desensitize.config;
 
-import com.yomi.boot.java.component.desensitize.DesensitizeService;
+import com.yomi.boot.java.component.desensitize.service.DesensitizeService;
 import com.yomi.boot.java.component.desensitize.IDesensitizeService;
 import com.yomi.boot.java.component.desensitize.DesensitizeStrategy;
 import com.yomi.boot.java.component.desensitize.DesensitizeStrategyRegistry;

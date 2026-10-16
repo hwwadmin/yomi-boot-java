@@ -35,10 +35,6 @@ public final class RedisTestSettings {
         return intSetting("yomi.test.redis.database", "YOMI_REDIS_DATABASE", 0);
     }
 
-    public static String skipReason() {
-        return "未配置 yomi.test.redis.host / YOMI_REDIS_HOST，跳过 Redis 集成测试";
-    }
-
     /** 读取 Redis 集成测试配置项 */
     private static String setting(String propertyKey, String envKey) {
         String value = System.getProperty(propertyKey);

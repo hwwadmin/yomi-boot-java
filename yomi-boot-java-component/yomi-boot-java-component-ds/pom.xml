@@ -18,6 +18,12 @@
             <artifactId>yomi-boot-java-core</artifactId>
         </dependency>
 
+        <!-- tx（@Transactional / TransactionTemplate / 保存点） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+        </dependency>
+
         <!-- jdbc -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

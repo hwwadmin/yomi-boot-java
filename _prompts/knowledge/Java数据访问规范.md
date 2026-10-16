@@ -5,7 +5,7 @@
 ## 0. 文档信息
 
 - **文档名称**: Java数据访问规范
-- **描述**: 使用 `yomi-boot-java-component-ds`（MyBatis-Plus + 动态数据源）时的数据访问约定；**不规定**业务工程包名与分层命名，仅约束与 boot 集成时的持久化形态与安全底线。
+- **描述**: 使用 `yomi-boot-java-component-ds`（MyBatis-Plus；主库由组件装配、附加库由业务自建）时的数据访问约定；**不规定**业务工程包名与分层命名，仅约束与 boot 集成时的持久化形态与安全底线。
 - **适用**: 业务 Maven 工程；《需求显化》《显化审核》《代码巡检》中 SQL/Repository 相关章节。
 
 ---
@@ -70,8 +70,9 @@ public class OrderDomainRepositoryImpl extends MyBatisDao<OrderMapper, OrderEnti
 
 ### 4.3 多数据源
 
-- 使用 `spring.datasource.dynamic.*`；在 spec 中注明哪张表走哪个 datasource。
-- 单请求跨库写：须在 [Java事务与一致性规范](./Java事务与一致性规范.md) 中单独决策（默认避免，无 XA）。
+- 主库走 `spring.datasource.*`（组件装配出 `masterXxx` 四件套，全 `@Primary`）；**附加库的数据源、`SqlSessionFactory`、事务管理器由业务自建**，不要使用已移除的 `spring.datasource.dynamic.*`。
+- 自建附加库时 `@MapperScan` 必须写齐 `sqlSessionFactoryRef` 与 `sqlSessionTemplateRef`（只写一个会被主库模板/工厂劫持，启动即失败），附加库事务显式指定 `transactionManager`。
+- 单请求跨库写：须在 [Java事务与一致性规范](./Java事务与一致性规范.md) 中单独决策（默认避免，无 XA）；组件默认对跨库访问报错（`yomi.ds.transaction-guard=error`）。
 
 ---
 

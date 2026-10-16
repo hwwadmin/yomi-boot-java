@@ -48,7 +48,7 @@ public class CommonRedisTemplate extends RedisTemplate<String, Object> {
         if (value == null) {
             return null;
         }
-        return JsonUtils.jsonStr2Bean(JsonUtils.bean2JsonStr(value), type);
+        return JsonUtils.parse(JsonUtils.toJson(value), type);
     }
 
     /**

@@ -1,8 +1,10 @@
 package com.yomi.boot.java.component.rbac.repository;
 
+import com.yomi.boot.java.base.utils.IdUtils;
 import com.yomi.boot.java.component.rbac.repository.mapper.RbacGroupPermRelMapper;
 import com.yomi.boot.java.component.rbac.repository.mapper.RbacRoleGroupRelMapper;
 import com.yomi.boot.java.component.rbac.repository.mapper.RbacUserRoleRelMapper;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Configuration;
@@ -26,6 +28,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * 不会留下"已删未插"的绑定丢失（真实回滚由事务管理器完成，本用例锁定"同一事务 + 失败请求回滚"）
  */
 class RbacRelationRepositoryTransactionTest {
+
+    /** 仓储写方法经 BaseEntity.init() 生成雪花主键，测试内自行初始化（不依赖别的用例先跑） */
+    @BeforeAll
+    static void initIds() {
+        IdUtils.initialize(1L, 0L);
+    }
 
     @Test
     void everyWriteMethodRunsInTransactionAndCommits() {

@@ -1,7 +1,6 @@
 package com.yomi.boot.java.component.idempotency.core;
 
 import com.yomi.boot.java.base.utils.ExUtils;
-import com.yomi.boot.java.base.utils.JsonUtils;
 import com.yomi.boot.java.component.ds.support.DbDuplicateKey;
 import com.yomi.boot.java.component.ds.support.SavepointScope;
 import com.yomi.boot.java.component.idempotency.config.IdempotencyProperties;
@@ -11,6 +10,7 @@ import com.yomi.boot.java.component.idempotency.repository.IIdempotencyRecordRep
 import com.yomi.boot.java.component.idempotency.store.IdempotencyCacheLoad;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyKeys;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyRedisStore;
+import com.yomi.boot.java.component.idempotency.support.IdempotencyResultJson;
 import com.yomi.boot.java.component.redis.LockUtils;
 import com.yomi.boot.java.component.redis.exception.LockBusyException;
 import lombok.RequiredArgsConstructor;
@@ -25,8 +25,6 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import tools.jackson.databind.cfg.DateTimeFeature;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -48,11 +46,6 @@ import java.util.function.Supplier;
 @Slf4j
 @RequiredArgsConstructor
 public class IdempotencyGuard {
-
-    /** 结果 JSON 序列化（与 Redis 缓存一致） */
-    private static final JsonMapper MAPPER = JsonUtils.createObjectMapper().rebuild()
-            .configure(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS, false)
-            .build();
 
     /** 幂等记录表访问 */
     private final IIdempotencyRecordRepository repository;
@@ -278,7 +271,7 @@ public class IdempotencyGuard {
         }
 
         Object fnResult = fn.get();
-        String resultPayload = marshalResult(fnResult);
+        String resultPayload = IdempotencyResultJson.marshal(fnResult);
         String resultType = fnResult == null ? null : fnResult.getClass().getName();
         repository.markCompleted(row.getId(), resultType, resultPayload);
         return fnResult;
@@ -301,7 +294,7 @@ public class IdempotencyGuard {
             throw IdempotencyException.processing();
         }
         assertResultTypeCompatible(existing, returnType);
-        return unmarshalResult(existing.getResultPayload(), returnType);
+        return IdempotencyResultJson.unmarshal(existing.getResultPayload(), returnType);
     }
 
     /** 校验请求指纹与已存记录一致 */
@@ -349,26 +342,6 @@ public class IdempotencyGuard {
             return clazz;
         }
         return null;
-    }
-
-    /** 序列化业务返回值为 JSON */
-    private static String marshalResult(Object value) {
-        if (value == null) {
-            return null;
-        }
-        String json = MAPPER.writeValueAsString(value);
-        if ("null".equals(json)) {
-            return null;
-        }
-        return json;
-    }
-
-    /** 反序列化业务返回值 */
-    private static Object unmarshalResult(String data, Type type) {
-        if (StringUtils.isBlank(data)) {
-            return null;
-        }
-        return MAPPER.readValue(data, MAPPER.constructType(type));
     }
 
 }

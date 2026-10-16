@@ -63,7 +63,7 @@ public class RoundRobinConfig {
     /** 停机时等待本任务线程退出 */
     private final Duration shutdownAwait;
 
-    /** 校验用户提交的验证码 */
+    /** 校验任务配置合法性 */
     public void validate() {
         requireName(name);
         requireMinInterval(frequency, "frequency");

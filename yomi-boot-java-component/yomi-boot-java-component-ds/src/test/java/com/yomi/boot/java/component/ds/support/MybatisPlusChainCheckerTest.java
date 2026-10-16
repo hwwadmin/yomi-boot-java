@@ -17,7 +17,6 @@ import org.springframework.context.ApplicationContext;
 import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 

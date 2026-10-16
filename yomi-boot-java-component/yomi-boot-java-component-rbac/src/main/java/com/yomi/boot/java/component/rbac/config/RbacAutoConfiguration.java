@@ -5,8 +5,8 @@ import com.yomi.boot.java.component.rbac.IRbacAdminService;
 import com.yomi.boot.java.component.rbac.IRbacAuthService;
 import com.yomi.boot.java.component.rbac.cache.RbacProjectionKeys;
 import com.yomi.boot.java.component.rbac.cache.RbacProjectionStore;
-import com.yomi.boot.java.component.rbac.core.RbacAdminService;
-import com.yomi.boot.java.component.rbac.core.RbacAuthService;
+import com.yomi.boot.java.component.rbac.service.RbacAdminService;
+import com.yomi.boot.java.component.rbac.service.RbacAuthService;
 import com.yomi.boot.java.component.rbac.relay.RbacProjectionRefresher;
 import com.yomi.boot.java.component.rbac.repository.*;
 import com.yomi.boot.java.component.rbac.repository.mapper.RbacAuthMapper;
@@ -160,9 +160,7 @@ public class RbacAutoConfiguration {
                                              IRbacPermGroupRepository permGroupRepository,
                                              IRbacRoleRepository roleRepository,
                                              IRbacRelationRepository relationRepository,
-                                             IRbacAuthRepository authRepository,
-                                             IRbacAuthService authService,
-                                             RbacProperties properties) {
+                                             IRbacAuthRepository authRepository) {
         return new RbacAdminService(permRepository, permGroupRepository, roleRepository,
                 relationRepository, authRepository);
     }

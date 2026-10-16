@@ -1,4 +1,4 @@
-package com.yomi.boot.java.component.rbac.core;
+package com.yomi.boot.java.component.rbac.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yomi.boot.java.base.model.PageResponse;

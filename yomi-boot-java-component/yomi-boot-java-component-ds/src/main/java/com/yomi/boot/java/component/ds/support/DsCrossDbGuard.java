@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  * 覆盖边界（别当成全覆盖）：只覆盖<b>经 MyBatis</b> 的语句，且只覆盖挂了本守卫的工厂；
  * {@code JdbcTemplate}、原生 JDBC、未挂守卫的自建工厂不在覆盖内。
  * <p>
- * 开关：{@code yomi.boot.ds.transaction-guard=error|off}（默认 {@code error}）。ds 装配时把它设进
+ * 开关：{@code yomi.ds.transaction-guard=error|off}（默认 {@code error}）。ds 装配时把它设进
  * 静态开关，业务按模板创建的守卫实例同样受它控制；只影响日志诊断，不影响任何执行路径。
  *
  * @author zwei
@@ -75,7 +75,7 @@ public class DsCrossDbGuard implements Interceptor {
         return new DsCrossDbGuard(libraryName, dataSource);
     }
 
-    /** 解析 {@code yomi.boot.ds.transaction-guard}：{@code error}（默认，开）/ {@code off}（关）；非法值启动失败 */
+    /** 解析 {@code yomi.ds.transaction-guard}：{@code error}（默认，开）/ {@code off}（关）；非法值启动失败 */
     public static boolean parseEnabled(String mode) {
         if (mode == null || mode.isBlank() || "error".equalsIgnoreCase(mode.trim())) {
             return true;
@@ -83,7 +83,7 @@ public class DsCrossDbGuard implements Interceptor {
         if ("off".equalsIgnoreCase(mode.trim())) {
             return false;
         }
-        throw new IllegalStateException("yomi.boot.ds.transaction-guard 取值非法: [" + mode
+        throw new IllegalStateException("yomi.ds.transaction-guard 取值非法: [" + mode
                 + "]，合法取值: error（默认，跨库访问记 ERROR）、off（关闭）");
     }
 

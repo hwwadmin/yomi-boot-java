@@ -1,6 +1,7 @@
 package com.yomi.boot.java.component.desensitize;
 
 import com.yomi.boot.java.component.desensitize.config.DesensitizeAutoConfiguration;
+import com.yomi.boot.java.component.desensitize.service.DesensitizeService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;

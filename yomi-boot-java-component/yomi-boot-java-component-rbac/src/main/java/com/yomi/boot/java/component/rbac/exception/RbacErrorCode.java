@@ -21,7 +21,6 @@ public enum RbacErrorCode {
     PERM_GROUP_NOT_FOUND("RBAC_PERM_GROUP_NOT_FOUND", StatusCode.bizError.getCode(), "权限组不存在"),
     CODE_CONFLICT("RBAC_CODE_CONFLICT", StatusCode.bizError.getCode(), "编码已存在"),
     BUILTIN_IMMUTABLE("RBAC_BUILTIN_IMMUTABLE", StatusCode.bizError.getCode(), "内置角色不可变更"),
-    LAST_SUPER_ADMIN("RBAC_LAST_SUPER_ADMIN", StatusCode.bizError.getCode(), "禁止移除最后一名启用超管"),
     GRANT_SUPER_DENIED("RBAC_GRANT_SUPER_DENIED", StatusCode.bizError.getCode(), "仅超管可授予超管角色"),
     UNBIND_SELF_SUPER("RBAC_UNBIND_SELF_SUPER", StatusCode.bizError.getCode(), "禁止解绑自身超管角色"),
     API_KEY_CONFLICT("RBAC_API_KEY_CONFLICT", StatusCode.bizError.getCode(), "HTTP 方法与路径已存在"),

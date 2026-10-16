@@ -5,7 +5,6 @@ import com.yomi.boot.java.component.event.IEventService;
 import com.yomi.boot.java.component.event.consume.EventInboxGuard;
 import com.yomi.boot.java.component.event.publish.EventPublisher;
 import com.yomi.boot.java.component.event.publish.IEventPublisher;
-import com.yomi.boot.java.component.event.relay.EventOutboxDlqAdmin;
 import com.yomi.boot.java.component.event.relay.OutboxDispatcher;
 import com.yomi.boot.java.component.event.relay.OutboxRelayCoordinator;
 import com.yomi.boot.java.component.event.repository.EventInboxRepository;
@@ -189,12 +188,6 @@ public class EventAutoConfiguration {
         public IEventPublisher eventPublisher(IEventOutboxRepository repository, EventKeys keys,
                                             EventProperties properties) {
             return new EventPublisher(repository, keys, properties);
-        }
-
-        @Bean
-        @ConditionalOnMissingBean
-        public EventOutboxDlqAdmin eventOutboxDlqAdmin(IEventOutboxDlqRepository dlqRepository, EventKeys keys) {
-            return new EventOutboxDlqAdmin(dlqRepository, keys);
         }
 
         @Bean

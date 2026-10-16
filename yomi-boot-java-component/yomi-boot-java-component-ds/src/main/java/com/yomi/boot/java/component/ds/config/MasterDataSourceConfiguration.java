@@ -97,7 +97,7 @@ public class MasterDataSourceConfiguration {
     public SqlSessionFactory masterSqlSessionFactory(DsSqlSessionFactoryBuilder builder,
                                                      ListableBeanFactory beanFactory,
                                                      ObjectProvider<DatabaseIdProvider> databaseIdProvider,
-                                                     @Value("${yomi.boot.ds.transaction-guard:error}") String transactionGuard)
+                                                     @Value("${yomi.ds.transaction-guard:error}") String transactionGuard)
             throws Exception {
         DsCrossDbGuard.setEnabled(DsCrossDbGuard.parseEnabled(transactionGuard));
         DataSource dataSource = DsMaster.resolveDataSource(beanFactory).bean();

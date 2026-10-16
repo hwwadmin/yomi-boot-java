@@ -122,7 +122,7 @@ class DsCrossDbGuardTest {
         assertTrue(DsCrossDbGuard.parseEnabled("ERROR"));
         assertFalse(DsCrossDbGuard.parseEnabled("off"));
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> DsCrossDbGuard.parseEnabled("warn"));
-        assertTrue(ex.getMessage().contains("yomi.boot.ds.transaction-guard"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("yomi.ds.transaction-guard"), ex.getMessage());
         assertTrue(ex.getMessage().contains("off"), "报错要列出合法取值: " + ex.getMessage());
     }
 

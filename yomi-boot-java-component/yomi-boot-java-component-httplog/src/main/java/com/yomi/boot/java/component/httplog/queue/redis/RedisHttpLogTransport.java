@@ -4,6 +4,7 @@ import com.yomi.boot.java.base.utils.JsonUtils;
 import com.yomi.boot.java.component.httplog.config.HttpLogProperties;
 import com.yomi.boot.java.component.httplog.desensitize.HttpLogDesensitizer;
 import com.yomi.boot.java.component.httplog.model.HttpLogRecord;
+import com.yomi.boot.java.component.httplog.queue.AbstractBufferedTransport;
 import com.yomi.boot.java.component.httplog.queue.HttpLogBatchHandler;
 import com.yomi.boot.java.component.httplog.queue.HttpLogConsumer;
 import com.yomi.boot.java.component.httplog.queue.HttpLogSink;
@@ -25,10 +26,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * redis 模式传输：L1 有界缓冲 → 发送线程批量写入 Redis → 消费线程批量读取 → 回调
@@ -40,22 +37,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author zwei
  */
 @Slf4j
-public class RedisHttpLogTransport implements HttpLogSink, HttpLogConsumer {
+public class RedisHttpLogTransport extends AbstractBufferedTransport implements HttpLogSink, HttpLogConsumer {
 
     /** Redis Stream 消息体字段名 */
     private static final String PAYLOAD_FIELD = "payload";
 
-    /** 模块配置 */
-    private final HttpLogProperties properties;
-
     /** Redis 读写 */
     private final StringRedisTemplate redisTemplate;
-
-    /** 发送前补脱敏 */
-    private final HttpLogDesensitizer desensitizer;
-
-    /** 队列深度、丢弃与失败指标 */
-    private final HttpLogMetrics metrics;
 
     /** 队列键：{prefix}:{serviceName} */
     private final String queueKey;
@@ -65,15 +53,6 @@ public class RedisHttpLogTransport implements HttpLogSink, HttpLogConsumer {
 
     /** 消费者名（多实例必须互异） */
     private final String consumerName;
-
-    /** L1 缓冲 */
-    private final BlockingQueue<HttpLogRecord> buffer;
-
-    /** 发送/消费线程是否在运行 */
-    private final AtomicBoolean running = new AtomicBoolean(false);
-
-    /** 发送侧是否有批次尚未写完 Redis */
-    private final AtomicBoolean inFlight = new AtomicBoolean(false);
 
     /** 缓冲 → Redis 的发送线程 */
     private volatile Thread sender;
@@ -87,28 +66,11 @@ public class RedisHttpLogTransport implements HttpLogSink, HttpLogConsumer {
     public RedisHttpLogTransport(HttpLogProperties properties, HttpLogKeys keys,
                                  StringRedisTemplate redisTemplate, HttpLogDesensitizer desensitizer,
                                  HttpLogMetrics metrics) {
-        this.properties = properties;
+        super("redis", properties, metrics, desensitizer);
         this.redisTemplate = redisTemplate;
-        this.desensitizer = desensitizer;
-        this.metrics = metrics;
         this.queueKey = keys.redisQueueKey(properties);
         this.group = keys.redisGroup(properties);
         this.consumerName = resolveConsumerName(properties.getRedis());
-        this.buffer = new ArrayBlockingQueue<>(properties.getBuffer().getCapacity());
-        metrics.registerQueueDepth("redis", buffer);
-    }
-
-    /** LPUSH 到 Redis 列表，失败计指标 */
-    @Override
-    public boolean offer(HttpLogRecord record) {
-        if (buffer.offer(record)) {
-            return true;
-        }
-        if (properties.getBuffer().getDropPolicy() == HttpLogProperties.DropPolicy.DROP_OLD) {
-            buffer.poll();
-            return buffer.offer(record);
-        }
-        return false;
     }
 
     /** 启动 BRPOP 消费线程 */
@@ -117,7 +79,7 @@ public class RedisHttpLogTransport implements HttpLogSink, HttpLogConsumer {
         if (!running.compareAndSet(false, true)) {
             return;
         }
-        sender = Thread.ofPlatform().name("httplog-redis-sender").daemon(true).start(this::sendLoop);
+        sender = startLoopThread("httplog-redis-sender", "redis-send", "send-failed", "redis-send-loop");
         boolean stream = properties.getRedis().getStructure() == HttpLogProperties.RedisStructure.STREAM;
         consumerThread = Thread.ofPlatform().name("httplog-redis-consumer").daemon(true).start(() -> {
             if (stream) {
@@ -139,65 +101,9 @@ public class RedisHttpLogTransport implements HttpLogSink, HttpLogConsumer {
         stopThread(consumerThread, timeout);
     }
 
-    /** 等待列表被消费空（带超时） */
-    @Override
-    public void flush(Duration timeout) {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (buffer.isEmpty() && !inFlight.get()) {
-                return;
-            }
-            try {
-                Thread.sleep(10);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        int remaining = buffer.size();
-        if (remaining > 0) {
-            metrics.dropped("shutdown-timeout", remaining);
-        }
-    }
-
-    /** 发送循环：取批 → 补脱敏 → 写介质；失败丢弃计数（重试耗尽即丢，符合允许丢语义） */
-    private void sendLoop() {
-        HttpLogProperties.Buffer bufferConfig = properties.getBuffer();
-        int batchSize = bufferConfig.getBatchSize();
-        long flushMillis = bufferConfig.getFlushInterval().toMillis();
-        List<HttpLogRecord> batch = new ArrayList<>(Math.min(batchSize, 1024));
-        while (running.get()) {
-            try {
-                HttpLogRecord first = buffer.poll(flushMillis, TimeUnit.MILLISECONDS);
-                if (first == null) {
-                    continue;
-                }
-                batch.add(first);
-                buffer.drainTo(batch, batchSize - 1);
-                inFlight.set(true);
-                try {
-                    for (HttpLogRecord record : batch) {
-                        desensitizer.maskDeferredBodies(record);
-                    }
-                    writeToRedis(batch);
-                } catch (Exception e) {
-                    metrics.failed("redis-send", e);
-                    metrics.dropped("send-failed", batch.size());
-                } finally {
-                    batch.clear();
-                    inFlight.set(false);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            } catch (Throwable t) {
-                metrics.failed("redis-send-loop", t);
-            }
-        }
-    }
-
     /** List 结构读写 */
-    private void writeToRedis(List<HttpLogRecord> batch) {
+    @Override
+    protected void writeBatch(List<HttpLogRecord> batch) {
         if (properties.getRedis().getStructure() == HttpLogProperties.RedisStructure.STREAM) {
             for (HttpLogRecord record : batch) {
                 redisTemplate.opsForStream().add(StreamRecords.newRecord()
@@ -383,19 +289,6 @@ public class RedisHttpLogTransport implements HttpLogSink, HttpLogConsumer {
             return InetAddress.getLocalHost().getHostName();
         } catch (Exception e) {
             return "httplog-unknown-host";
-        }
-    }
-
-    /** 中断并等待工作线程结束（上限为 shutdown 超时） */
-    private void stopThread(Thread thread, Duration timeout) {
-        if (thread == null) {
-            return;
-        }
-        thread.interrupt();
-        try {
-            thread.join(Math.max(100L, timeout.toMillis()));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
     }
 

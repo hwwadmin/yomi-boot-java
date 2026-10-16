@@ -1,7 +1,6 @@
-package com.yomi.boot.java.component.rbac.core.impl;
+package com.yomi.boot.java.component.rbac.service;
 
 import com.yomi.boot.java.base.exception.BizException;
-import com.yomi.boot.java.component.rbac.core.RbacAdminService;
 import com.yomi.boot.java.component.rbac.entity.RbacRole;
 import com.yomi.boot.java.component.rbac.enums.RbacBuiltinRole;
 import com.yomi.boot.java.component.rbac.enums.RbacStatus;

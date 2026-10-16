@@ -1,8 +1,7 @@
-package com.yomi.boot.java.component.rbac.core.impl;
+package com.yomi.boot.java.component.rbac.service;
 
 import com.yomi.boot.java.base.exception.BizException;
 import com.yomi.boot.java.base.utils.IdUtils;
-import com.yomi.boot.java.component.rbac.core.RbacAdminService;
 import com.yomi.boot.java.component.rbac.entity.RbacRole;
 import com.yomi.boot.java.component.rbac.exception.RbacErrorCode;
 import com.yomi.boot.java.component.rbac.input.CreateRoleInput;

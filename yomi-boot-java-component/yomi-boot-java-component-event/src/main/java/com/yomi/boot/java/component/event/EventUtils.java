@@ -7,9 +7,7 @@ import com.yomi.boot.java.component.event.consume.EventInboxGuard;
 import com.yomi.boot.java.component.event.consume.WireEventParser;
 import com.yomi.boot.java.component.event.model.WireEvent;
 import com.yomi.boot.java.component.event.publish.IEventPublisher;
-import com.yomi.boot.java.component.event.relay.EventOutboxDlqAdmin;
 import com.yomi.boot.java.core.utils.SpringUtils;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -149,8 +147,6 @@ public final class EventUtils {
                     retry.run();
                 }
             }
-            default -> {
-            }
         }
     }
 
@@ -162,19 +158,6 @@ public final class EventUtils {
     /** 获取收件箱幂等守卫 Bean（consumer-enabled） */
     public static EventInboxGuard inboxGuard() {
         return SpringUtils.getBean(EventInboxGuard.class);
-    }
-
-    /** 获取发件箱 DLQ 管理 Bean（publisher-enabled，用于人工重试等） */
-    public static EventOutboxDlqAdmin dlqAdmin() {
-        return SpringUtils.getBean(EventOutboxDlqAdmin.class);
-    }
-
-    /** 校验 eventId 非空白，返回 trim 后的值 */
-    public static String requireEventId(String eventId) {
-        if (StringUtils.isBlank(eventId)) {
-            throw new IllegalArgumentException("eventId 不能为空");
-        }
-        return eventId.trim();
     }
 
 }

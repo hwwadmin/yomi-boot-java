@@ -19,7 +19,6 @@ import com.yomi.boot.java.component.ds.support.InstantJdbcTypeHandler;
 import com.yomi.boot.java.component.ds.support.MybatisPlusChainChecker;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.ibatis.mapping.DatabaseIdProvider;
-import org.apache.ibatis.plugin.Interceptor;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionTemplate;
@@ -328,7 +327,7 @@ class DsAutoConfigurationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
                 .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
-                .withPropertyValues("yomi.boot.ds.pagination.enabled=false")
+                .withPropertyValues("yomi.ds.pagination.enabled=false")
                 .run(context -> {
                     assertNotNull(context.getBean(MybatisPlusInterceptor.class), "分页与防全表写无开关，设 false 也必须装配");
                     assertTrue(interceptorClasses(context).contains(PaginationInnerInterceptor.class.getName()),
@@ -353,7 +352,7 @@ class DsAutoConfigurationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
                 .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
-                .withPropertyValues("yomi.boot.ds.pagination.db-type=postgre_sql")
+                .withPropertyValues("yomi.ds.pagination.db-type=postgre_sql")
                 .run(context -> assertEquals(DbType.POSTGRE_SQL, paginationDialect(context),
                         "显式指定（大小写不敏感）应生效"));
     }
@@ -363,12 +362,12 @@ class DsAutoConfigurationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
                 .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
-                .withPropertyValues("yomi.boot.ds.pagination.db-type=mysql8")
+                .withPropertyValues("yomi.ds.pagination.db-type=mysql8")
                 .run(context -> {
                     Throwable failure = context.getStartupFailure();
                     assertNotNull(failure, "拼错的方言值应导致启动失败");
                     String text = String.valueOf(failure.getMessage());
-                    assertTrue(text.contains("yomi.boot.ds.pagination.db-type"), text);
+                    assertTrue(text.contains("yomi.ds.pagination.db-type"), text);
                     assertTrue(text.contains("POSTGRE_SQL"), "报错应给出合法取值提示: " + text);
                 });
     }
@@ -378,7 +377,7 @@ class DsAutoConfigurationTest {
     void paginationDialectIsLoggedForBothModes() {
         String autoLogs = startupLogsOfPagination(null);
         assertTrue(autoLogs.contains("分页方言: 自动探测"), autoLogs);
-        assertTrue(autoLogs.contains("yomi.boot.ds.pagination.db-type"), "应提示固定方言的配置键: " + autoLogs);
+        assertTrue(autoLogs.contains("yomi.ds.pagination.db-type"), "应提示固定方言的配置键: " + autoLogs);
 
         String pinnedLogs = startupLogsOfPagination("POSTGRE_SQL");
         assertTrue(pinnedLogs.contains("分页方言: POSTGRE_SQL"), pinnedLogs);
@@ -396,7 +395,7 @@ class DsAutoConfigurationTest {
                     .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
                     .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource);
             if (dbType != null) {
-                runner = runner.withPropertyValues("yomi.boot.ds.pagination.db-type=" + dbType);
+                runner = runner.withPropertyValues("yomi.ds.pagination.db-type=" + dbType);
             }
             runner.run(context -> assertNotNull(context.getBean(MybatisPlusInterceptor.class)));
         } finally {
@@ -425,16 +424,16 @@ class DsAutoConfigurationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
                 .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
-                .withPropertyValues("yomi.boot.ds.transaction-guard=off")
+                .withPropertyValues("yomi.ds.transaction-guard=off")
                 .run(context -> assertNull(context.getStartupFailure(), "off 是合法值"));
 
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
                 .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
-                .withPropertyValues("yomi.boot.ds.transaction-guard=abort")
+                .withPropertyValues("yomi.ds.transaction-guard=abort")
                 .run(context -> {
                     assertNotNull(context.getStartupFailure(), "非法值应启动失败");
-                    assertTrue(context.getStartupFailure().getMessage().contains("yomi.boot.ds.transaction-guard"),
+                    assertTrue(context.getStartupFailure().getMessage().contains("yomi.ds.transaction-guard"),
                             context.getStartupFailure().getMessage());
                 });
     }
@@ -444,7 +443,7 @@ class DsAutoConfigurationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
                 .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
-                .withPropertyValues("yomi.boot.ds.preheat.enabled=false")
+                .withPropertyValues("yomi.ds.preheat.enabled=false")
                 .run(context -> {
                     assertFalse(context.containsBean("dsPreheat"));
                     assertNotNull(context.getBean(DsInfo.class), "预热关闭不应影响数据源信息 Bean");

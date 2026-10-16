@@ -1,7 +1,6 @@
 package com.yomi.boot.java.component.event.repository;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.yomi.boot.java.base.model.PageRequest;
 import com.yomi.boot.java.component.event.entity.EventOutbox;
 import com.yomi.boot.java.component.event.model.EventOutboxQuery;
 

@@ -80,7 +80,7 @@ public class RequestLimitAop {
             key = redisLimit.key();
         }
         if (StringUtils.isBlank(key)) {
-            // 限流键为 null 时使用固定占位，避免共用同一桶
+            // 空限流键会让所有请求挤进同一个桶，直接失败更安全
             throw BizException.exception("限流 key 不能为空，请检查 @RequestLimit key 表达式: " + redisLimit.key());
         }
         int replenishRate = redisLimit.replenishRate();

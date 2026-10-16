@@ -93,16 +93,6 @@ public class BloomFilterRedisSupport {
         return contain(DEFAULT_HASH_FUNCTIONS, DEFAULT_BIT_SIZE, key, value);
     }
 
-    /** {@link #contain(String, String)} 的别名 */
-    public boolean contains(String key, String value) {
-        return contain(key, value);
-    }
-
-    /** {@link #put(String, String)} 的别名 */
-    public void add(String key, String value) {
-        put(key, value);
-    }
-
     /** 拼接布隆过滤器 Redis 键 */
     private byte[] rawKey(String key) {
         return redisTemplate.getStringSerializer().serialize(key);

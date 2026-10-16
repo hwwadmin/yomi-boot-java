@@ -34,6 +34,12 @@
             <artifactId>yomi-boot-java-component-kafka</artifactId>
         </dependency>
 
+        <!-- tx（@Transactional / TransactionTemplate / 保存点） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+        </dependency>
+
         <!-- 自动配置 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -22,7 +22,7 @@ import java.lang.reflect.Method;
 @RequiredArgsConstructor
 public class RoundRobinTaskBeanPostProcessor implements BeanPostProcessor {
 
-    /** 脱敏策略注册表 */
+    /** 轮询任务注册表 */
     private final RoundRobinRegistry registry;
 
     /** 扫描 @RoundRobin 方法并注册任务定义 */

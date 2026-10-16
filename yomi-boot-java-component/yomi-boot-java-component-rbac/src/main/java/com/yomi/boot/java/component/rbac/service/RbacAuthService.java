@@ -1,10 +1,9 @@
-package com.yomi.boot.java.component.rbac.core;
+package com.yomi.boot.java.component.rbac.service;
 
 import com.yomi.boot.java.component.rbac.IRbacAuthService;
 import com.yomi.boot.java.component.rbac.cache.RbacProjectionStore;
 import com.yomi.boot.java.component.rbac.config.RbacProperties;
 import com.yomi.boot.java.component.rbac.convert.RbacModelConverter;
-import com.yomi.boot.java.component.rbac.entity.RbacPerm;
 import com.yomi.boot.java.component.rbac.eval.RbacAuthEvaluator;
 import com.yomi.boot.java.component.rbac.eval.RbacAuthIndexCache;
 import com.yomi.boot.java.component.rbac.exception.RbacAuthException;

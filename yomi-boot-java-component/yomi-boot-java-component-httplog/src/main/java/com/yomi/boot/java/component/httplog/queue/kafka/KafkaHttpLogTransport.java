@@ -4,6 +4,7 @@ import com.yomi.boot.java.base.utils.JsonUtils;
 import com.yomi.boot.java.component.httplog.config.HttpLogProperties;
 import com.yomi.boot.java.component.httplog.desensitize.HttpLogDesensitizer;
 import com.yomi.boot.java.component.httplog.model.HttpLogRecord;
+import com.yomi.boot.java.component.httplog.queue.AbstractBufferedTransport;
 import com.yomi.boot.java.component.httplog.queue.HttpLogBatchHandler;
 import com.yomi.boot.java.component.httplog.queue.HttpLogConsumer;
 import com.yomi.boot.java.component.httplog.queue.HttpLogSink;
@@ -26,10 +27,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * kafka 模式传输：L1 有界缓冲 → 发送线程异步发送 → 批量消费 → 回调
@@ -41,34 +38,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author zwei
  */
 @Slf4j
-public class KafkaHttpLogTransport implements HttpLogSink, HttpLogConsumer {
-
-    /** 模块配置 */
-    private final HttpLogProperties properties;
+public class KafkaHttpLogTransport extends AbstractBufferedTransport implements HttpLogSink, HttpLogConsumer {
 
     /** Kafka 消费者工厂（复用宿主 spring.kafka 配置） */
     private final ConsumerFactory<?, ?> consumerFactory;
-
-    /** 发送前补脱敏 */
-    private final HttpLogDesensitizer desensitizer;
-
-    /** 队列深度、丢弃与失败指标 */
-    private final HttpLogMetrics metrics;
 
     /** 日志 topic */
     private final String topic;
 
     /** 消费组 ID */
     private final String group;
-
-    /** L1 有界缓冲 */
-    private final BlockingQueue<HttpLogRecord> buffer;
-
-    /** 发送循环与消费容器是否在运行 */
-    private final AtomicBoolean running = new AtomicBoolean(false);
-
-    /** 发送侧是否有批次尚未完成异步 send */
-    private final AtomicBoolean inFlight = new AtomicBoolean(false);
 
     /** 缓冲 → Kafka 的发送线程 */
     private volatile Thread sender;
@@ -79,27 +58,10 @@ public class KafkaHttpLogTransport implements HttpLogSink, HttpLogConsumer {
     public KafkaHttpLogTransport(HttpLogProperties properties, HttpLogKeys keys,
                                  ConsumerFactory<?, ?> consumerFactory, HttpLogDesensitizer desensitizer,
                                  HttpLogMetrics metrics) {
-        this.properties = properties;
+        super("kafka", properties, metrics, desensitizer);
         this.consumerFactory = consumerFactory;
-        this.desensitizer = desensitizer;
-        this.metrics = metrics;
         this.topic = keys.kafkaTopic(properties);
         this.group = keys.kafkaConsumerGroup(properties);
-        this.buffer = new ArrayBlockingQueue<>(properties.getBuffer().getCapacity());
-        metrics.registerQueueDepth("kafka", buffer);
-    }
-
-    /** 异步投递到 Kafka，队列满则丢弃并计指标 */
-    @Override
-    public boolean offer(HttpLogRecord record) {
-        if (buffer.offer(record)) {
-            return true;
-        }
-        if (properties.getBuffer().getDropPolicy() == HttpLogProperties.DropPolicy.DROP_OLD) {
-            buffer.poll();
-            return buffer.offer(record);
-        }
-        return false;
     }
 
     /** 启动 Kafka 生产者 */
@@ -108,7 +70,7 @@ public class KafkaHttpLogTransport implements HttpLogSink, HttpLogConsumer {
         if (!running.compareAndSet(false, true)) {
             return;
         }
-        sender = Thread.ofPlatform().name("httplog-kafka-sender").daemon(true).start(this::sendLoop);
+        sender = startLoopThread("httplog-kafka-sender", "kafka-send", "send-failed", "kafka-send-loop");
         container = buildContainer(handler);
         container.start();
         log.info("[httplog]kafka 模式已启动: topic={}, group={}, concurrency={}",
@@ -120,78 +82,15 @@ public class KafkaHttpLogTransport implements HttpLogSink, HttpLogConsumer {
     public void stop(Duration timeout) {
         flush(timeout);
         running.set(false);
-        if (sender != null) {
-            sender.interrupt();
-            try {
-                sender.join(Math.max(100L, timeout.toMillis()));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
+        stopThread(sender, timeout);
         if (container != null) {
             container.stop();
         }
     }
 
-    /** 等待已提交批次发送完成 */
-    @Override
-    public void flush(Duration timeout) {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (buffer.isEmpty() && !inFlight.get()) {
-                return;
-            }
-            try {
-                Thread.sleep(10);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        int remaining = buffer.size();
-        if (remaining > 0) {
-            metrics.dropped("shutdown-timeout", remaining);
-        }
-    }
-
-    /** 发送循环：取批 → 补脱敏 → 逐条异步发送（失败计数丢弃，producer 自带重试） */
-    private void sendLoop() {
-        HttpLogProperties.Buffer bufferConfig = properties.getBuffer();
-        int batchSize = bufferConfig.getBatchSize();
-        long flushMillis = bufferConfig.getFlushInterval().toMillis();
-        List<HttpLogRecord> batch = new ArrayList<>(Math.min(batchSize, 1024));
-        while (running.get()) {
-            try {
-                HttpLogRecord first = buffer.poll(flushMillis, TimeUnit.MILLISECONDS);
-                if (first == null) {
-                    continue;
-                }
-                batch.add(first);
-                buffer.drainTo(batch, batchSize - 1);
-                inFlight.set(true);
-                try {
-                    for (HttpLogRecord record : batch) {
-                        desensitizer.maskDeferredBodies(record);
-                    }
-                    sendBatch(batch);
-                } catch (Exception e) {
-                    metrics.failed("kafka-send", e);
-                    metrics.dropped("send-failed", batch.size());
-                } finally {
-                    batch.clear();
-                    inFlight.set(false);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            } catch (Throwable t) {
-                metrics.failed("kafka-send-loop", t);
-            }
-        }
-    }
-
     /** 将一批记录 JSON 序列化后异步发送到 topic */
-    private void sendBatch(List<HttpLogRecord> batch) {
+    @Override
+    protected void writeBatch(List<HttpLogRecord> batch) {
         for (HttpLogRecord record : batch) {
             var builder = KafkaUtils.async().topic(topic).key(String.valueOf(record.getId()))
                     .payload(JsonUtils.toJson(record));

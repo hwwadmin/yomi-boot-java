@@ -37,7 +37,6 @@ public class TokenService implements ITokenService {
     private final TokenGenerator generator;
 
     /** 会话快照存储 */
-    /** 会话快照存储 */
     private final TokenStore store;
     /** 令牌 TTL、多登等配置 */
     private final TokenProperties properties;

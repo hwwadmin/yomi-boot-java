@@ -22,6 +22,12 @@
             <artifactId>yomi-boot-java-component-redis</artifactId>
         </dependency>
 
+        <!-- commons-codec（TokenKeys 的摘要） -->
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+        </dependency>
+
         <!-- 自动装配 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

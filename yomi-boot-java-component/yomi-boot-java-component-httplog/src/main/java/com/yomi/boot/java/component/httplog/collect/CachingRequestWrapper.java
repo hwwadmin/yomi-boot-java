@@ -4,7 +4,6 @@ import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
-import org.springframework.util.FastByteArrayOutputStream;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -19,21 +18,15 @@ import java.nio.charset.StandardCharsets;
  */
 public class CachingRequestWrapper extends HttpServletRequestWrapper {
 
-    /** 缓存上限（字节） */
-    private final int limit;
-
-    /** 缓存（懒初始化，最多 limit 字节） */
-    private final FastByteArrayOutputStream cache = new FastByteArrayOutputStream(256);
-
-    /** 是否已截断（缓存写满仍有后续数据） */
-    private boolean truncated;
+    /** tee 旁路缓冲（上限内保留副本，写满仅标记截断） */
+    private final TeeBytes teeBytes;
 
     /** 包装后的输入流（同一实例，保证多次 getInputStream 行为一致） */
     private ServletInputStream inputStream;
 
     public CachingRequestWrapper(HttpServletRequest request, int limit) {
         super(request);
-        this.limit = limit;
+        this.teeBytes = new TeeBytes(limit);
     }
 
     /** 返回 tee 输入流，多次调用同一实例 */
@@ -54,7 +47,7 @@ public class CachingRequestWrapper extends HttpServletRequestWrapper {
 
     /** 已缓存的请求体文本；无数据返回 null（截断处按字符边界回退） */
     public String cachedBody() {
-        byte[] bytes = cache.toByteArray();
+        byte[] bytes = teeBytes.toByteArray();
         if (bytes.length == 0) {
             return null;
         }
@@ -63,7 +56,7 @@ public class CachingRequestWrapper extends HttpServletRequestWrapper {
 
     /** 是否被截断 */
     public boolean isTruncated() {
-        return truncated;
+        return teeBytes.isTruncated();
     }
 
     /** 请求字符集，缺省或非法时 UTF-8 */
@@ -88,24 +81,6 @@ public class CachingRequestWrapper extends HttpServletRequestWrapper {
         return text;
     }
 
-    /** tee 缓存：写满上限后仅标记截断，不再缓存（透传不受影响） */
-    private void tee(byte[] b, int off, int len) throws IOException {
-        if (truncated) {
-            return;
-        }
-        int remaining = limit - cache.size();
-        if (remaining <= 0) {
-            truncated = true;
-            return;
-        }
-        if (len > remaining) {
-            cache.write(b, off, remaining);
-            truncated = true;
-        } else {
-            cache.write(b, off, len);
-        }
-    }
-
     /** 委托原流并旁路缓存的输入流 */
     private final class TeeServletInputStream extends ServletInputStream {
 
@@ -122,7 +97,7 @@ public class CachingRequestWrapper extends HttpServletRequestWrapper {
             int b = delegate.read();
             if (b >= 0) {
                 byte[] one = {(byte) b};
-                tee(one, 0, 1);
+                teeBytes.tee(one, 0, 1);
             }
             return b;
         }
@@ -132,7 +107,7 @@ public class CachingRequestWrapper extends HttpServletRequestWrapper {
         public int read(byte[] b, int off, int len) throws IOException {
             int n = delegate.read(b, off, len);
             if (n > 0) {
-                tee(b, off, n);
+                teeBytes.tee(b, off, n);
             }
             return n;
         }

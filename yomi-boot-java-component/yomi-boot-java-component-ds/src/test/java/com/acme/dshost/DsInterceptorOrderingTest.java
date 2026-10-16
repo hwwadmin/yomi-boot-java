@@ -38,7 +38,7 @@ class DsInterceptorOrderingTest {
         // 无数据源宿主（不接数据库，只借用 ds 的工具类）：排除 Boot 的数据源自动配置（Boot 标准做法：
         // jdbc starter 在场但不接库时它自己会因"没有 url/driver"启动失败），主库四件套不装配，拦截器链照常就位
         try (ConfigurableApplicationContext context = app.run(
-                "--yomi.boot.ds.preheat.enabled=false",
+                "--yomi.ds.preheat.enabled=false",
                 "--spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")) {
             MybatisPlusInterceptor chain = context.getBean(MybatisPlusInterceptor.class);
 

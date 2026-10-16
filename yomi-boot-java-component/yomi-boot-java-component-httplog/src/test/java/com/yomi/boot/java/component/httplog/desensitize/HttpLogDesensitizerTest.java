@@ -1,9 +1,9 @@
 package com.yomi.boot.java.component.httplog.desensitize;
 
-import com.yomi.boot.java.component.desensitize.DesensitizeService;
 import com.yomi.boot.java.component.desensitize.IDesensitizeService;
 import com.yomi.boot.java.component.desensitize.DesensitizeStrategy;
 import com.yomi.boot.java.component.desensitize.DesensitizeStrategyRegistry;
+import com.yomi.boot.java.component.desensitize.service.DesensitizeService;
 import com.yomi.boot.java.component.desensitize.strategy.AllDesensitizeStrategy;
 import com.yomi.boot.java.component.desensitize.strategy.IdCardDesensitizeStrategy;
 import com.yomi.boot.java.component.desensitize.strategy.MobileDesensitizeStrategy;

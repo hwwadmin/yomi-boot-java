@@ -19,12 +19,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>
  * 并行预热容器内**每一个**数据源（含业务自建的附加库）：单个数据源受单池超时约束，整体受总预算约束，
  * 启动耗时上限为总预算；预热失败或超时只记录 ERROR 日志，不阻断应用启动。
- * 可通过 yomi.boot.ds.preheat.enabled=false 关闭预热（默认开启）
+ * 可通过 yomi.ds.preheat.enabled=false 关闭预热（默认开启）
  *
  * @author zwei
  */
 @Component
-@ConditionalOnProperty(name = "yomi.boot.ds.preheat.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "yomi.ds.preheat.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 @Slf4j
 public class DsPreheat {

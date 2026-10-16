@@ -9,7 +9,7 @@ import java.util.Map;
 
 /**
  * RBAC 管理面：权限、权限组、角色及绑定关系的 CRUD 与状态维护。
- * <p>写操作成功后由实现类触发鉴权投影刷新（若已启用）</p>
+ * <p>写操作不刷新鉴权投影：刷新由启动/定时或手动 {@code refreshProjection} 触发</p>
  *
  * @author zwei
  */

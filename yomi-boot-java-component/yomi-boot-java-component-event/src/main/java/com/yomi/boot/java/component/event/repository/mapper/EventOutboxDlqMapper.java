@@ -5,7 +5,6 @@ import com.yomi.boot.java.component.event.entity.EventOutboxDlq;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.Instant;
-import java.util.List;
 
 /**
  * sys_event_outbox_dlq 的 Mapper：**仅供 {@link EventOutboxDlqRepository} 使用**

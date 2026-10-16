@@ -31,7 +31,7 @@ import java.util.Map;
  * 不依赖 Boot 的 {@code DataSourceAutoConfiguration} 是否在场（宿主排除它时主库照常可配）。
  * {@link MybatisPlusConfig}（分页 + 防全表写）无开关、随组件强制生效；
  * {@link InstantJdbcTypeHandler}（Instant 写库，MySQL/PG 通用）同样无开关；
- * 数据源预热保留 {@code yomi.boot.ds.preheat.enabled} 开关。
+ * 数据源预热保留 {@code yomi.ds.preheat.enabled} 开关。
  * <p>
  * <b>必须排在 MyBatis-Plus 的自动配置之前</b>：本组件接管主库工厂/模板后，MP 的同名 Bean 按类型让位
  * （{@code @ConditionalOnMissingBean}）；同时本组件要在 {@code MybatisPlusInnerInterceptorAutoConfiguration}
@@ -50,7 +50,7 @@ public class DsAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(DsPreheat.class)
-    @ConditionalOnProperty(name = "yomi.boot.ds.preheat.enabled", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(name = "yomi.ds.preheat.enabled", havingValue = "true", matchIfMissing = true)
     public DsPreheat dsPreheat(Map<String, DataSource> dataSourceBeans) {
         return new DsPreheat(dataSourceBeans);
     }

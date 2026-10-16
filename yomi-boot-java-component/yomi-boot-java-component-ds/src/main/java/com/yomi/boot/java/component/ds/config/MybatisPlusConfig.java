@@ -24,7 +24,7 @@ import java.util.Locale;
  * 拦截器顺序：分页（改写 SQL）在前，宿主自定义拦截器在后。
  * <p>
  * 分页方言默认<b>按当前连接自动探测</b>（多数据源/多方言各自正确）；确定性优先时可用
- * {@code yomi.boot.ds.pagination.db-type}（如 {@code POSTGRE_SQL}）显式指定，非法值启动期报错
+ * {@code yomi.ds.pagination.db-type}（如 {@code POSTGRE_SQL}）显式指定，非法值启动期报错
  *
  * @author zwei
  */
@@ -35,16 +35,16 @@ public class MybatisPlusConfig {
     @Bean
     @ConditionalOnMissingBean(MybatisPlusInterceptor.class)
     public MybatisPlusInterceptor mybatisPlusInterceptor(
-            @Value("${yomi.boot.ds.pagination.db-type:}") String dbType,
+            @Value("${yomi.ds.pagination.db-type:}") String dbType,
             ObjectProvider<InnerInterceptor> hostInterceptorsProvider) {
         var interceptor = new MybatisPlusInterceptor();
 
         DbType resolved = resolveDbType(dbType);
         if (resolved == null) {
-            log.info("分页方言: 自动探测（按当前连接的 JDBC URL 推导；如需固定可用 yomi.boot.ds.pagination.db-type 指定）");
+            log.info("分页方言: 自动探测（按当前连接的 JDBC URL 推导；如需固定可用 yomi.ds.pagination.db-type 指定）");
             interceptor.addInnerInterceptor(new PaginationInnerInterceptor());
         } else {
-            log.info("分页方言: {}（由 yomi.boot.ds.pagination.db-type 指定）", resolved);
+            log.info("分页方言: {}（由 yomi.ds.pagination.db-type 指定）", resolved);
             interceptor.addInnerInterceptor(new PaginationInnerInterceptor(resolved));
         }
 
@@ -80,7 +80,7 @@ public class MybatisPlusConfig {
         try {
             return DbType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("yomi.boot.ds.pagination.db-type 取值非法: [" + raw
+            throw new IllegalStateException("yomi.ds.pagination.db-type 取值非法: [" + raw
                     + "]，合法取值见 com.baomidou.mybatisplus.annotation.DbType（如 MYSQL、POSTGRE_SQL、ORACLE）", e);
         }
     }

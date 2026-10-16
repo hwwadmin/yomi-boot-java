@@ -1,14 +1,12 @@
 package com.yomi.boot.java.component.idempotency.store;
 
-import com.yomi.boot.java.base.utils.JsonUtils;
 import com.yomi.boot.java.component.idempotency.config.IdempotencyProperties;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyKey;
+import com.yomi.boot.java.component.idempotency.support.IdempotencyResultJson;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import tools.jackson.databind.cfg.DateTimeFeature;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.lang.reflect.Type;
 import java.time.Duration;
@@ -24,11 +22,6 @@ public class IdempotencyRedisStore {
 
     /** 业务结果为 null 时的缓存占位，与 JSON 对象 "{}" 区分 */
     private static final String CACHED_NULL_PAYLOAD = "__YOMI_IDEM_NULL__";
-
-    /** 结果 JSON 编解码（日期不写时间戳） */
-    private static final JsonMapper MAPPER = JsonUtils.createObjectMapper().rebuild()
-            .configure(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS, false)
-            .build();
 
     /** 结果缓存读写 */
     private final StringRedisTemplate stringRedisTemplate;
@@ -54,7 +47,7 @@ public class IdempotencyRedisStore {
             if (CACHED_NULL_PAYLOAD.equals(payload)) {
                 return IdempotencyCacheLoad.hit(null);
             }
-            return IdempotencyCacheLoad.hit(unmarshal(payload, type));
+            return IdempotencyCacheLoad.hit(IdempotencyResultJson.unmarshal(payload, type));
         } catch (Exception e) {
             log.warn("[幂等]结果缓存读取失败，将走 DB 路径 namespace={} key={} redisKey={}",
                     key.namespace(), key.idempotencyKey(), redisKey, e);
@@ -69,7 +62,7 @@ public class IdempotencyRedisStore {
         if (value == null) {
             payload = CACHED_NULL_PAYLOAD;
         } else {
-            payload = marshal(value);
+            payload = IdempotencyResultJson.marshal(value);
             if (StringUtils.isBlank(payload)) {
                 payload = "{}";
             }
@@ -86,23 +79,6 @@ public class IdempotencyRedisStore {
             log.error("[幂等]结果缓存写入失败，业务已成功 namespace={} key={} redisKey={}",
                     key.namespace(), key.idempotencyKey(), keys.resultKey(key), e);
         }
-    }
-
-    /** 序列化幂等结果为 JSON */
-    private static String marshal(Object value) {
-        String json = MAPPER.writeValueAsString(value);
-        if ("null".equals(json)) {
-            return null;
-        }
-        return json;
-    }
-
-    /** 反序列化幂等结果 JSON */
-    private static Object unmarshal(String payload, Type type) {
-        if (StringUtils.isBlank(payload)) {
-            return null;
-        }
-        return MAPPER.readValue(payload, MAPPER.constructType(type));
     }
 
 }

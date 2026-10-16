@@ -3,7 +3,6 @@ package com.yomi.boot.java.component.redis.ops.stream;
 import com.yomi.boot.java.base.utils.JsonUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.RedisStreamCommands;
 import org.springframework.data.redis.connection.stream.*;
@@ -280,14 +279,10 @@ public class StreamRedisSupport {
         }
     }
 
-    /** 确保演示数据：Group */
+    /** 确保消费组存在：已存在（BUSYGROUP）时忽略 */
     private void ensureGroup(String streamKey, String group) {
         try {
             redisTemplate.opsForStream().createGroup(streamKey, ReadOffset.latest(), group);
-        } catch (InvalidDataAccessApiUsageException ex) {
-            if (!isBusyGroup(ex)) {
-                throw ex;
-            }
         } catch (RuntimeException ex) {
             if (!isBusyGroup(ex)) {
                 throw ex;

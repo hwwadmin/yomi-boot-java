@@ -18,13 +18,6 @@ public interface PasswordEncoder {
     boolean matches(CharSequence rawPassword, String encodedPassword);
 
     /**
-     *  = matches
-     */
-    default boolean checkPw(CharSequence inputPassword, String dbPassword) {
-        return matches(inputPassword, dbPassword);
-    }
-
-    /**
      * 验证加密后的密码是否需要再次加密
      *
      * @return 如果需要返回 true，否则默认返回 false
