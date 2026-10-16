@@ -1,6 +1,5 @@
 package com.yomi.boot.java.base.utils;
 
-import com.yomi.boot.java.base.enums.EncryptType;
 import com.yomi.boot.java.base.enums.RsaPadding;
 import com.yomi.boot.java.base.enums.RsaSignatureAlgorithm;
 import com.yomi.boot.java.base.exception.UtilsException;
@@ -44,6 +43,9 @@ public abstract class RsaUtils {
     /** 未指定算法时使用的默认签名算法 */
     private static final RsaSignatureAlgorithm DEFAULT_SIGNATURE = RsaSignatureAlgorithm.SHA256_RSA;
 
+    /** JCA 密钥算法的标准名，用于 {@link KeyPairGenerator}/{@link KeyFactory} */
+    private static final String KEY_ALGORITHM = "RSA";
+
     private RsaUtils() {
     }
 
@@ -60,7 +62,7 @@ public abstract class RsaUtils {
     public static KeyPair generateKeyPair(int keySize) {
         Assert.isTrue(keySize >= MIN_KEY_SIZE, "RSA key size must be >= {}", MIN_KEY_SIZE);
         try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance(EncryptType.RSA.getAlgorithmName());
+            KeyPairGenerator generator = KeyPairGenerator.getInstance(KEY_ALGORITHM);
             generator.initialize(keySize);
             return generator.generateKeyPair();
         } catch (GeneralSecurityException e) {
@@ -74,7 +76,7 @@ public abstract class RsaUtils {
     public static PublicKey loadPublicKey(byte[] x509Encoded) {
         Assert.nonNull(x509Encoded, "public key bytes must not be null");
         try {
-            return KeyFactory.getInstance(EncryptType.RSA.getAlgorithmName())
+            return KeyFactory.getInstance(KEY_ALGORITHM)
                     .generatePublic(new X509EncodedKeySpec(x509Encoded));
         } catch (GeneralSecurityException e) {
             throw UtilsException.exception(e, "RSA loadPublicKey failed");
@@ -87,7 +89,7 @@ public abstract class RsaUtils {
     public static PrivateKey loadPrivateKey(byte[] pkcs8Encoded) {
         Assert.nonNull(pkcs8Encoded, "private key bytes must not be null");
         try {
-            return KeyFactory.getInstance(EncryptType.RSA.getAlgorithmName())
+            return KeyFactory.getInstance(KEY_ALGORITHM)
                     .generatePrivate(new PKCS8EncodedKeySpec(pkcs8Encoded));
         } catch (GeneralSecurityException e) {
             throw UtilsException.exception(e, "RSA loadPrivateKey failed");
