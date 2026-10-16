@@ -3,6 +3,7 @@ package com.yomi.boot.java.component.token.store;
 import com.yomi.boot.java.base.exception.UtilsException;
 import com.yomi.boot.java.base.utils.Assert;
 import com.yomi.boot.java.base.utils.JsonUtils;
+import com.yomi.boot.java.component.token.config.TokenProperties;
 import com.yomi.boot.java.component.token.session.TokenSession;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -29,6 +30,11 @@ import java.util.Set;
  *     <li>路由键 {@code prefix:rt:{sha256(token)}} → userId，供按 token 校验（Cluster 单键读）。</li>
  * </ul>
  * 索引与快照的跨键原子性由 Lua 保证（同 hash tag）；路由键在 Lua 成功后写入。
+ * <p>
+ * 读取路径挂一层进程内薄缓存（{@code yomi.token.local-cache-ttl}，默认 5 秒，0 关闭）：命中即跳过两次 GET，
+ * 条目 TTL 取 {@code min(配置, 令牌剩余有效期)}——本地条目绝不比令牌活得久。
+ * 删除/替换/续期路径同步清掉对应条目，保证本实例撤销立即生效；其它实例最迟缓存 TTL 内生效
+ * （没有跨实例失效通道，这是刻意的简化，见 {@link TokenSessionCache}）
  *
  * @author zwei
  */
@@ -122,11 +128,16 @@ public class RedisTokenStore implements TokenStore {
     /** Redis 键名 */
     private final TokenKeys keys;
 
-    public RedisTokenStore(StringRedisTemplate redisTemplate, TokenKeys keys) {
+    /** 进程内会话薄缓存（TTL 由 {@code yomi.token.local-cache-ttl} 决定，0 关闭时空转） */
+    private final TokenSessionCache sessionCache;
+
+    public RedisTokenStore(StringRedisTemplate redisTemplate, TokenKeys keys, TokenProperties properties) {
         Assert.nonNull(redisTemplate, "redisTemplate must be not null");
         Assert.nonNull(keys, "keys must be not null");
+        Assert.nonNull(properties, "properties must be not null");
         this.redisTemplate = redisTemplate;
         this.keys = keys;
+        this.sessionCache = new TokenSessionCache(properties.getLocalCacheTtl());
     }
 
     /** 写入令牌与用户索引并设置 TTL */
@@ -177,24 +188,32 @@ public class RedisTokenStore implements TokenStore {
                     String.valueOf(ttlMillis));
             deleteRoutesQuietly(previousHashes);
             saveRoute(storageHash, userId, ttlMillis);
+            invalidateCached(previousHashes);
         } catch (RuntimeException e) {
             deleteSessionQuietly(userId, storageHash);
             throw e;
         }
     }
 
-    /** 读取令牌绑定的用户 id */
+    /** 读取令牌绑定的用户 id；命中进程内缓存时跳过两次 GET */
     @Override
     public TokenSession load(String token) {
         if (StringUtils.isBlank(token)) {
             return null;
         }
         String storageHash = TokenKeys.hashToken(token);
+        String cached = sessionCache.get(storageHash);
+        if (cached != null) {
+            return tryFromJson(cached);
+        }
         Long userId = parseRouteUserId(redisTemplate.opsForValue().get(keys.routeKeyByStorageToken(storageHash)));
         if (userId == null) {
             return null;
         }
-        return tryFromJson(redisTemplate.opsForValue().get(keys.sessionKeyByStorageToken(userId, storageHash)));
+        String payload = redisTemplate.opsForValue().get(keys.sessionKeyByStorageToken(userId, storageHash));
+        TokenSession session = tryFromJson(payload);
+        cacheSession(storageHash, payload, session);
+        return session;
     }
 
     /** 存在则刷新 TTL */
@@ -217,6 +236,8 @@ public class RedisTokenStore implements TokenStore {
         boolean renewed = result != null && result == 1L;
         if (renewed) {
             saveRoute(storageHash, userId, ttlMillis);
+            // 续期改了 expireAt：清掉缓存里的旧值，避免临近过期时命中旧 expireAt 被误判过期
+            sessionCache.invalidate(storageHash);
         }
         return renewed;
     }
@@ -235,6 +256,7 @@ public class RedisTokenStore implements TokenStore {
                     storageHash);
         }
         redisTemplate.delete(keys.routeKeyByStorageToken(storageHash));
+        sessionCache.invalidate(storageHash);
     }
 
     /** 删除用户下全部令牌 */
@@ -248,6 +270,7 @@ public class RedisTokenStore implements TokenStore {
                 List.of(keys.userTokensKey(userId)),
                 keys.sessionKeyPrefix(userId));
         deleteRoutesQuietly(membersBeforeRevoke);
+        invalidateCached(membersBeforeRevoke);
     }
 
     /** 列出用户持有的令牌 */
@@ -287,6 +310,18 @@ public class RedisTokenStore implements TokenStore {
         return result;
     }
 
+    /**
+     * 会话写入进程内缓存：TTL 取 {@code min(yomi.token.local-cache-ttl, 令牌剩余有效期)}，
+     * 空值/已过期不缓存（本地条目绝不比令牌活得久）
+     */
+    private void cacheSession(String storageHash, String payload, TokenSession session) {
+        if (!sessionCache.isEnabled() || session == null || StringUtils.isBlank(payload)) {
+            return;
+        }
+        long ttlMillis = sessionCache.entryTtlMillis(Instant.now(), session.getExpireAt());
+        sessionCache.put(storageHash, payload, ttlMillis);
+    }
+
     /** 写入 token 散列→userId 路由键 */
     private void saveRoute(String storageHash, Long userId, long ttlMillis) {
         redisTemplate.opsForValue().set(
@@ -305,6 +340,16 @@ public class RedisTokenStore implements TokenStore {
             routeKeys.add(keys.routeKeyByStorageToken(hash));
         }
         redisTemplate.delete(routeKeys);
+    }
+
+    /** 批量清掉进程内缓存条目（撤销/替换的旧令牌） */
+    private void invalidateCached(Set<String> storageHashes) {
+        if (CollectionUtils.isEmpty(storageHashes)) {
+            return;
+        }
+        for (String hash : storageHashes) {
+            sessionCache.invalidate(hash);
+        }
     }
 
     /** 删除快照并从索引移除（补偿清理） */

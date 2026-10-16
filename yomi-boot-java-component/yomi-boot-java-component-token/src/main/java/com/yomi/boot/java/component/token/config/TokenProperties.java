@@ -53,6 +53,13 @@ public class TokenProperties {
     private Duration maxLifetime = Duration.ofDays(1);
 
     /**
+     * 进程内会话缓存 TTL；0 表示关闭这层（每次校验都读 Redis）。
+     * <p>默认 5 秒：只做一层"削峰"薄缓存，不承担失效通道——撤销在发起实例上同步生效、
+     * 其它实例最迟本值内生效。别调大</p>
+     */
+    private Duration localCacheTtl = Duration.ofSeconds(5);
+
+    /**
      * 配置自检，在令牌服务启用时装配期调用
      */
     public void validate() {
@@ -64,6 +71,9 @@ public class TokenProperties {
         }
         if (!maxLifetime.isZero() && maxLifetime.compareTo(ttl) < 0) {
             throw new IllegalStateException("yomi.token.max-lifetime 不能小于 yomi.token.ttl（0 表示不限制）");
+        }
+        if (localCacheTtl == null || localCacheTtl.isNegative()) {
+            throw new IllegalStateException("yomi.token.local-cache-ttl 不能为负数（0 表示关闭进程内缓存）");
         }
         for (String skipPath : skipValidatePaths) {
             if (skipPath == null || !skipPath.equals(skipPath.trim())) {

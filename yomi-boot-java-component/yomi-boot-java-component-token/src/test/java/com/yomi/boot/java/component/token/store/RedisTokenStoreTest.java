@@ -1,5 +1,6 @@
 package com.yomi.boot.java.component.token.store;
 
+import com.yomi.boot.java.component.token.config.TokenProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.SetOperations;
@@ -7,6 +8,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 
 import java.lang.reflect.Proxy;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -32,7 +34,9 @@ class RedisTokenStoreTest {
     void revokeByUserIdDeletesIndexAndSnapshotsInOneAtomicScript() {
         CapturingTemplate template = new CapturingTemplate();
         template.indexMembers = Set.of("hash-a", "hash-b");
-        RedisTokenStore store = new RedisTokenStore(template, KEYS);
+        TokenProperties properties = new TokenProperties();
+        properties.setLocalCacheTtl(Duration.ZERO);
+        RedisTokenStore store = new RedisTokenStore(template, KEYS, properties);
 
         store.deleteByUserId(USER_ID);
 
@@ -58,7 +62,9 @@ class RedisTokenStoreTest {
     @Test
     void revokeByUserIdStillRunsScriptWhenIndexEmpty() {
         CapturingTemplate template = new CapturingTemplate();
-        RedisTokenStore store = new RedisTokenStore(template, KEYS);
+        TokenProperties properties = new TokenProperties();
+        properties.setLocalCacheTtl(Duration.ZERO);
+        RedisTokenStore store = new RedisTokenStore(template, KEYS, properties);
 
         store.deleteByUserId(USER_ID);
 

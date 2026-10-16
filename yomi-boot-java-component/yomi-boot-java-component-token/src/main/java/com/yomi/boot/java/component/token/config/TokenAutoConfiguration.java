@@ -46,8 +46,9 @@ public class TokenAutoConfiguration {
     public TokenKeys tokenKeys(TokenProperties properties, Environment environment) {
         properties.validate();
         TokenKeys keys = new TokenKeys(resolvePrefix(properties, environment));
-        log.info("令牌服务已启用: storePrefix={}, ttl={}, allowMultiLogin={}, renewOnValidate={}",
-                keys.getPrefix(), properties.getTtl(), properties.isAllowMultiLogin(), properties.isRenewOnValidate());
+        log.info("令牌服务已启用: storePrefix={}, ttl={}, allowMultiLogin={}, renewOnValidate={}, localCacheTtl={}",
+                keys.getPrefix(), properties.getTtl(), properties.isAllowMultiLogin(), properties.isRenewOnValidate(),
+                properties.getLocalCacheTtl());
         return keys;
     }
 
@@ -63,14 +64,14 @@ public class TokenAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public TokenStore tokenStore(ObjectProvider<StringRedisTemplate> redisTemplateProvider, TokenKeys keys,
-                                 Environment environment) {
+                                 TokenProperties properties, Environment environment) {
         StringRedisTemplate redisTemplate = redisTemplateProvider.getIfAvailable();
         if (redisTemplate == null || !RedisConfiguredCondition.isConfigured(environment)) {
             throw new IllegalStateException("yomi.token.enabled=true 需要 Redis：请配置 spring.data.redis.host/url/"
                     + "sentinel/cluster 任一以启用 redis 组件（Boot 默认的 localhost 模板不算），"
                     + "或自定义 TokenStore Bean 覆盖");
         }
-        return new RedisTokenStore(redisTemplate, keys);
+        return new RedisTokenStore(redisTemplate, keys, properties);
     }
 
     @Bean
