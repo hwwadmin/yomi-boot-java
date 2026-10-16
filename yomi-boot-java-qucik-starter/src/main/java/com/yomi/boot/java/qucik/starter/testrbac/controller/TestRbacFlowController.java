@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *     <li>GET /test/ds/test-rbac/flow</li>
  *     <li>GET /test/ds/test-rbac/issue-token?userId=</li>
+ *     <li>GET /test/ds/test-rbac/whoami?token=</li>
+ *     <li>GET /test/ds/test-rbac/revoke?token=（撤销令牌，用于演示"撤销后立即失效"）</li>
  * </ul>
  */
 @RestController
@@ -55,6 +57,15 @@ public class TestRbacFlowController {
     @GetMapping("/whoami")
     public Response<Long> whoami(@RequestParam("token") String token) {
         return Response.success(loginITokenService.validate(token).getUserId());
+    }
+
+    /**
+     * 撤销令牌（路径在放行列表内）：删快照即失效，随后的 whoami 返回 401
+     */
+    @GetMapping("/revoke")
+    public Response<Boolean> revoke(@RequestParam("token") String token) {
+        loginITokenService.revoke(token);
+        return Response.success(Boolean.TRUE);
     }
 
 }

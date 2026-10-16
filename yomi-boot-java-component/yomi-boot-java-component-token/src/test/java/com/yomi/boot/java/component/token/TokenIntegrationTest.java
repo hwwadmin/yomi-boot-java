@@ -91,6 +91,10 @@ class TokenIntegrationTest {
         context = new AnnotationConfigWebApplicationContext();
         context.setServletContext(new MockServletContext());
         Map<String, Object> tokenProps = new HashMap<>();
+        // tokenStore 装配按 RedisConfiguredCondition 判断"是否配了 Redis 连接目标"，
+        // 必须在环境里显式给出（IntegrationConfig 自建连接工厂不算），否则开闸后启动即失败
+        tokenProps.put("spring.data.redis.host", RedisTestSettings.host());
+        tokenProps.put("spring.data.redis.port", String.valueOf(RedisTestSettings.port()));
         tokenProps.put("yomi.token.enabled", "true");
         tokenProps.put("yomi.token.ttl", "10m");
         tokenProps.put("yomi.token.allow-multi-login", "false");
