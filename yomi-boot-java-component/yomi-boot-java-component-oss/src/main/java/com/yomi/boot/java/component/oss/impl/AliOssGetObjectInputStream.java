@@ -21,32 +21,41 @@ final class AliOssGetObjectInputStream extends FilterInputStream {
         this.result = result;
     }
 
-    /** 从 GetObject 结果取出响应体流 */
+    /** 从 GetObject 结果取出响应体流，为空则先释放结果再报错 */
     private static InputStream requireBody(GetObjectResult result) throws IOException {
         InputStream body = result.body();
         if (body == null) {
-            closeQuietly(result);
-            throw new IOException("AliOSS 响应体为空");
+            IOException failure = new IOException("AliOSS 响应体为空");
+            try {
+                result.close();
+            } catch (Exception ex) {
+                failure.addSuppressed(ex);
+            }
+            throw failure;
         }
         return body;
     }
 
-    /** 关闭响应体后关闭 GetObjectResult */
+    /** 关闭响应体后再关闭 GetObjectResult；两步都失败时保留前一个异常，后一个挂 suppressed */
     @Override
     public void close() throws IOException {
+        IOException failure = null;
         try {
             super.close();
-        } finally {
-            closeQuietly(result);
+        } catch (IOException ex) {
+            failure = ex;
         }
-    }
-
-    /** 关闭资源并吞掉 IOException */
-    private static void closeQuietly(GetObjectResult result) throws IOException {
         try {
             result.close();
         } catch (Exception ex) {
-            throw new IOException("关闭 AliOSS GetObjectResult 失败", ex);
+            IOException closeFailure = new IOException("关闭 AliOSS GetObjectResult 失败", ex);
+            if (failure == null) {
+                throw closeFailure;
+            }
+            failure.addSuppressed(closeFailure);
+        }
+        if (failure != null) {
+            throw failure;
         }
     }
 
