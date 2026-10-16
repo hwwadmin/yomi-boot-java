@@ -42,6 +42,11 @@ build/
 *.patch
 *.tmp
 
+# AI workflow temporary documents
+/_task-doc/
+/_ipc-doc/
+/_feat-doc/
+
 # log ignore
 *catalina.home*/
 
@@ -54,23 +59,24 @@ build/
 nul
 
 # IDE ignore
-.qoder/*
-.trae/*
-.vscode/*
-.github/*
-.codebuddy/*
-.codex/*
-.copilot-temp/*
-.opencode/*
-.cursor/*
-.zcode/*
+.qoder
+.trae
+.vscode
+.github
+.codebuddy
+.codex
+.copilot-temp
+.opencode
+.cursor
+.dsh
+.zcode
 
-/_ipc-doc/*
-/_task-doc/*
-
+# go-dits
 */dist/*
 */bin/*
 
+# frontend
+**/node_modules/
+**/*.tsbuildinfo
 
-### 本地临时产物
-.tmp/
+*.exe
