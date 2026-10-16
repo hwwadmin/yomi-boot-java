@@ -8,12 +8,12 @@ description:需求显化文档生成
    - **对抗性审查**：主动质疑结论：反例、边界、遗漏、可行替代方案；信息不足须标**待确认**，不得臆造为已确认事实。
    - **PRD 与 knowledge 边界**：**产品口径**以工程根 `_doc/` 中的 PRD（若有）为准，须参考并对齐，冲突记入 spec §3，不得静默改写 PRD；`_prompts/knowledge/` 为 Java/架构/事务等技术规范，**不得当作产品 PRD**（见 `prd_spec`）。
    - **分阶段小结**：每完成一个阶段，用 3–5 条记录：**本阶段假设**、**反例/边界**、**待确认项**（写入 spec §3，不得只留在对话里）。
-   - **禁止**：为填模板而编造业务结论、表量、QPS、并发峰值（规模与并发由 audit 阶段 0 采集，spec 不得冒充已确认）；跳过 `显化-质量契约.md` 中的 Q 项仍落盘 spec。
+   - **禁止**：为填模板而编造业务结论、表量、QPS、并发峰值（规模与并发由 audit 阶段 0 采集，spec 不得冒充已确认）；跳过 Skill §6（DoD）仍落盘 spec。
 
 2. 按下列顺序执行《需求显化》（`_prompts/skills/需求显化.md`），**不得跳过**所列 `knowledge` 必读：
 
    - **阶段 A（spec 章 0–7）**：Read Skill §0–§2、§3.0–§3.2 及关联 knowledge（表设计等）；产出对应 spec 章节。
-   - **阶段 B（spec 章 8–11）**：Read Skill §3.3–§3.4.2、`knowledge/Java事务与一致性规范.md` §2–§6、`knowledge/显化-分层与用例示例.md`；**同轮**产出 Ch10 与 Ch11 并对照事务列与 Step 1。
-   - **阶段 C（spec 章 12–16）**：Read Skill §3.5–§3.7、Skill **§4.1 章纲**、写交互时 Read `knowledge/显化-事务与交互示例.md`；产出剩余章节。
+   - **阶段 B（spec 章 8–11）**：Read Skill §3.3–§3.4.2（含内联代码示例）、`knowledge/Java事务与一致性规范.md` §2–§6；**同轮**产出 Ch10 与 Ch11 并对照事务列与 Step 1。
+   - **阶段 C（spec 章 12–16）**：Read Skill §3.5–§3.7（含内联交互示例）、Skill **§4.1 章纲**；产出剩余章节。
 
-3. 落盘前 Read `knowledge/显化-质量契约.md` §A 与 Skill §6；勾选通过后写入 `_feat-doc/{YYYYMMDD}_{需求名称}/spec.md`。
+3. 落盘前 Read Skill §6（DoD）并逐项勾选；通过后写入 `_feat-doc/{YYYYMMDD}_{需求名称}/spec.md`。
