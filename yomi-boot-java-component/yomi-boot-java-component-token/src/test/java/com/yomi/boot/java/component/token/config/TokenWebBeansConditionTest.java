@@ -37,7 +37,8 @@ class TokenWebBeansConditionTest {
     void webBeansPresentInServletApplication() {
         new WebApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(TokenAutoConfiguration.class))
-                .withPropertyValues("yomi.token.enabled=true", "spring.application.name=token-web-test")
+                .withPropertyValues("yomi.token.enabled=true", "spring.application.name=token-web-test",
+                        "spring.data.redis.host=127.0.0.1")
                 .withBean(StringRedisTemplate.class, TokenWebBeansConditionTest::stubRedisTemplate)
                 .withBean(RedissonClient.class, () -> proxy(RedissonClient.class))
                 .run(context -> {
@@ -52,12 +53,13 @@ class TokenWebBeansConditionTest {
     private ApplicationContextRunner runner() {
         return new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(TokenAutoConfiguration.class))
-                .withPropertyValues("yomi.token.enabled=true", "spring.application.name=token-nonweb-test")
+                .withPropertyValues("yomi.token.enabled=true", "spring.application.name=token-nonweb-test",
+                        "spring.data.redis.host=127.0.0.1")
                 .withBean(StringRedisTemplate.class, TokenWebBeansConditionTest::stubRedisTemplate)
                 .withBean(RedissonClient.class, () -> proxy(RedissonClient.class));
     }
 
-    /** 不触达真实连接的模板桩：tokenStore 只持有引用 */
+    /** 不触达真实连接的模板桩：tokenStore 只持有引用（连接目标属性另行配置——只给模板 Bean 不算"配了 Redis"） */
     private static StringRedisTemplate stubRedisTemplate() {
         return new StringRedisTemplate(proxy(RedisConnectionFactory.class));
     }

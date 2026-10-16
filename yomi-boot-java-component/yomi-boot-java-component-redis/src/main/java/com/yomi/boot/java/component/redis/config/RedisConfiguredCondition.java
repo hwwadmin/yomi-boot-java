@@ -33,15 +33,34 @@ public class RedisConfiguredCondition extends SpringBootCondition {
     /** 环境是否配置了 Redis 连接目标（非默认 localhost 兜底） */
     @Override
     public ConditionOutcome getMatchOutcome(ConditionContext context, AnnotatedTypeMetadata metadata) {
-        Environment environment = context.getEnvironment();
-        for (String key : TARGET_KEYS) {
-            if (StringUtils.isNotBlank(environment.getProperty(key))) {
-                return ConditionOutcome.match(ConditionMessage.forCondition("RedisConfigured")
-                        .found("spring.data.redis").items(key));
-            }
+        String matched = firstConfiguredTarget(context.getEnvironment());
+        if (matched != null) {
+            return ConditionOutcome.match(ConditionMessage.forCondition("RedisConfigured")
+                    .found("spring.data.redis").items(matched));
         }
         return ConditionOutcome.noMatch(ConditionMessage.forCondition("RedisConfigured")
                 .because("未配置 spring.data.redis.* 连接目标（host/url/sentinel/cluster/masterreplica）"));
+    }
+
+    /**
+     * 环境是否配置了 Redis 连接目标。
+     * <p>
+     * 供其它组件复用同一判定（不各自复制键列表）：<b>不能用 {@code StringRedisTemplate}/{@code RedisConnectionFactory}
+     * 是否存在来判断</b>——Boot 默认注册指向 localhost 的工厂与模板，那种写法会恒为真（组件"装配成功却每请求 500"）
+     * </p>
+     */
+    public static boolean isConfigured(Environment environment) {
+        return firstConfiguredTarget(environment) != null;
+    }
+
+    /** 返回首个命中的连接目标配置键，未命中返回 null */
+    private static String firstConfiguredTarget(Environment environment) {
+        for (String key : TARGET_KEYS) {
+            if (StringUtils.isNotBlank(environment.getProperty(key))) {
+                return key;
+            }
+        }
+        return null;
     }
 
 }
