@@ -49,7 +49,7 @@ class HttpLogFilterTest {
     /** 组件测试无 AppBoot，IdWorkerEnvironmentListener 不注册，需手工初始化雪花 */
     @BeforeAll
     static void initIdWorker() {
-        IdUtils.initialize(1L, 0L, null);
+        IdUtils.initialize(1L, 0L);
     }
 
     private final HttpLogProperties properties = properties();

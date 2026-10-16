@@ -50,7 +50,7 @@ class MyBatisDaoBatchUpdateTest {
 
     @Test
     void saveOrUpdateBatchGroupsInsertsAndUpdatesAndNeverBackfills() {
-        IdUtils.initialize(1L, 0L, false);
+        IdUtils.initialize(1L, 0L);
         var calls = new ArrayList<String>();
         var dao = new DemoDao(mapper(calls));
 

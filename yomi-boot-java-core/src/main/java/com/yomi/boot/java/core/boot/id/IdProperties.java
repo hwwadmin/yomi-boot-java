@@ -17,19 +17,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class IdProperties {
 
     /**
-     * 雪花 workerId，取值 0~31；多实例部署时须互不相同。
-     * 未配置时不阻断启动；首次生成 ID 须配置本项或开启 {@link #allowHostSuffix}。
+     * 雪花 workerId，取值 0~31；必须配置，多实例部署时须互不相同。
      */
     private Long workerId;
 
     /**
-     * 雪花 datacenterId，取值 0~31。
+     * 雪花 datacenterId，取值 0~31；未配置默认 0。
      */
     private Long datacenterId;
-
-    /**
-     * 为 true 时，未配置 workerId 时可从 POD_NAME/主机名数字后缀推导（0~31）。
-     */
-    private Boolean allowHostSuffix;
 
 }

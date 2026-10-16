@@ -62,9 +62,9 @@ management:
 # YOMI框架配置
 yomi:
   id:
-    # 雪花 worker 编号（0~31，多实例勿重复）
+    # 雪花 worker 编号（0~31，必配，多实例勿重复；缺失即启动失败）
     worker-id: ${YOMI_ID_WORKER_ID:1}
-    # 雪花机房编号（0~31）
+    # 雪花机房编号（0~31，缺省 0）
     datacenter-id: ${YOMI_ID_DATACENTER_ID:0}
   cors:
     # 是否启用 CORS

@@ -1,12 +1,12 @@
 package com.yomi.boot.java.component.rbac.core.impl;
 
 import com.yomi.boot.java.base.exception.BizException;
+import com.yomi.boot.java.base.utils.IdUtils;
 import com.yomi.boot.java.component.rbac.core.RbacAdminService;
 import com.yomi.boot.java.component.rbac.entity.RbacRole;
 import com.yomi.boot.java.component.rbac.exception.RbacErrorCode;
 import com.yomi.boot.java.component.rbac.input.CreateRoleInput;
 import com.yomi.boot.java.component.rbac.repository.*;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
@@ -26,12 +26,7 @@ class RbacAdminRoleDeleteTest {
     @BeforeAll
     static void configureSnowflakeWorkerId() {
         // BaseEntity.init() 生成雪花主键，需要机器号；单元测试环境没有 yml/环境变量
-        System.setProperty("yomi.id.worker-id", "1");
-    }
-
-    @AfterAll
-    static void clearSnowflakeWorkerId() {
-        System.clearProperty("yomi.id.worker-id");
+        IdUtils.initialize(1L, 0L);
     }
 
     @Test
