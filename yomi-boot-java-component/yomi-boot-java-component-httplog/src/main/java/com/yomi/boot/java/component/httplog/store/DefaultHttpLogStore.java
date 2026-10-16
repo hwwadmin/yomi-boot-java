@@ -1,13 +1,11 @@
 package com.yomi.boot.java.component.httplog.store;
 
-import com.baomidou.dynamic.datasource.toolkit.DynamicDataSourceContextHolder;
 import com.yomi.boot.java.component.httplog.config.HttpLogProperties;
 import com.yomi.boot.java.component.httplog.entity.HttpLogEntity;
 import com.yomi.boot.java.component.httplog.model.HttpLogRecord;
 import com.yomi.boot.java.component.httplog.repository.IHttpLogRepository;
 import com.yomi.boot.java.component.httplog.support.HttpLogMetrics;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 
@@ -51,20 +49,8 @@ public class DefaultHttpLogStore implements HttpLogStore {
         for (HttpLogRecord record : batch) {
             entities.add(toEntity(record));
         }
-        String datasource = properties.getStore().getDatasource();
-        boolean pushed = StringUtils.isNotBlank(datasource);
-        if (pushed) {
-            // 组件自建线程内 @DS 注解不生效，必须编程式切换
-            DynamicDataSourceContextHolder.push(datasource);
-        }
-        try {
-            writeWithRetry(entities);
-            metrics.written(entities.size());
-        } finally {
-            if (pushed) {
-                DynamicDataSourceContextHolder.poll();
-            }
-        }
+        writeWithRetry(entities);
+        metrics.written(entities.size());
     }
 
     /** 主路径批量写；完整性冲突走逐条隔离；其他异常按配置重试 */

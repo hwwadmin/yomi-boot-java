@@ -165,7 +165,7 @@ class TableInitializerTest {
 
     @Test
     void skipsWhenNoDataSourceResolvable() {
-        // 多候选且无 @Primary、也无 dynamic-datasource 路由数据源：无法判定主库，告警跳过而不是误判失败
+        // 多候选且无 @Primary：无法判定主库，告警跳过而不是误判失败
         ObjectProvider<DataSource> ambiguous = new StubProvider<>(List.of(dataSource(stub("MySQL")), dataSource(stub("MySQL"))));
         TableInitializer initializer = new TableInitializer(ambiguous, "测试组件", SCRIPT, List.of("table_init_a"));
 

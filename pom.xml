@@ -38,7 +38,6 @@
 
         <!--第三方包引入版本定义-->
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
-        <dynamic-datasource.version>4.5.0</dynamic-datasource.version>
         <redisson.version>4.7.0</redisson.version>
         <commons-collections4.version>4.4</commons-collections4.version>
         <commons-compress.version>1.28.0</commons-compress.version>
@@ -80,11 +79,6 @@
                 <groupId>com.baomidou</groupId>
                 <artifactId>mybatis-plus-jsqlparser-4.9</artifactId>
                 <version>${mybatis-plus.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.baomidou</groupId>
-                <artifactId>dynamic-datasource-spring-boot4-starter</artifactId>
-                <version>${dynamic-datasource.version}</version>
             </dependency>
 
             <!-- redisson -->

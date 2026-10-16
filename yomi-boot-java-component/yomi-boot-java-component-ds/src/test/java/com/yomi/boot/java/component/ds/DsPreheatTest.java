@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
-import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -24,7 +24,7 @@ class DsPreheatTest {
     void preheatUsesJdbcStandardValidationInsteadOfSql() {
         AtomicBoolean validCalled = new AtomicBoolean();
         AtomicInteger statements = new AtomicInteger();
-        DsPreheat preheat = new DsPreheat(List.of(dataSource(validCalled, statements, true)));
+        DsPreheat preheat = new DsPreheat(Map.of("masterDataSource", dataSource(validCalled, statements, true)));
 
         preheat.preheat();
 
@@ -35,14 +35,14 @@ class DsPreheatTest {
     @Test
     void preheatToleratesInvalidConnectionAndConnectionFailure() {
         // isValid 返回 false：预热判定失败但不抛
-        assertDoesNotThrow(() -> new DsPreheat(
-                List.of(dataSource(new AtomicBoolean(), new AtomicInteger(), false))).preheat());
+        assertDoesNotThrow(() -> new DsPreheat(Map.of(
+                "masterDataSource", dataSource(new AtomicBoolean(), new AtomicInteger(), false))).preheat());
         // 连 getConnection 都失败：只记 ERROR，不阻断启动
         DataSource broken = (DataSource) Proxy.newProxyInstance(DsPreheatTest.class.getClassLoader(),
                 new Class<?>[]{DataSource.class}, (proxy, method, args) -> {
                     throw new IllegalStateException("连接池不可用: " + method.getName());
                 });
-        assertDoesNotThrow(() -> new DsPreheat(List.of(broken)).preheat());
+        assertDoesNotThrow(() -> new DsPreheat(Map.of("brokenDataSource", broken)).preheat());
     }
 
     /** 伪数据源：记录 isValid/createStatement 是否被调用 */

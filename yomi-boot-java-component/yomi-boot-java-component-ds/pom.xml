@@ -36,12 +36,6 @@
             <artifactId>mybatis-plus-jsqlparser-4.9</artifactId>
         </dependency>
 
-        <!-- dynamic-datasource -->
-        <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>dynamic-datasource-spring-boot4-starter</artifactId>
-        </dependency>
-
         <!-- mysql -->
         <dependency>
             <groupId>com.mysql</groupId>

@@ -11,21 +11,17 @@ server:
 
 spring:
   datasource:
-    dynamic:
-      primary: master
-      hikari:
-        initialization-fail-timeout: 1
-        minimum-idle: 5
-        maximum-pool-size: 20
-        connection-timeout: 30000
-        idle-timeout: 600000
-        max-lifetime: 1800000
-      datasource:
-        master:
-          url: jdbc:mysql://${YOMI_DB_HOST}:${YOMI_DB_PORT:3306}/${YOMI_DB_DATABASE}?characterEncoding=UTF-8&useSSL=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
-          username: ${YOMI_DB_USER}
-          password: ${YOMI_DB_PASSWORD}
-          driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${YOMI_DB_HOST}:${YOMI_DB_PORT:3306}/${YOMI_DB_DATABASE}?characterEncoding=UTF-8&useSSL=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: ${YOMI_DB_USER}
+    password: ${YOMI_DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      initialization-fail-timeout: 1
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
   data:
     redis:
       host: ${YOMI_REDIS_HOST}

@@ -35,10 +35,11 @@ class DsInterceptorOrderingTest {
     void dsChainWinsWhenHostDeclaresInnerInterceptor() {
         SpringApplication app = new SpringApplication(HostApp.class);
         app.setWebApplicationType(WebApplicationType.NONE);
-        // 无数据源时 dynamic-datasource 的 health 贡献者会启动失败，与本题无关，排除之
+        // 无数据源宿主（不接数据库，只借用 ds 的工具类）：排除 Boot 的数据源自动配置（Boot 标准做法：
+        // jdbc starter 在场但不接库时它自己会因"没有 url/driver"启动失败），主库四件套不装配，拦截器链照常就位
         try (ConfigurableApplicationContext context = app.run(
                 "--yomi.boot.ds.preheat.enabled=false",
-                "--spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.health.DataSourceHealthContributorAutoConfiguration")) {
+                "--spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")) {
             MybatisPlusInterceptor chain = context.getBean(MybatisPlusInterceptor.class);
 
             assertTrue(chain.getInterceptors().stream().anyMatch(PaginationInnerInterceptor.class::isInstance),

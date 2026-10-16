@@ -1,6 +1,5 @@
 package com.yomi.boot.java.component.ds.support;
 
-import com.baomidou.dynamic.datasource.DynamicRoutingDataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -135,17 +134,9 @@ public class TableInitializer implements SmartInitializingSingleton {
         return cause == null ? new IllegalStateException(message) : new IllegalStateException(message, cause);
     }
 
-    /** 解析用于探活与建表的数据源 */
+    /** 解析用于探活与建表的数据源：主库（唯一或 @Primary 的那个） */
     private DataSource resolveDataSource() {
-        DataSource dataSource = dataSourceProvider.getIfUnique();
-        if (dataSource != null) {
-            return dataSource;
-        }
-        // 多个候选且无 @Primary 时，优先取 dynamic-datasource 的路由数据源（主库）
-        return dataSourceProvider.stream()
-                .filter(DynamicRoutingDataSource.class::isInstance)
-                .findFirst()
-                .orElse(null);
+        return dataSourceProvider.getIfUnique();
     }
 
     /** 探活结果：缺失表清单 + 首个错误（用于报错留痕） */

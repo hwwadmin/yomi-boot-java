@@ -21,7 +21,7 @@
 |------|------|
 | `yomi-boot-java-base` | 与 Spring 无关的基础库：工具类、通用模型、Jackson 序列化、异常等 |
 | `yomi-boot-java-core` | 框架核心：启动入口（`AppBoot`）、统一配置、CORS、全局异常、XSS 与耗时切面、BCrypt、雪花 ID 等 |
-| `yomi-boot-java-component` | 可选组件：`ds`（动态数据源 + MyBatis-Plus）、`redis`、`kafka`、`token`、`rbac`、`roundrobin`、`idempotency`、`event`、`oss`、`captcha`、`desensitize` |
+| `yomi-boot-java-component` | 可选组件：`ds`（主数据源 + MyBatis-Plus；附加库由业务自建，见《组件使用说明》多数据源使用规范）、`redis`、`kafka`、`token`、`rbac`、`roundrobin`、`idempotency`、`event`、`oss`、`captcha`、`desensitize` |
 | `yomi-boot-java-qucik-starter` | 快速体验 / 集成参考的 Spring Boot 应用（含各组件演示） |
 
 ## 技术栈
@@ -46,7 +46,6 @@
 | 技术 | 版本 | 用途 |
 |------|------|------|
 | MyBatis-Plus | 3.5.17 | ORM 与增强能力 |
-| dynamic-datasource | 4.5.0 | 多数据源 |
 | Redisson | 4.7.0 | Redis 客户端与分布式能力 |
 | MySQL | 驱动由 Spring Boot 管理（mysql-connector-j 9.7.0） | 关系型数据库（示例默认；与 PostgreSQL 并列支持） |
 | PostgreSQL | 驱动由 Spring Boot 管理（postgresql 42.7.x） | 关系型数据库（与 MySQL 并列支持） |

@@ -255,16 +255,14 @@ public class HttpLogAutoConfiguration {
         HttpLogProperties.Collect collect = properties.getCollect();
         HttpLogProperties.Retention retention = properties.getRetention();
         log.info("[httplog]已启用 service={}, mode={}, 采集[请求头={},请求体={},响应头={},响应体={}], "
-                        + "截断[请求={}B,响应={}B], 缓冲[容量={},批量={}], 脱敏[键={},body={}], 保留={}, 数据源={}",
+                        + "截断[请求={}B,响应={}B], 缓冲[容量={},批量={}], 脱敏[键={},body={}], 保留={}",
                 keys.getServiceName(), properties.getMode(),
                 collect.isRecordRequestHeaders(), collect.isRecordRequestBody(),
                 collect.isRecordResponseHeaders(), collect.isRecordResponseBody(),
                 collect.getMaxRequestBodyBytes(), collect.getMaxResponseBodyBytes(),
                 properties.getBuffer().getCapacity(), properties.getBuffer().getBatchSize(),
                 desensitizer.active() ? properties.getDesensitize().getKeyTypes().size() : 0,
-                desensitizer.bodyEnabled(), retention.isEnabled() ? retention.getDays() + "天" : "关闭",
-                StringUtils.isNotBlank(properties.getStore().getDatasource())
-                        ? properties.getStore().getDatasource() : "默认");
+                desensitizer.bodyEnabled(), retention.isEnabled() ? retention.getDays() + "天" : "关闭");
         log.info("[httplog]磁盘提示: 全量采集下行宽约含头/体（上限 {}B+{}B），磁盘 ≈ QPS × 行宽 × 86400 × 保留天数，上线前请评估",
                 collect.getMaxRequestBodyBytes(), collect.getMaxResponseBodyBytes());
     }

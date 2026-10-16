@@ -1,6 +1,5 @@
 package com.yomi.boot.java.component.ds;
 
-import com.baomidou.dynamic.datasource.DynamicRoutingDataSource;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 数据源预热
  * <p>
- * 并行预热所有真实数据源：单个数据源受单池超时约束，整体受总预算约束，
+ * 并行预热容器内**每一个**数据源（含业务自建的附加库）：单个数据源受单池超时约束，整体受总预算约束，
  * 启动耗时上限为总预算；预热失败或超时只记录 ERROR 日志，不阻断应用启动。
  * 可通过 yomi.boot.ds.preheat.enabled=false 关闭预热（默认开启）
  *
@@ -39,13 +38,13 @@ public class DsPreheat {
     /** 预热总预算（毫秒），并行执行下应不小于单池超时；超时后放弃等待，剩余预热在后台继续 */
     private static final long TOTAL_BUDGET_MILLIS = 15_000L;
 
-    /** 容器内全部 {@link DataSource} Bean */
-    private final List<DataSource> dataSourceList;
+    /** 容器内全部 {@link DataSource} Bean（Bean 名 → 实例） */
+    private final Map<String, DataSource> dataSourceBeans;
 
-    /** 启动后并行探活各真实连接池（失败不阻断启动） */
+    /** 启动后并行探活各连接池（失败不阻断启动） */
     @PostConstruct
     public void preheat() {
-        List<PreheatTarget> targets = resolvePreheatTargets(dataSourceList);
+        List<PreheatTarget> targets = resolvePreheatTargets(dataSourceBeans);
         if (CollectionUtils.isEmpty(targets)) {
             return;
         }
@@ -123,34 +122,26 @@ public class DsPreheat {
     }
 
     /**
-     * 解析需要预热的真实数据源：展开 dynamic-datasource 路由内的子池，并按实例去重
+     * 解析需要预热的连接池：Bean 名做展示名，连接池实例按同一性去重（同一实例挂了多个 Bean 名时只预热一次）
      */
-    static List<PreheatTarget> resolvePreheatTargets(List<DataSource> dataSourceList) {
-        if (CollectionUtils.isEmpty(dataSourceList)) {
+    static List<PreheatTarget> resolvePreheatTargets(Map<String, DataSource> dataSourceBeans) {
+        if (dataSourceBeans == null || dataSourceBeans.isEmpty()) {
             return List.of();
         }
         Map<DataSource, String> unique = new IdentityHashMap<>();
-        for (DataSource dataSource : dataSourceList) {
-            if (dataSource instanceof DynamicRoutingDataSource routing) {
-                Map<String, DataSource> children = routing.getDataSources();
-                if (children != null) {
-                    children.forEach((name, ds) -> unique.putIfAbsent(ds, name));
-                }
-                continue;
-            }
-            unique.putIfAbsent(dataSource, resolveDataSourceName(dataSource));
-        }
+        new TreeMap<>(dataSourceBeans).forEach((name, dataSource) ->
+                unique.putIfAbsent(dataSource, resolveDataSourceName(name, dataSource)));
         return unique.entrySet().stream()
                 .map(entry -> new PreheatTarget(entry.getValue(), entry.getKey()))
                 .toList();
     }
 
-    /** 解析数据源名称（日志展示） */
-    private static String resolveDataSourceName(DataSource dataSource) {
-        if (dataSource instanceof HikariDataSource hikari) {
-            return hikari.getPoolName();
+    /** 解析数据源名称（日志展示，Bean 名优先、其次连接池名） */
+    private static String resolveDataSourceName(String beanName, DataSource dataSource) {
+        if (dataSource instanceof HikariDataSource hikari && hikari.getPoolName() != null) {
+            return beanName + "(" + hikari.getPoolName() + ")";
         }
-        return dataSource.getClass().getSimpleName();
+        return beanName;
     }
 
     /**
@@ -195,7 +186,7 @@ public class DsPreheat {
     /**
      * 预热目标
      *
-     * @param name       数据源名称（dynamic-datasource 的数据源名或连接池名）
+     * @param name       数据源 Bean 名（连接池名一并展示）
      * @param dataSource 数据源
      */
     record PreheatTarget(String name, DataSource dataSource) {

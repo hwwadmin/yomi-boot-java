@@ -34,8 +34,8 @@ public class DsDatabaseIdProvider extends VendorDatabaseIdProvider {
     public String getDatabaseId(DataSource dataSource) {
         String databaseId;
         try {
-            // 父类对"取产品名失败"只包 SQLException，dynamic-datasource 无主数据源抛的是 RuntimeException，
-            // 故这里按"任何取不到方言的情形"统一处理：不注册方言语句，也不阻断启动（无数据源宿主是受支持形态）
+            // 父类对"取产品名失败"只包 SQLException，这里按"任何取不到方言的情形"统一处理：
+            // 不注册方言语句，也不阻断启动（无数据源宿主是受支持形态）
             databaseId = super.getDatabaseId(dataSource);
         } catch (Exception e) {
             log.info("[ds] 未取到数据库连接，未解析数据源方言（方言语句不注册）");

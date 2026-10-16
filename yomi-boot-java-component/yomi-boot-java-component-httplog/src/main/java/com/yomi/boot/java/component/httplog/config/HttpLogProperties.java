@@ -172,9 +172,6 @@ public class HttpLogProperties {
     @Data
     public static class Store {
 
-        /** 空=容器默认数据源；否则为 dynamic-datasource 数据源名（写入线程编程式切换） */
-        private String datasource = "";
-
         /** 批量写入失败的重试次数（0=不重试直接判失败） */
         private int retryTimes = 2;
 
