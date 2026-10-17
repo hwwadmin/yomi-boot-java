@@ -36,7 +36,7 @@ public class RoundRobinAutoConfiguration {
     @Bean
     public RoundRobinKeys roundRobinKeys(RoundRobinProperties properties, Environment environment) {
         String prefix = resolvePrefix(properties, environment);
-        log.info("轮询调度已启用: storePrefix={}", prefix);
+        log.info("[RoundRobin]轮询调度组件已启用: storePrefix={}", prefix);
         return new RoundRobinKeys(prefix);
     }
 
