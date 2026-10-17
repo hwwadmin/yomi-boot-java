@@ -3,7 +3,7 @@ package com.yomi.boot.java.component.event.config;
 import com.yomi.boot.java.component.event.relay.OutboxRelayCoordinator;
 import com.yomi.boot.java.component.event.retention.EventRetentionCleaner;
 import com.yomi.boot.java.component.event.support.EventKeys;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

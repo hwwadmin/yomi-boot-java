@@ -4,7 +4,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
+import com.yomi.boot.java.component.roundrobin.RoundRobin;
+import com.yomi.boot.java.component.roundrobin.RoundRobinHandler;
+import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient.UnlockOutcome;
 import org.junit.jupiter.api.AfterEach;
@@ -48,12 +50,12 @@ class RoundRobinTickTest {
     }
 
     /**
-     * 丢锁是严重事件（watchdog=false 时最可能是任务超租约、其它实例并发执行）：
+     * 丢锁是严重事件（硬租约下最可能是任务超租约、其它实例并发执行）：
      * 记 ERROR 并给出排查方向，这是这类问题唯一的可观测信号
      */
     @Test
-    void lockLossIsLoggedAsErrorWithLeaseHintWhenWatchdogOff() {
-        String logs = driveLostLock(false);
+    void lockLossIsLoggedAsErrorWithLeaseHintForHardLease() {
+        String logs = driveLostLock(true);
 
         assertTrue(logs.contains("exec-lock-ttl=PT30S"), "报错应带上实际租约值: " + logs);
         assertTrue(logs.contains("并发执行"), "报错应点明并发执行后果: " + logs);
@@ -61,9 +63,9 @@ class RoundRobinTickTest {
 
     @Test
     void lockLossUnderWatchdogIsLoggedAsAbnormalEvent() {
-        String logs = driveLostLock(true);
+        String logs = driveLostLock(false);
 
-        assertTrue(logs.contains("看门狗"), "看门狗模式丢锁属异常事件，文案应区分: " + logs);
+        assertTrue(logs.contains("看门狗"), "续期模式丢锁属异常事件，文案应区分: " + logs);
     }
 
     /** 任务异常向上抛出，执行锁在 finally 中释放 */
@@ -73,10 +75,9 @@ class RoundRobinTickTest {
         HeldLockClient lockClient = new HeldLockClient();
         RoundRobinTick tick = new RoundRobinTick(lockClient, scheduler);
 
-        assertThrows(IllegalStateException.class, () -> tick.tick(new CancellationToken(), config(true),
-                ctx -> {
-                    throw new IllegalStateException("下游故障");
-                }));
+        assertThrows(IllegalStateException.class, () -> tick.tick(new CancellationToken(), task(ctx -> {
+            throw new IllegalStateException("下游故障");
+        })));
 
         assertEquals(1, lockClient.unlocked.size(), "任务失败也必须释放执行锁");
     }
@@ -91,7 +92,7 @@ class RoundRobinTickTest {
         AtomicInteger runs = new AtomicInteger();
 
         boolean executed = assertDoesNotThrow(
-                () -> tick.tick(new CancellationToken(), config(true), ctx -> runs.incrementAndGet()));
+                () -> tick.tick(new CancellationToken(), task(ctx -> runs.incrementAndGet())));
 
         assertFalse(executed, "无法建立丢锁检测时不得执行任务");
         assertEquals(0, runs.get(), "任务不得裸跑");
@@ -109,9 +110,9 @@ class RoundRobinTickTest {
         RoundRobinTick tick = new RoundRobinTick(lockClient, scheduler);
 
         NoClassDefFoundError panic = assertThrows(NoClassDefFoundError.class,
-                () -> tick.tick(new CancellationToken(), config(true), ctx -> {
+                () -> tick.tick(new CancellationToken(), task(ctx -> {
                     throw new NoClassDefFoundError("boom");
-                }));
+                })));
 
         assertEquals("boom", panic.getMessage());
         assertEquals(1, lockClient.unlocked.size(), "任务 panic 也必须释放执行锁");
@@ -167,17 +168,19 @@ class RoundRobinTickTest {
     void watchLagIsReportedOncePerIncident() {
         scheduler = Executors.newScheduledThreadPool(1);
         RoundRobinTick tick = new RoundRobinTick(new HeldLockClient(), scheduler);
+        RoundRobinTask task = task(ctx -> {
+        });
 
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinTick.class);
         logger.addAppender(appender);
         try {
-            tick.reportWatchLag(config(true), -1);                                  // 首次执行：不算间隔
-            tick.reportWatchLag(config(true), Duration.ofSeconds(1).toNanos());     // 拥堵：报一条
-            tick.reportWatchLag(config(true), Duration.ofSeconds(2).toNanos());     // 同一次拥堵：不重复
-            tick.reportWatchLag(config(true), Duration.ofMillis(50).toNanos());     // 回归正常：复位
-            tick.reportWatchLag(config(true), Duration.ofSeconds(1).toNanos());     // 再次拥堵：可再报
+            tick.reportWatchLag(task, -1);                                  // 首次执行：不算间隔
+            tick.reportWatchLag(task, Duration.ofSeconds(1).toNanos());     // 拥堵：报一条
+            tick.reportWatchLag(task, Duration.ofSeconds(2).toNanos());     // 同一次拥堵：不重复
+            tick.reportWatchLag(task, Duration.ofMillis(50).toNanos());     // 回归正常：复位
+            tick.reportWatchLag(task, Duration.ofSeconds(1).toNanos());     // 再次拥堵：可再报
         } finally {
             logger.detachAppender(appender);
         }
@@ -215,8 +218,8 @@ class RoundRobinTickTest {
     }
 
     /** 跑一次 tick（仅用于把检测任务注册进 trap 调度器），本轮异常交给调用方处理 */
-    private void tickQuietly(RoundRobinLockClient lockClient, RoundRobinHandler task) throws Exception {
-        new RoundRobinTick(lockClient, scheduler).tick(new CancellationToken(), config(true), task);
+    private void tickQuietly(RoundRobinLockClient lockClient, RoundRobinHandler handler) throws Exception {
+        new RoundRobinTick(lockClient, scheduler).tick(new CancellationToken(), task(handler));
     }
 
     /**
@@ -234,14 +237,15 @@ class RoundRobinTickTest {
             }
 
             @Override
-            public UnlockOutcome unlockQuietly(RoundRobinConfig config, RLock lock) {
-                UnlockOutcome outcome = super.unlockQuietly(config, lock);
+            public UnlockOutcome unlockQuietly(RoundRobinTask task, RLock lock) {
+                UnlockOutcome outcome = super.unlockQuietly(task, lock);
                 watch.get().run();      // 模拟"已取出、正做 Redis 往返"的那次检测落在 unlock 之后
                 return outcome;
             }
         };
 
-        String logs = tickLogs(lockClient, config(true), ctx -> { });
+        String logs = tickLogs(lockClient, task(ctx -> {
+        }));
 
         assertFalse(logs.contains("执行锁已丢失"), "任务结束后的字段缺失是本轮自己解锁，不能报丢锁: " + logs);
     }
@@ -252,12 +256,13 @@ class RoundRobinTickTest {
         scheduler = Executors.newScheduledThreadPool(1);
         HeldLockClient lockClient = new HeldLockClient() {
             @Override
-            public UnlockOutcome unlockQuietly(RoundRobinConfig config, RLock lock) {
+            public UnlockOutcome unlockQuietly(RoundRobinTask task, RLock lock) {
                 return UnlockOutcome.NOT_HELD;
             }
         };
 
-        String logs = tickLogs(lockClient, config(false), ctx -> { });
+        String logs = tickLogs(lockClient, hardLeaseTask(ctx -> {
+        }));
 
         assertTrue(logs.contains("释放执行锁时发现锁已易主"), "解锁发现易主属真丢锁，必须记 ERROR: " + logs);
         assertTrue(logs.contains("exec-lock-ttl=PT30S"), "硬租约模式应带租约值与排查方向: " + logs);
@@ -269,33 +274,34 @@ class RoundRobinTickTest {
         scheduler = Executors.newScheduledThreadPool(1);
         LostLockClient lockClient = new LostLockClient() {
             @Override
-            public UnlockOutcome unlockQuietly(RoundRobinConfig config, RLock lock) {
+            public UnlockOutcome unlockQuietly(RoundRobinTask task, RLock lock) {
                 return UnlockOutcome.NOT_HELD;
             }
         };
 
-        String logs = tickLogs(lockClient, config(true), ctx -> Thread.sleep(250));
+        String logs = tickLogs(lockClient, task(ctx -> Thread.sleep(250)));
 
         assertEquals(1, logs.lines().filter(line -> line.contains("ERROR")).count(), "同一次丢锁只能报一条: " + logs);
     }
 
     /** 驱动一次 tick：锁客户端桩报告"锁已丢失"，任务运行 250ms 让 50ms 周期的存活检测有机会触发 */
-    private String driveLostLock(boolean watchdog) {
+    private String driveLostLock(boolean hardLease) {
         scheduler = Executors.newScheduledThreadPool(1);
-        String logs = tickLogs(new LostLockClient(), config(watchdog), ctx -> Thread.sleep(250));
+        RoundRobinHandler sleeper = ctx -> Thread.sleep(250);
+        String logs = tickLogs(new LostLockClient(), hardLease ? hardLeaseTask(sleeper) : task(sleeper));
         assertTrue(logs.contains(Level.ERROR.toString()), "丢锁必须记 ERROR: " + logs);
         return logs;
     }
 
     /** 跑一次 tick，返回本轮 RoundRobinTick 的日志（级别 + 文案） */
-    private String tickLogs(RoundRobinLockClient lockClient, RoundRobinConfig config, RoundRobinHandler task) {
+    private String tickLogs(RoundRobinLockClient lockClient, RoundRobinTask task) {
         RoundRobinTick tick = new RoundRobinTick(lockClient, scheduler);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinTick.class);
         logger.addAppender(appender);
         try {
-            tick.tick(new CancellationToken(), config, task);
+            tick.tick(new CancellationToken(), task);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
@@ -335,18 +341,16 @@ class RoundRobinTickTest {
         return null;
     }
 
-    /** 构造 RoundRobin 测试配置 */
-    private static RoundRobinConfig config(boolean watchdog) {
-        return RoundRobinConfig.builder()
-                .name("lost-lock-task")
-                .frequency(Duration.ofSeconds(1))
-                .randomDelayMin(Duration.ofMillis(100))
-                .randomDelayMax(Duration.ofMillis(200))
-                .wakeUpInterval(Duration.ofMillis(100))
+    /** 看门狗续期任务（默认），丢锁文案为"异常事件"口径 */
+    private static RoundRobinTask task(RoundRobinHandler handler) {
+        return RoundRobin.task("lost-lock-task", Duration.ofSeconds(1), handler);
+    }
+
+    /** 硬租约任务：丢锁文案带租约值与排查方向 */
+    private static RoundRobinTask hardLeaseTask(RoundRobinHandler handler) {
+        return RoundRobin.task("lost-lock-task", Duration.ofSeconds(1))
                 .execLockTtl(Duration.ofSeconds(30))
-                .execWatchdog(watchdog)
-                .lockWait(Duration.ZERO)
-                .shutdownAwait(Duration.ofSeconds(30))
+                .handler(handler)
                 .build();
     }
 
@@ -364,12 +368,12 @@ class RoundRobinTickTest {
         }
 
         @Override
-        public boolean tryAcquireFrequency(RoundRobinConfig config) {
+        public boolean tryAcquireFrequency(RoundRobinTask task) {
             return true;
         }
 
         @Override
-        public RLock tryAcquireExecution(RoundRobinConfig config) {
+        public RLock tryAcquireExecution(RoundRobinTask task) {
             return proxyLock();
         }
 
@@ -379,7 +383,7 @@ class RoundRobinTickTest {
         }
 
         @Override
-        public UnlockOutcome unlockQuietly(RoundRobinConfig config, RLock lock) {
+        public UnlockOutcome unlockQuietly(RoundRobinTask task, RLock lock) {
             // 测试桩：不触达 Redis
             return UnlockOutcome.RELEASED;
         }
@@ -395,12 +399,12 @@ class RoundRobinTickTest {
         }
 
         @Override
-        public boolean tryAcquireFrequency(RoundRobinConfig config) {
+        public boolean tryAcquireFrequency(RoundRobinTask task) {
             return true;
         }
 
         @Override
-        public RLock tryAcquireExecution(RoundRobinConfig config) {
+        public RLock tryAcquireExecution(RoundRobinTask task) {
             return proxyLock();
         }
 
@@ -410,8 +414,8 @@ class RoundRobinTickTest {
         }
 
         @Override
-        public UnlockOutcome unlockQuietly(RoundRobinConfig config, RLock lock) {
-            unlocked.add(config.getName());
+        public UnlockOutcome unlockQuietly(RoundRobinTask task, RLock lock) {
+            unlocked.add(task.getName());
             return UnlockOutcome.RELEASED;
         }
     }

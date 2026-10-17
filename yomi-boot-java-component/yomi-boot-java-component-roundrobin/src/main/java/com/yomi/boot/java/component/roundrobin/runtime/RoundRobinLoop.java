@@ -1,6 +1,6 @@
 package com.yomi.boot.java.component.roundrobin.runtime;
 
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
+import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,18 +19,18 @@ public class RoundRobinLoop {
     /** 单次调度循环：加锁、执行、退避 */
     private final RoundRobinTick tick;
 
-    /** 执行业务逻辑 */
-    public void run(CancellationToken scheduleToken, RoundRobinConfig config, RoundRobinHandler task) {
-        String name = config.getName();
+    /** 执行任务直至调度取消 */
+    public void run(CancellationToken scheduleToken, RoundRobinTask task) {
+        String name = task.getName();
         int consecutiveErrors = 0;
         boolean abnormalExit = false;
         try {
             // 生效配置摘要在 try 内：摘要取数出错同走"循环自身代码出错"，worker 退出必留 ERROR 与异常退出标记
-            log.info("RoundRobin[{}] task started, 生效配置: {}", name, config.toLogSummary());
+            log.info("RoundRobin[{}] task started, 生效配置: {}", name, task.toLogSummary());
             while (!scheduleToken.isCancelled()) {
                 boolean executed;
                 try {
-                    executed = tick.tick(scheduleToken, config, task);
+                    executed = tick.tick(scheduleToken, task);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
@@ -56,7 +56,7 @@ public class RoundRobinLoop {
                 }
                 if (executed) {
                     consecutiveErrors = 0;
-                    if (!RoundRobinSleep.sleep(scheduleToken, RoundRobinJitter.duration(config))) {
+                    if (!RoundRobinSleep.sleep(scheduleToken, RoundRobinJitter.duration(task))) {
                         break;
                     }
                 }

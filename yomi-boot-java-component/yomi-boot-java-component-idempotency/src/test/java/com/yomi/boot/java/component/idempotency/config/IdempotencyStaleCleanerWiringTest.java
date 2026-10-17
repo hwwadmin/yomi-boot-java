@@ -2,7 +2,7 @@ package com.yomi.boot.java.component.idempotency.config;
 
 import com.yomi.boot.java.component.idempotency.stale.IdempotencyStaleCleaner;
 import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSessionFactory;

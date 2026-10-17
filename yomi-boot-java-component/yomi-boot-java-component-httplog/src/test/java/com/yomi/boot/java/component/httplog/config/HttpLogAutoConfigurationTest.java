@@ -13,7 +13,7 @@ import com.yomi.boot.java.component.httplog.repository.IHttpLogRepository;
 import com.yomi.boot.java.component.httplog.retention.HttpLogRetentionCleaner;
 import com.yomi.boot.java.component.httplog.store.HttpLogStore;
 import com.yomi.boot.java.component.httplog.support.HttpLogKeys;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;

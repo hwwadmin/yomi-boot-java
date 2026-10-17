@@ -1,5 +1,7 @@
 package com.yomi.boot.java.component.roundrobin.runtime;
 
+import com.yomi.boot.java.component.roundrobin.RoundRobinContext;
+
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**

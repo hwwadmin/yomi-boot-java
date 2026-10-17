@@ -3,7 +3,7 @@ package com.yomi.boot.java.component.httplog.retention;
 import com.yomi.boot.java.component.httplog.config.HttpLogProperties;
 import com.yomi.boot.java.component.httplog.repository.IHttpLogRepository;
 import com.yomi.boot.java.component.httplog.support.HttpLogKeys;
-import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinContext;
+import com.yomi.boot.java.component.roundrobin.RoundRobinContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

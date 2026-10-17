@@ -21,11 +21,8 @@ import com.yomi.boot.java.component.rbac.web.RbacInterceptor;
 import com.yomi.boot.java.component.rbac.web.RbacWebMvcConfig;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
 import com.yomi.boot.java.component.roundrobin.RoundRobin;
-import com.yomi.boot.java.component.roundrobin.annotation.RoundRobinTask;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinDefaults;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
 import com.yomi.boot.java.component.token.ITokenService;
 import com.yomi.boot.java.component.token.config.TokenAutoConfiguration;
 import lombok.extern.slf4j.Slf4j;
@@ -192,7 +189,7 @@ public class RbacAutoConfiguration {
     @ConditionalOnProperty(value = "yomi.rbac.scheduled-refresh-enabled", havingValue = "true")
     @ConditionalOnProperty(value = "yomi.rbac.projection-enabled", havingValue = "true", matchIfMissing = true)
     @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
-    @ConditionalOnClass(RoundRobinTask.class)
+    @ConditionalOnClass(RoundRobinRegistry.class)
     public RbacProjectionRefresher rbacProjectionRefresher(IRbacAuthService authService,
                                                            RbacProperties properties,
                                                            RoundRobinRegistry roundRobinRegistry) {
@@ -206,12 +203,9 @@ public class RbacAutoConfiguration {
     private static void registerProjectionRefreshTask(RoundRobinRegistry registry,
                                                       RbacProjectionRefresher refresher,
                                                       RbacProperties properties) {
-        RoundRobinDefaults defaults = RoundRobinDefaults.builder().build();
-        RoundRobinConfig config = RoundRobinConfig.simple(
-                RbacProjectionRefresher.TASK_NAME, "定时全量刷新 RBAC 鉴权投影（Redis）",
-                properties.getScheduledRefreshInterval(), defaults);
-        config.validate();
-        registry.register(RoundRobin.task(config, refresher::refresh));
+        registry.register(RoundRobin.task(RbacProjectionRefresher.TASK_NAME,
+                "定时全量刷新 RBAC 鉴权投影（Redis）",
+                properties.getScheduledRefreshInterval(), refresher::refresh));
     }
 
     @Bean

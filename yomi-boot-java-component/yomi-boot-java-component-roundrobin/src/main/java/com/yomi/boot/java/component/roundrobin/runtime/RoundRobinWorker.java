@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.time.Duration;
 
 /**
- * 后台轮询工作线程句柄，由 {@link com.yomi.boot.java.component.roundrobin.RoundRobin#startWorker} 创建
+ * 后台轮询工作线程句柄，由 {@link com.yomi.boot.java.component.roundrobin.spring.RoundRobinLifecycle} 创建
  *
  * @author zwei
  */

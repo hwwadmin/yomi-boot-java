@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * 分布式轮询调度全局配置，yml 前缀 {@code yomi.roundrobin}
  * <p>
- * 任务级参数见 {@link com.yomi.boot.java.component.roundrobin.annotation.RoundRobinTask}。
+ * 任务级参数见 {@link com.yomi.boot.java.component.roundrobin.RoundRobin#task}（代码声明，不在 yml 里）。
  * {@code enabled=true} 时可无任务，仅装配组件。
  * <p>
  * 任务命名约定：{@code <模块><用途驼峰>}，如 {@code eventOutboxFetch}；不带服务名后缀——

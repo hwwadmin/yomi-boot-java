@@ -1,7 +1,7 @@
-package com.yomi.boot.java.component.roundrobin.runtime;
+package com.yomi.boot.java.component.roundrobin;
 
 /**
- * 单次轮询任务执行体，异常由框架记录日志，不终止调度环
+ * 单轮轮询任务执行体，异常由框架记录日志，不终止调度环
  *
  * @author zwei
  */

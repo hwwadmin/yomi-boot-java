@@ -1,16 +1,11 @@
 package com.yomi.boot.java.component.roundrobin;
 
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinTaskDefinition;
-import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
-import com.yomi.boot.java.component.roundrobin.runtime.*;
-import org.springframework.util.ReflectionUtils;
-
-import java.lang.reflect.Method;
-import java.util.concurrent.ScheduledExecutorService;
+import java.time.Duration;
 
 /**
- * 轮询任务创建与启动的统一入口
+ * 轮询任务创建统一入口
+ * <p>
+ * 创建出的 {@link RoundRobinTask} 交给 {@link RoundRobinRegistry#register} 注册。
  *
  * @author zwei
  */
@@ -19,47 +14,28 @@ public final class RoundRobin {
     private RoundRobin() {
     }
 
-    /** 声明并注册轮询任务 */
-    public static RoundRobinTaskDefinition task(RoundRobinConfig config, RoundRobinHandler handler) {
-        return new RoundRobinTaskDefinition(config, handler);
+    /** 创建轮询任务（不填简介）：任务名、最小间隔、单轮执行体 */
+    public static RoundRobinTask task(String name, Duration interval, RoundRobinHandler handler) {
+        return RoundRobinTask.builder()
+                .name(name)
+                .interval(interval)
+                .handler(handler)
+                .build();
     }
 
-    /**
-     * 将 Bean 方法适配为 {@link RoundRobinHandler}（供 {@code @RoundRobinTask} 等声明式注册使用）
-     */
-    public static RoundRobinHandler handler(Object target, Method method) {
-        requireValidTaskMethod(method);
-        return ctx -> {
-            Object[] args = method.getParameterCount() == 0 ? new Object[0] : new Object[]{ctx};
-            ReflectionUtils.invokeMethod(method, target, args);
-        };
+    /** 创建轮询任务：任务名、作用简介（启动日志）、最小间隔、单轮执行体 */
+    public static RoundRobinTask task(String name, String description, Duration interval, RoundRobinHandler handler) {
+        return RoundRobinTask.builder()
+                .name(name)
+                .description(description)
+                .interval(interval)
+                .handler(handler)
+                .build();
     }
 
-    /** 校验方法签名符合任务约定 */
-    public static void requireValidTaskMethod(Method method) {
-        int paramCount = method.getParameterCount();
-        if (paramCount == 0) {
-            return;
-        }
-        if (paramCount == 1 && RoundRobinContext.class.isAssignableFrom(method.getParameterTypes()[0])) {
-            return;
-        }
-        throw new IllegalStateException("RoundRobin 任务方法参数非法: " + method);
-    }
-
-    /**
-     * 在虚拟线程中后台执行轮询，直至 {@code scheduleToken} 取消
-     */
-    public static RoundRobinWorker startWorker(CancellationToken scheduleToken, RoundRobinConfig config,
-                                             RoundRobinHandler handler, RoundRobinLockClient lockClient,
-                                             ScheduledExecutorService scheduler) {
-        config.validate();
-        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(lockClient, scheduler));
-        Thread thread = Thread.ofVirtual()
-                .name("roundrobin-" + config.getName())
-                .unstarted(() -> loop.run(scheduleToken, config, handler));
-        thread.start();
-        return new RoundRobinWorker(thread, config.getShutdownAwait());
+    /** 需要高级参数（execLockTtl / maxHoldDuration / lockWait / shutdownAwait）时用 builder 创建 */
+    public static RoundRobinTask.RoundRobinTaskBuilder task(String name, Duration interval) {
+        return RoundRobinTask.builder().name(name).interval(interval);
     }
 
 }

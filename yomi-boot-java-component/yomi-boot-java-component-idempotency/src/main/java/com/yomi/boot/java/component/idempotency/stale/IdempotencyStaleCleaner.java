@@ -2,7 +2,7 @@ package com.yomi.boot.java.component.idempotency.stale;
 
 import com.yomi.boot.java.component.idempotency.config.IdempotencyProperties;
 import com.yomi.boot.java.component.idempotency.repository.IIdempotencyRecordRepository;
-import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinContext;
+import com.yomi.boot.java.component.roundrobin.RoundRobinContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

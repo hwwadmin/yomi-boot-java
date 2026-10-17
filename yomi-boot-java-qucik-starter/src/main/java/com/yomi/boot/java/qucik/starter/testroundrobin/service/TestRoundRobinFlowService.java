@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * RoundRobin 流程：重置计数后等待 {@link com.yomi.boot.java.qucik.starter.testroundrobin.worker.TestRoundRobinDemoWorker} 递增。
+ * RoundRobin 流程：重置计数后等待 {@link TestRoundRobinDemoConfiguration} 注册的轮询任务递增。
  */
 @Service
 @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
@@ -28,7 +28,7 @@ public class TestRoundRobinFlowService {
 
         boolean ticked = SpinBarrier.spin(() -> readCount() >= 1, WAIT_MS);
         long count = readCount();
-        Assert.isTrue(ticked && count >= 1, "等待 @RoundRobinTask 递增超时, count={}", count);
+        Assert.isTrue(ticked && count >= 1, "等待演示轮询任务递增超时, count={}", count);
         steps.add("2.轮询任务: count=" + count + " (>=1)");
 
         steps.add("3.流程通过");

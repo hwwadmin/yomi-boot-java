@@ -11,11 +11,8 @@ import com.yomi.boot.java.component.idempotency.store.IdempotencyKeys;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyRedisStore;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
 import com.yomi.boot.java.component.roundrobin.RoundRobin;
-import com.yomi.boot.java.component.roundrobin.annotation.RoundRobinTask;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinDefaults;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
@@ -106,7 +103,7 @@ public class IdempotencyAutoConfiguration {
     /** 需同时开启 roundrobin 与 stale-cleaner-enabled */
     @Bean
     @ConditionalOnProperty(value = "yomi.idempotency.stale-cleaner-enabled", havingValue = "true")
-    @ConditionalOnClass(RoundRobinTask.class)
+    @ConditionalOnClass(RoundRobinRegistry.class)
     @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
     public IdempotencyStaleCleaner idempotencyStaleCleaner(IIdempotencyRecordRepository repository,
                                                            IdempotencyProperties properties,
@@ -122,12 +119,9 @@ public class IdempotencyAutoConfiguration {
     private static void registerStaleCleanerRoundRobinTask(RoundRobinRegistry registry,
                                                            IdempotencyStaleCleaner cleaner,
                                                            IdempotencyProperties properties) {
-        RoundRobinDefaults defaults = RoundRobinDefaults.builder().build();
-        RoundRobinConfig config = RoundRobinConfig.simple(
-                IdempotencyStaleCleaner.TASK_NAME, "清理超时「处理中」与已过期的幂等记录",
-                properties.getScanInterval(), defaults);
-        config.validate();
-        registry.register(RoundRobin.task(config, cleaner::clean));
+        registry.register(RoundRobin.task(IdempotencyStaleCleaner.TASK_NAME,
+                "清理超时「处理中」与已过期的幂等记录",
+                properties.getScanInterval(), cleaner::clean));
     }
 
     /** 启动期校验依赖并打日志 */

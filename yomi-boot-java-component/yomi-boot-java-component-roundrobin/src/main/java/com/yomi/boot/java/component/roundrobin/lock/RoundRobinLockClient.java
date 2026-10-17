@@ -1,13 +1,14 @@
 package com.yomi.boot.java.component.roundrobin.lock;
 
+import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
 import com.yomi.boot.java.component.roundrobin.config.RoundRobinKeys;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -29,38 +30,33 @@ public class RoundRobinLockClient {
     private final RoundRobinKeys keys;
 
     /**
-     * 获取频率锁，TTL 等于 frequency
+     * 获取频率锁，TTL 等于 interval
      */
-    public boolean tryAcquireFrequency(RoundRobinConfig config) {
-        String key = keys.frequencyKey(config.getName());
+    public boolean tryAcquireFrequency(RoundRobinTask task) {
+        String key = keys.frequencyKey(task.getName());
         Boolean ok = stringRedisTemplate.opsForValue()
-                .setIfAbsent(key, "1", config.getFrequency());
+                .setIfAbsent(key, "1", task.getInterval());
         return Boolean.TRUE.equals(ok);
     }
 
     /**
      * 尝试获取执行锁。
      * <p>
-     * execWatchdog=true 时使用 Redisson 看门狗续期，exec-lock-ttl 仅用于与 max-hold 校验；
-     * execWatchdog=false 时使用固定租约 exec-lock-ttl。
+     * 未配置 execLockTtl 时使用 Redisson 看门狗续期（默认，租约无上限）；
+     * 配置了 execLockTtl 时使用固定租约——任务要在其内完成，超时锁过期、其它实例可能并发执行同一任务。
      */
-    public RLock tryAcquireExecution(RoundRobinConfig config) throws InterruptedException {
-        RLock lock = redissonClient.getLock(keys.lockKey(config.getName()));
-        long waitMillis = config.getLockWait().toMillis();
+    public RLock tryAcquireExecution(RoundRobinTask task) throws InterruptedException {
+        RLock lock = redissonClient.getLock(keys.lockKey(task.getName()));
+        long waitMillis = task.getLockWait().toMillis();
+        Duration hardLease = task.getExecLockTtl();
         boolean held;
-        if (config.isExecWatchdog()) {
-            if (waitMillis <= 0) {
-                held = lock.tryLock();
-            } else {
-                held = lock.tryLock(waitMillis, TimeUnit.MILLISECONDS);
-            }
+        if (hardLease == null) {
+            held = waitMillis <= 0 ? lock.tryLock() : lock.tryLock(waitMillis, TimeUnit.MILLISECONDS);
         } else {
-            long leaseMillis = config.getExecLockTtl().toMillis();
-            if (waitMillis <= 0) {
-                held = lock.tryLock(0, leaseMillis, TimeUnit.MILLISECONDS);
-            } else {
-                held = lock.tryLock(waitMillis, leaseMillis, TimeUnit.MILLISECONDS);
-            }
+            long leaseMillis = hardLease.toMillis();
+            held = waitMillis <= 0
+                    ? lock.tryLock(0, leaseMillis, TimeUnit.MILLISECONDS)
+                    : lock.tryLock(waitMillis, leaseMillis, TimeUnit.MILLISECONDS);
         }
         return held ? lock : null;
     }
@@ -85,7 +81,7 @@ public class RoundRobinLockClient {
      *
      * @return {@link UnlockOutcome#NOT_HELD} 是丢锁的确凿信号（本线程字段已不在锁里），由调用方据此上报
      */
-    public UnlockOutcome unlockQuietly(RoundRobinConfig config, RLock lock) {
+    public UnlockOutcome unlockQuietly(RoundRobinTask task, RLock lock) {
         if (lock == null) {
             return UnlockOutcome.RELEASED;
         }
@@ -98,7 +94,7 @@ public class RoundRobinLockClient {
         } catch (Exception e) {
             // Redisson 命令层已按 retryAttempts 重试过；走到这里说明重试也没成功
             log.warn("RoundRobin[{}] 执行锁释放失败；看门狗模式下续期不会停止，"
-                    + "该任务在本进程重启前可能无法被其它实例接管", config.getName(), e);
+                    + "该任务在本进程重启前可能无法被其它实例接管", task.getName(), e);
             return UnlockOutcome.FAILED;
         }
     }

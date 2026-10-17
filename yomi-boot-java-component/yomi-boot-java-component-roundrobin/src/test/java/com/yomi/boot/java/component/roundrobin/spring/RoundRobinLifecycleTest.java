@@ -3,10 +3,9 @@ package com.yomi.boot.java.component.roundrobin.spring;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinDefaults;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinTaskDefinition;
+import com.yomi.boot.java.component.roundrobin.RoundRobin;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
+import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinLoop;
 import org.junit.jupiter.api.AfterEach;
@@ -69,9 +68,7 @@ class RoundRobinLifecycleTest {
 
     /** 向 RoundRobin 注册测试任务 */
     private static void register(RoundRobinRegistry registry, String name, String description) {
-        RoundRobinConfig config = RoundRobinConfig.simple(name, description, Duration.ofMillis(100),
-                RoundRobinDefaults.builder().build());
-        registry.register(new RoundRobinTaskDefinition(config, ctx -> {
+        registry.register(RoundRobin.task(name, description, Duration.ofMillis(100), ctx -> {
         }));
     }
 
@@ -81,9 +78,7 @@ class RoundRobinLifecycleTest {
         scheduler = Executors.newScheduledThreadPool(1);
         RoundRobinRegistry registry = new RoundRobinRegistry();
         AtomicInteger runs = new AtomicInteger();
-        RoundRobinConfig config = RoundRobinConfig.simple("可重启任务", Duration.ofMillis(50),
-                RoundRobinDefaults.builder().build());
-        registry.register(new RoundRobinTaskDefinition(config, ctx -> runs.incrementAndGet()));
+        registry.register(RoundRobin.task("可重启任务", Duration.ofMillis(50), ctx -> runs.incrementAndGet()));
 
         RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new WorkingLockClient(), scheduler);
         try {
@@ -130,9 +125,7 @@ class RoundRobinLifecycleTest {
             assertTrue(lifecycle.isRunning());
 
             // 运行期注册（ApplicationRunner / 懒加载 Bean / 动态任务的典型时机）
-            registry.register(new RoundRobinTaskDefinition(
-                    RoundRobinConfig.simple("运行期任务", Duration.ofMillis(50), RoundRobinDefaults.builder().build()),
-                    ctx -> runs.incrementAndGet()));
+            registry.register(RoundRobin.task("运行期任务", Duration.ofMillis(50), ctx -> runs.incrementAndGet()));
 
             assertTrue(awaitUntil(() -> runs.get() > 0), "启动后注册的任务必须被增量调度并执行");
             String logs = logs(appender);
@@ -153,9 +146,7 @@ class RoundRobinLifecycleTest {
 
         lifecycle.start();
         lifecycle.stop();
-        registry.register(new RoundRobinTaskDefinition(
-                RoundRobinConfig.simple("停机后注册", Duration.ofMillis(50), RoundRobinDefaults.builder().build()),
-                ctx -> runs.incrementAndGet()));
+        registry.register(RoundRobin.task("停机后注册", Duration.ofMillis(50), ctx -> runs.incrementAndGet()));
 
         Thread.sleep(300);
         assertTrue(registry.contains("停机后注册"), "仍应入表，供下次 start 统一调度");
@@ -176,12 +167,12 @@ class RoundRobinLifecycleTest {
         }
 
         @Override
-        public boolean tryAcquireFrequency(RoundRobinConfig config) {
+        public boolean tryAcquireFrequency(RoundRobinTask task) {
             return true;
         }
 
         @Override
-        public org.redisson.api.RLock tryAcquireExecution(RoundRobinConfig config) {
+        public org.redisson.api.RLock tryAcquireExecution(RoundRobinTask task) {
             return (org.redisson.api.RLock) java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
                     new Class<?>[]{org.redisson.api.RLock.class}, (proxy, method, args) -> null);
         }
@@ -192,7 +183,7 @@ class RoundRobinLifecycleTest {
         }
 
         @Override
-        public RoundRobinLockClient.UnlockOutcome unlockQuietly(RoundRobinConfig config, org.redisson.api.RLock lock) {
+        public RoundRobinLockClient.UnlockOutcome unlockQuietly(RoundRobinTask task, org.redisson.api.RLock lock) {
             // 测试桩：不触达 Redis
             return RoundRobinLockClient.UnlockOutcome.RELEASED;
         }
@@ -206,7 +197,7 @@ class RoundRobinLifecycleTest {
         }
 
         @Override
-        public boolean tryAcquireFrequency(RoundRobinConfig config) {
+        public boolean tryAcquireFrequency(RoundRobinTask task) {
             return false;
         }
     }

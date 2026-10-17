@@ -1,10 +1,9 @@
 package com.yomi.boot.java.component.roundrobin.config;
 
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import com.yomi.boot.java.component.roundrobin.spring.RoundRobinLifecycle;
-import com.yomi.boot.java.component.roundrobin.spring.RoundRobinTaskBeanPostProcessor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RedissonClient;
@@ -24,7 +23,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * 分布式轮询调度自动装配，{@code yomi.roundrobin.enabled=true} 时注册任务扫描与 {@link com.yomi.boot.java.component.roundrobin.spring.RoundRobinLifecycle}
+ * 分布式轮询调度自动装配，{@code yomi.roundrobin.enabled=true} 时注册任务注册表与 {@link RoundRobinLifecycle}
  *
  * @author zwei
  */
@@ -78,11 +77,6 @@ public class RoundRobinAutoConfiguration {
             return t;
         };
         return Executors.newScheduledThreadPool(4, factory);
-    }
-
-    @Bean
-    public RoundRobinTaskBeanPostProcessor roundRobinTaskBeanPostProcessor(RoundRobinRegistry registry) {
-        return new RoundRobinTaskBeanPostProcessor(registry);
     }
 
     @Bean

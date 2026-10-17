@@ -3,7 +3,9 @@ package com.yomi.boot.java.component.roundrobin.runtime;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
+import com.yomi.boot.java.component.roundrobin.RoundRobin;
+import com.yomi.boot.java.component.roundrobin.RoundRobinHandler;
+import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient.UnlockOutcome;
 import org.junit.jupiter.api.AfterEach;
@@ -42,18 +44,19 @@ class RoundRobinLoopTest {
         CancellationToken token = new CancellationToken();
         AtomicInteger runs = new AtomicInteger();
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient(), scheduler));
+        RoundRobinTask task = task(ctx -> {
+            if (runs.incrementAndGet() >= 2) {
+                token.cancel();
+            }
+            throw new IllegalStateException("下游故障");
+        });
 
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
         logger.addAppender(appender);
         try {
-            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, config(), ctx -> {
-                if (runs.incrementAndGet() >= 2) {
-                    token.cancel();
-                }
-                throw new IllegalStateException("下游故障");
-            }));
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, task));
             worker.join(10_000);
         } finally {
             logger.detachAppender(appender);
@@ -76,18 +79,19 @@ class RoundRobinLoopTest {
         CancellationToken token = new CancellationToken();
         AtomicInteger runs = new AtomicInteger();
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient(), scheduler));
+        RoundRobinTask task = task(ctx -> {
+            if (runs.incrementAndGet() >= 2) {
+                token.cancel();
+            }
+            throw new NoClassDefFoundError("boom");
+        });
 
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
         logger.addAppender(appender);
         try {
-            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, config(), ctx -> {
-                if (runs.incrementAndGet() >= 2) {
-                    token.cancel();
-                }
-                throw new NoClassDefFoundError("boom");
-            }));
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, task));
             worker.join(10_000);
         } finally {
             logger.detachAppender(appender);
@@ -111,7 +115,7 @@ class RoundRobinLoopTest {
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(
                 new HeldLockClient() {
                     @Override
-                    public boolean tryAcquireFrequency(RoundRobinConfig config) {
+                    public boolean tryAcquireFrequency(RoundRobinTask task) {
                         if (failures.incrementAndGet() >= 2) {
                             token.cancel();
                         }
@@ -124,8 +128,8 @@ class RoundRobinLoopTest {
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
         logger.addAppender(appender);
         try {
-            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, config(), ctx -> {
-            }));
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, task(ctx -> {
+            })));
             worker.join(10_000);
         } finally {
             logger.detachAppender(appender);
@@ -137,33 +141,30 @@ class RoundRobinLoopTest {
     }
 
     /**
-     * 循环自身的代码出错（这里用缺 jitter 参数的配置，在 task started 行的生效配置摘要取数时踩 NPE）：
-     * worker 线程结束，日志留 ERROR 与"异常退出"标记，与正常停机区分
+     * 循环自身的代码出错（这里覆写生效配置摘要取数抛错）：worker 线程结束，
+     * 日志留 ERROR 与"异常退出"标记，与正常停机区分
      */
     @Test
     void abnormalExitIsLoggedWhenErrorEscapesRoundTolerance() throws Exception {
         scheduler = Executors.newScheduledThreadPool(1);
         CancellationToken token = new CancellationToken();
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient(), scheduler));
-        // randomDelayMin=null：validate() 会拦住真实配置，此处刻意构造以在生效配置摘要取数时抛错
-        RoundRobinConfig broken = RoundRobinConfig.builder()
-                .name("broken-task")
-                .frequency(Duration.ofMillis(50))
-                .randomDelayMax(Duration.ofMillis(60))
-                .wakeUpInterval(Duration.ofMillis(50))
-                .execLockTtl(Duration.ofSeconds(30))
-                .execWatchdog(true)
-                .lockWait(Duration.ZERO)
-                .shutdownAwait(Duration.ofSeconds(1))
-                .build();
+        // 覆写摘要取数：构造期校验已挡住非法参数，这是"循环自身代码出错"仅剩的注入点
+        RoundRobinTask broken = new RoundRobinTask("broken-task", null, Duration.ofMillis(50), null, null,
+                Duration.ZERO, Duration.ofSeconds(1), ctx -> {
+        }) {
+            @Override
+            public String toLogSummary() {
+                throw new IllegalStateException("模拟循环自身代码出错");
+            }
+        };
 
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
         logger.addAppender(appender);
         try {
-            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, broken, ctx -> {
-            }));
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, broken));
             worker.join(10_000);
             assertFalse(worker.isAlive(), "循环代码出错后 worker 必须退出（不得静默续跑或挂死）");
         } finally {
@@ -187,19 +188,9 @@ class RoundRobinLoopTest {
         }).collect(Collectors.joining("\n"));
     }
 
-    /** 构造 RoundRobin 测试配置 */
-    private static RoundRobinConfig config() {
-        return RoundRobinConfig.builder()
-                .name("failing-task")
-                .frequency(Duration.ofMillis(50))
-                .randomDelayMin(Duration.ofMillis(50))
-                .randomDelayMax(Duration.ofMillis(60))
-                .wakeUpInterval(Duration.ofMillis(50))
-                .execLockTtl(Duration.ofSeconds(30))
-                .execWatchdog(true)
-                .lockWait(Duration.ZERO)
-                .shutdownAwait(Duration.ofSeconds(30))
-                .build();
+    /** 构造 RoundRobin 测试任务 */
+    private static RoundRobinTask task(RoundRobinHandler handler) {
+        return RoundRobin.task("failing-task", Duration.ofMillis(50), handler);
     }
 
     /** 锁客户端桩：锁一直视为持有，不触达 Redis */
@@ -210,12 +201,12 @@ class RoundRobinLoopTest {
         }
 
         @Override
-        public boolean tryAcquireFrequency(RoundRobinConfig config) {
+        public boolean tryAcquireFrequency(RoundRobinTask task) {
             return true;
         }
 
         @Override
-        public RLock tryAcquireExecution(RoundRobinConfig config) {
+        public RLock tryAcquireExecution(RoundRobinTask task) {
             return (RLock) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{RLock.class},
                     (proxy, method, args) -> null);
         }
@@ -226,7 +217,7 @@ class RoundRobinLoopTest {
         }
 
         @Override
-        public UnlockOutcome unlockQuietly(RoundRobinConfig config, RLock lock) {
+        public UnlockOutcome unlockQuietly(RoundRobinTask task, RLock lock) {
             // 测试桩：不触达 Redis
             return UnlockOutcome.RELEASED;
         }

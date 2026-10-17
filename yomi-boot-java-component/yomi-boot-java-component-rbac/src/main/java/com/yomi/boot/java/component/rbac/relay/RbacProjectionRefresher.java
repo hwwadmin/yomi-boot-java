@@ -3,7 +3,7 @@ package com.yomi.boot.java.component.rbac.relay;
 import com.yomi.boot.java.base.exception.BizException;
 import com.yomi.boot.java.component.rbac.IRbacAuthService;
 import com.yomi.boot.java.component.rbac.exception.RbacErrorCode;
-import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinContext;
+import com.yomi.boot.java.component.roundrobin.RoundRobinContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

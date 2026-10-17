@@ -7,7 +7,7 @@ import com.yomi.boot.java.component.event.model.OutboxStatus;
 import com.yomi.boot.java.component.event.repository.IEventOutboxDlqRepository;
 import com.yomi.boot.java.component.event.repository.IEventOutboxRepository;
 import com.yomi.boot.java.component.event.support.EventKeys;
-import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinContext;
+import com.yomi.boot.java.component.roundrobin.RoundRobinContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

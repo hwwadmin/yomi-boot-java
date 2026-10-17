@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * RoundRobin 组件流程测试（{@code @RoundRobinTask} 声明式任务）。
+ * RoundRobin 组件流程测试（编程式注册的轮询任务）。
  * <p>
  * 前置：{@code yomi.roundrobin.enabled=true}、Redis。
  * <ul>

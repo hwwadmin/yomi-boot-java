@@ -21,12 +21,9 @@ import com.yomi.boot.java.component.event.service.EventService;
 import com.yomi.boot.java.component.event.support.EventKeys;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
 import com.yomi.boot.java.component.roundrobin.RoundRobin;
-import com.yomi.boot.java.component.roundrobin.annotation.RoundRobinTask;
+import com.yomi.boot.java.component.roundrobin.RoundRobinHandler;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinDefaults;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
-import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
@@ -192,7 +189,7 @@ public class EventAutoConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
-        @ConditionalOnClass(RoundRobinTask.class)
+        @ConditionalOnClass(RoundRobinRegistry.class)
         @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
         public OutboxDispatcher outboxDispatcher(EventProperties properties,
                                                  IEventOutboxRepository outboxRepository,
@@ -203,7 +200,7 @@ public class EventAutoConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
-        @ConditionalOnClass(RoundRobinTask.class)
+        @ConditionalOnClass(RoundRobinRegistry.class)
         @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
         public OutboxRelayCoordinator outboxRelayCoordinator(EventProperties properties,
                                                              EventKeys keys,
@@ -214,7 +211,7 @@ public class EventAutoConfiguration {
         }
 
         @Bean
-        @ConditionalOnClass(RoundRobinTask.class)
+        @ConditionalOnClass(RoundRobinRegistry.class)
         @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
         public EventOutboxRoundRobinRegistrar eventOutboxRoundRobinRegistrar(EventProperties properties,
                                                                              EventKeys keys,
@@ -226,7 +223,7 @@ public class EventAutoConfiguration {
 
         /** 保留期清理（默认关闭）：仅删 SENT_SUCCESS 且超过保留期的行 */
         @Bean
-        @ConditionalOnClass(RoundRobinTask.class)
+        @ConditionalOnClass(RoundRobinRegistry.class)
         @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
         @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
         public EventRetentionCleaner eventOutboxRetentionCleaner(EventProperties properties,
@@ -275,7 +272,7 @@ public class EventAutoConfiguration {
          * 保留期短于这个窗口时，超期重投的事件会被当作新消息再消费一次</p>
          */
         @Bean
-        @ConditionalOnClass(RoundRobinTask.class)
+        @ConditionalOnClass(RoundRobinRegistry.class)
         @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
         @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
         @ConditionalOnProperty(value = "yomi.event.retention.inbox-retention-enabled", havingValue = "true")
@@ -296,22 +293,15 @@ public class EventAutoConfiguration {
     private static void registerRelayTasks(RoundRobinRegistry registry,
                                            EventProperties properties,
                                            OutboxRelayCoordinator coordinator) {
-        RoundRobinDefaults defaults = RoundRobinDefaults.builder().build();
-        registry.register(RoundRobin.task(
-                RoundRobinConfig.simple(OutboxRelayCoordinator.TASK_FETCH,
-                        "抓取发件箱 PENDING 记录并投递 MQ",
-                        properties.getFetchInterval(), defaults),
-                coordinator::fetchAndDispatch));
-        registry.register(RoundRobin.task(
-                RoundRobinConfig.simple(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT,
-                        "回收长时间停留在 FETCHED 的发件箱记录（重置为 PENDING）",
-                        properties.getFetchInterval(), defaults),
-                coordinator::recoverFetchedTimeout));
-        registry.register(RoundRobin.task(
-                RoundRobinConfig.simple(OutboxRelayCoordinator.TASK_DLQ,
-                        "重试发件箱死信（DLQ），清理已成功或无主的死信行",
-                        properties.getDlqScanInterval(), defaults),
-                coordinator::processDlq));
+        registry.register(RoundRobin.task(OutboxRelayCoordinator.TASK_FETCH,
+                "抓取发件箱 PENDING 记录并投递 MQ",
+                properties.getFetchInterval(), coordinator::fetchAndDispatch));
+        registry.register(RoundRobin.task(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT,
+                "回收长时间停留在 FETCHED 的发件箱记录（重置为 PENDING）",
+                properties.getFetchInterval(), coordinator::recoverFetchedTimeout));
+        registry.register(RoundRobin.task(OutboxRelayCoordinator.TASK_DLQ,
+                "重试发件箱死信（DLQ），清理已成功或无主的死信行",
+                properties.getDlqScanInterval(), coordinator::processDlq));
         log.info("[事件]发件箱轮询任务已注册 fetchInterval={}, dlqInterval={}",
                 properties.getFetchInterval(), properties.getDlqScanInterval());
     }
@@ -319,11 +309,8 @@ public class EventAutoConfiguration {
     /** 注册保留期清理任务（间隔取 yomi.event.retention.scan-interval） */
     private static void registerRetentionTask(RoundRobinRegistry registry, EventProperties properties,
                                               String taskName, String description, RoundRobinHandler handler) {
-        RoundRobinDefaults defaults = RoundRobinDefaults.builder().build();
-        RoundRobinConfig config = RoundRobinConfig.simple(
-                taskName, description, properties.getRetention().getScanInterval(), defaults);
-        config.validate();
-        registry.register(RoundRobin.task(config, handler));
+        registry.register(RoundRobin.task(taskName, description,
+                properties.getRetention().getScanInterval(), handler));
     }
 
     /** 校验发布侧 Mapper 等依赖 */

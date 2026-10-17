@@ -26,11 +26,8 @@ import com.yomi.boot.java.component.httplog.support.HttpLogMetrics;
 import com.yomi.boot.java.component.kafka.config.KafkaAutoConfiguration;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
 import com.yomi.boot.java.component.roundrobin.RoundRobin;
-import com.yomi.boot.java.component.roundrobin.annotation.RoundRobinTask;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinConfig;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinDefaults;
-import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -349,7 +346,7 @@ public class HttpLogAutoConfiguration {
 
     /** 保留期清理（默认开，需 roundrobin） */
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(RoundRobinTask.class)
+    @ConditionalOnClass(RoundRobinRegistry.class)
     @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
     static class RetentionConfiguration {
 
@@ -360,11 +357,9 @@ public class HttpLogAutoConfiguration {
                                                                IHttpLogRepository httpLogRepository,
                                                                RoundRobinRegistry registry) {
             HttpLogRetentionCleaner cleaner = new HttpLogRetentionCleaner(properties, keys, httpLogRepository);
-            RoundRobinDefaults defaults = RoundRobinDefaults.builder().build();
-            RoundRobinConfig config = RoundRobinConfig.simple(HttpLogRetentionCleaner.TASK_NAME,
-                    "清理超过保留期的 HTTP 请求日志", properties.getRetention().getScanInterval(), defaults);
-            config.validate();
-            registry.register(RoundRobin.task(config, cleaner::clean));
+            registry.register(RoundRobin.task(HttpLogRetentionCleaner.TASK_NAME,
+                    "清理超过保留期的 HTTP 请求日志",
+                    properties.getRetention().getScanInterval(), cleaner::clean));
             log.info("[httplog]保留期清理已注册: days={}, scanInterval={}",
                     properties.getRetention().getDays(), properties.getRetention().getScanInterval());
             return cleaner;

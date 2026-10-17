@@ -1,4 +1,4 @@
-package com.yomi.boot.java.component.roundrobin.core;
+package com.yomi.boot.java.component.roundrobin;
 
 import org.junit.jupiter.api.Test;
 
@@ -11,9 +11,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 注册表：同名注册原子拒绝、启动后注册触发补建回调。
@@ -24,7 +22,7 @@ class RoundRobinRegistryTest {
     void lateRegistrationTriggersHandlerAfterStart() {
         RoundRobinRegistry registry = new RoundRobinRegistry();
         List<String> delivered = new ArrayList<>();
-        registry.setLateRegistrationHandler(definition -> delivered.add(definition.getConfig().getName()));
+        registry.setLateRegistrationHandler(task -> delivered.add(task.getName()));
 
         registry.register(task("任务A"));
 
@@ -38,6 +36,14 @@ class RoundRobinRegistryTest {
         registry.register(task("任务A"));
 
         assertTrue(registry.contains("任务A"), "没有 lifecycle（如单元测试）时注册照常入表");
+    }
+
+    @Test
+    void registerReturnsRegisteredTask() {
+        RoundRobinRegistry registry = new RoundRobinRegistry();
+        RoundRobinTask task = task("任务A");
+
+        assertSame(task, registry.register(task), "@Bean 方法直接返回注册结果");
     }
 
     @Test
@@ -85,11 +91,9 @@ class RoundRobinRegistryTest {
         assertThrows(IllegalStateException.class, () -> registry.register(task("任务A")));
     }
 
-    private static RoundRobinTaskDefinition task(String name) {
-        return new RoundRobinTaskDefinition(
-                RoundRobinConfig.simple(name, Duration.ofSeconds(1), RoundRobinDefaults.builder().build()),
-                ctx -> {
-                });
+    private static RoundRobinTask task(String name) {
+        return RoundRobin.task(name, Duration.ofSeconds(1), ctx -> {
+        });
     }
 
 }

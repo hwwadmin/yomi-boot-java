@@ -102,7 +102,7 @@ class EventRoundRobinDependencyCheckTest {
         Method method = EventAutoConfiguration.ConsumerConfiguration.class.getMethod("eventInboxRetentionCleaner",
                 EventProperties.class, com.yomi.boot.java.component.event.support.EventKeys.class,
                 com.yomi.boot.java.component.event.repository.IEventInboxRepository.class,
-                com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry.class);
+                com.yomi.boot.java.component.roundrobin.RoundRobinRegistry.class);
 
         Set<String> keys = Arrays.stream(method.getAnnotationsByType(ConditionalOnProperty.class))
                 .flatMap(annotation -> annotation.name().length > 0
@@ -133,12 +133,12 @@ class EventRoundRobinDependencyCheckTest {
         properties.getRetention().setInboxRetentionEnabled(true);
 
         assertDoesNotThrow(() -> bootstrap(properties,
-                new com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry()));
+                new com.yomi.boot.java.component.roundrobin.RoundRobinRegistry()));
     }
 
     /** 直接调用装配类的 @Bean 方法（发布侧关闭，故 ApplicationContext 不参与） */
     private static void bootstrap(EventProperties properties,
-                                  com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry registry) {
+                                  com.yomi.boot.java.component.roundrobin.RoundRobinRegistry registry) {
         new EventAutoConfiguration().eventBootstrap(properties, new EventKeys("test"), null,
                 provider(null), provider(inboxMapperStub()), provider(new StringRedisTemplate()),
                 provider(redissonStub()), provider(null), provider(registry));
