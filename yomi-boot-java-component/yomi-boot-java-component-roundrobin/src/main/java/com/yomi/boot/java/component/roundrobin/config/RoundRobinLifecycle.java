@@ -1,4 +1,4 @@
-package com.yomi.boot.java.component.roundrobin.spring;
+package com.yomi.boot.java.component.roundrobin.config;
 
 import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import com.yomi.boot.java.component.roundrobin.RoundRobinTask;

@@ -1,4 +1,4 @@
-package com.yomi.boot.java.component.roundrobin.spring;
+package com.yomi.boot.java.component.roundrobin.config;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;

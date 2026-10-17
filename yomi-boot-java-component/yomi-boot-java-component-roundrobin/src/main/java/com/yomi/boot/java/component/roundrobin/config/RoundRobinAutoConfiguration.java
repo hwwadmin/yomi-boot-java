@@ -3,7 +3,6 @@ package com.yomi.boot.java.component.roundrobin.config;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
 import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
-import com.yomi.boot.java.component.roundrobin.spring.RoundRobinLifecycle;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RedissonClient;
