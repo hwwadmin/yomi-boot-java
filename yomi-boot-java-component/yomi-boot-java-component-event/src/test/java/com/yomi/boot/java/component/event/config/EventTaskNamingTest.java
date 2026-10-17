@@ -4,6 +4,7 @@ import com.yomi.boot.java.component.event.relay.OutboxRelayCoordinator;
 import com.yomi.boot.java.component.event.retention.EventRetentionCleaner;
 import com.yomi.boot.java.component.event.support.EventKeys;
 import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
+import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -23,7 +24,8 @@ class EventTaskNamingTest {
     void registeredTaskNames_areBareConstants() {
         EventProperties properties = new EventProperties();
         EventKeys keys = new EventKeys("demo");
-        RoundRobinRegistry registry = new RoundRobinRegistry();
+        // 只注册不启动：锁客户端不会被动用
+        RoundRobinRegistry registry = new RoundRobinRegistry(new RoundRobinLockClient(null, null, null));
         OutboxRelayCoordinator coordinator = new OutboxRelayCoordinator(properties, keys, null, null, null);
         EventAutoConfiguration.PublisherConfiguration configuration =
                 new EventAutoConfiguration.PublisherConfiguration();

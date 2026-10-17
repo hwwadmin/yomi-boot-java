@@ -1,8 +1,10 @@
 package com.yomi.boot.java.component.idempotency.config;
 
 import com.yomi.boot.java.component.idempotency.stale.IdempotencyStaleCleaner;
-import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
 import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
+import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
+import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
+import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -61,7 +63,7 @@ class IdempotencyStaleCleanerWiringTest {
     @Test
     void registersCleanerTaskWhenBothEnabled() {
         runner().withPropertyValues("yomi.idempotency.stale-cleaner-enabled=true", "yomi.roundrobin.enabled=true")
-                .withBean(RoundRobinRegistry.class, RoundRobinRegistry::new)
+                .withBean(RoundRobinRegistry.class, IdempotencyStaleCleanerWiringTest::idleRegistry)
                 .run(context -> {
                     assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
                     assertNotNull(context.getBean(IdempotencyStaleCleaner.class), "清理器 Bean 应装配");
@@ -69,6 +71,16 @@ class IdempotencyStaleCleanerWiringTest {
                     assertTrue(registry.contains(IdempotencyStaleCleaner.TASK_NAME),
                             "两项都开启时清理任务应真正注册到 roundrobin");
                 });
+    }
+
+    /** 锁客户端桩：频率锁始终获取不到 → 注册表随容器启停，但实例只休眠、不触达 Redis */
+    private static RoundRobinRegistry idleRegistry() {
+        return new RoundRobinRegistry(new RoundRobinLockClient(null, null, null) {
+            @Override
+            public boolean tryAcquireFrequency(RoundRobinTask task) {
+                return false;
+            }
+        });
     }
 
     /** 构造带测试 Bean 的 ApplicationContextRunner（与建表检查测试同款桩；Mapper 由装配类自己的 @MapperScan 扫出） */

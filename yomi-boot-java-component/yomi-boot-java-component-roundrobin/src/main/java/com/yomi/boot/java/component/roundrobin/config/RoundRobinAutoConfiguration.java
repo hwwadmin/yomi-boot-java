@@ -17,7 +17,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 /**
- * 分布式轮询调度自动装配，{@code yomi.roundrobin.enabled=true} 时注册任务注册表与 {@link RoundRobinLifecycle}
+ * 分布式轮询调度自动装配，{@code yomi.roundrobin.enabled=true} 时装配任务注册表（自带启停：{@link RoundRobinRegistry}）
  *
  * @author zwei
  */
@@ -49,21 +49,11 @@ public class RoundRobinAutoConfiguration {
         return new RoundRobinLockClient(redisTemplate, redissonClient, keys);
     }
 
+    /** 任务注册表：注册任务并持有各自的调度实例，本身即 SmartLifecycle（启动/停机时机见类注释） */
     @Bean
     @ConditionalOnMissingBean
-    public RoundRobinRegistry roundRobinRegistry() {
-        return new RoundRobinRegistry();
-    }
-
-    /**
-     * 生命周期：启动/停止所有任务。锁存活探测与 max-hold 由每轮一条虚拟线程承载（{@code RoundRobinTick} 内部），
-     * 组件不再需要调度线程池，也没有宿主要调的池参数
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public RoundRobinLifecycle roundRobinLifecycle(RoundRobinRegistry registry,
-                                                   RoundRobinLockClient lockClient) {
-        return new RoundRobinLifecycle(registry, lockClient);
+    public RoundRobinRegistry roundRobinRegistry(RoundRobinLockClient lockClient) {
+        return new RoundRobinRegistry(lockClient);
     }
 
     /** 从环境补全存储键前缀 */

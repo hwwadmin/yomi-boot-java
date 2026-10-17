@@ -3,7 +3,7 @@ package com.yomi.boot.java.component.roundrobin.runtime;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 调度根取消令牌，停机时由 {@link com.yomi.boot.java.component.roundrobin.config.RoundRobinLifecycle} 触发
+ * 调度根取消令牌，停机时由 {@link com.yomi.boot.java.component.roundrobin.RoundRobinRegistry} 触发
  *
  * @author zwei
  */

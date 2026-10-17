@@ -4,6 +4,8 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.yomi.boot.java.component.event.support.EventKeys;
+import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
+import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RedissonClient;
 import org.slf4j.LoggerFactory;
@@ -132,16 +134,19 @@ class EventRoundRobinDependencyCheckTest {
         properties.getRetention().setEnabled(true);
         properties.getRetention().setInboxRetentionEnabled(true);
 
-        assertDoesNotThrow(() -> bootstrap(properties,
-                new com.yomi.boot.java.component.roundrobin.RoundRobinRegistry()));
+        assertDoesNotThrow(() -> bootstrap(properties, registryForRegistration()));
     }
 
     /** 直接调用装配类的 @Bean 方法（发布侧关闭，故 ApplicationContext 不参与） */
-    private static void bootstrap(EventProperties properties,
-                                  com.yomi.boot.java.component.roundrobin.RoundRobinRegistry registry) {
+    private static void bootstrap(EventProperties properties, RoundRobinRegistry registry) {
         new EventAutoConfiguration().eventBootstrap(properties, new EventKeys("test"), null,
                 provider(null), provider(inboxMapperStub()), provider(new StringRedisTemplate()),
                 provider(redissonStub()), provider(null), provider(registry));
+    }
+
+    /** 只注册不启动的注册表（锁客户端不会被动用） */
+    private static RoundRobinRegistry registryForRegistration() {
+        return new RoundRobinRegistry(new RoundRobinLockClient(null, null, null));
     }
 
     private static com.yomi.boot.java.component.event.repository.mapper.EventInboxMapper inboxMapperStub() {

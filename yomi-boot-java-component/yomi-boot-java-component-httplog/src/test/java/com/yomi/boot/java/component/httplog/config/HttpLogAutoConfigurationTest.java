@@ -14,6 +14,7 @@ import com.yomi.boot.java.component.httplog.retention.HttpLogRetentionCleaner;
 import com.yomi.boot.java.component.httplog.store.HttpLogStore;
 import com.yomi.boot.java.component.httplog.support.HttpLogKeys;
 import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
+import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
@@ -198,7 +199,8 @@ class HttpLogAutoConfigurationTest {
         HttpLogProperties properties = new HttpLogProperties();
         properties.setServiceName("demo");
         HttpLogKeys keys = new HttpLogKeys(properties, null);
-        RoundRobinRegistry registry = new RoundRobinRegistry();
+        // 只注册不启动：锁客户端不会被动用
+        RoundRobinRegistry registry = new RoundRobinRegistry(new RoundRobinLockClient(null, null, null));
 
         new HttpLogAutoConfiguration.RetentionConfiguration()
                 .httpLogRetentionCleaner(properties, keys, null, registry);
