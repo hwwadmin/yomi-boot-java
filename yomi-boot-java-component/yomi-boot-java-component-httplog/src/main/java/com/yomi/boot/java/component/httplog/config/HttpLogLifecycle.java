@@ -4,6 +4,7 @@ import com.yomi.boot.java.component.httplog.model.HttpLogRecord;
 import com.yomi.boot.java.component.httplog.queue.HttpLogConsumer;
 import com.yomi.boot.java.component.httplog.queue.HttpLogSink;
 import com.yomi.boot.java.component.httplog.store.HttpLogStore;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.SmartLifecycle;
 
@@ -18,6 +19,7 @@ import java.util.List;
  * @author zwei
  */
 @Slf4j
+@RequiredArgsConstructor
 public class HttpLogLifecycle implements SmartLifecycle {
 
     /** 模块配置 */
@@ -34,14 +36,6 @@ public class HttpLogLifecycle implements SmartLifecycle {
 
     /** 消费线程是否在运行 */
     private volatile boolean running;
-
-    public HttpLogLifecycle(HttpLogProperties properties, HttpLogSink sink,
-                            HttpLogConsumer consumer, HttpLogStore store) {
-        this.properties = properties;
-        this.sink = sink;
-        this.consumer = consumer;
-        this.store = store;
-    }
 
     /** 启动传输与消费者线程 */
     @Override
