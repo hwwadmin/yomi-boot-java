@@ -21,10 +21,10 @@ import java.util.function.Supplier;
 /**
  * 收件箱幂等消费：分布式锁 → 事务内写 inbox → 业务处理
  * <p>在 {@code @KafkaListener} 中调用，按 {@link EventConsumeResult} 决定 ack/重投动作。
- * 返回 RETRY 时调用方必须显式退回重投（如 {@code acknowledgment.nack(...)}），
- * 仅不提交 offset 不会重投，消息会被同分区后续提交永久跳过</p>
- * <p>锁只是"省一次写库"的优化，互斥由 inbox 唯一键（insert-first + 重复键兜底）承担：
- * Redis/Redisson 故障时降级为无锁路径（WARN），不让消息在故障期间只能反复退回重投</p>
+ * 返回 RETRY 时调用方需显式退回重投（如 {@code acknowledgment.nack(...)}）；
+ * 仅不提交 offset 的消息会被同分区的后续提交跳过</p>
+ * <p>锁用于减少写库次数，互斥由 inbox 唯一键承担（先 INSERT，撞唯一键即按重复消息处理）：
+ * Redis/Redisson 故障时走无锁路径（WARN），消息在故障期间照常消费</p>
  *
  * @author zwei
  */
@@ -66,8 +66,8 @@ public class EventInboxGuard {
         } catch (LockBusyException busy) {
             return onLockNotHeld(evt);
         } catch (Exception e) {
-            // 锁不可用（Redis/Redisson 故障，经 LockUtils 包装逃逸）：与幂等组件同口径降级为无锁 + inbox 唯一键兜底；
-            // 若返回 RETRY，Redis 故障期间所有消息都只能反复退回重投直到 Redis 恢复
+            // 锁不可用（Redis/Redisson 故障，经 LockUtils 包装逃逸）：改用无锁路径，互斥由 inbox 唯一键保证；
+            // 返回 RETRY 会让 Redis 故障期间的消息在恢复前一直退回重投
             log.warn("[事件]消费锁不可用，降级为无锁 + inbox 唯一键兜底 eventId={}, topic={}",
                     evt.getEventId(), evt.getTopic(), e);
             return runInTransaction(evt, handler);
@@ -109,7 +109,7 @@ public class EventInboxGuard {
                 supplier, "事件消费抢锁失败");
     }
 
-    /** 未抢到消费锁时的处理 */
+    /** 未获取到消费锁时的处理 */
     private EventConsumeResult onLockNotHeld(WireEvent evt) {
         if (inboxRepository.exists(eventKeys.getServiceName(), evt.getEventId())) {
             log.warn("[事件]重复消息且已入 inbox eventId={}", evt.getEventId());
@@ -132,7 +132,7 @@ public class EventInboxGuard {
                         .setTopic(evt.getTopic())
                         .setPayload(evt.getPayload());
                 // 保存点包住 INSERT：PG 里唯一键冲突会把事务打成 aborted，
-                // 不回滚到保存点，本次"重复消息"的提交会静默变成整体回滚（调用方在本事务的其它写入也会丢）
+                // 不回滚到保存点时，本次"重复消息"的提交会变成整体回滚（调用方在本事务的其它写入也会丢）
                 SavepointScope scope = SavepointScope.open(status);
                 try {
                     inboxRepository.insert(inbox);

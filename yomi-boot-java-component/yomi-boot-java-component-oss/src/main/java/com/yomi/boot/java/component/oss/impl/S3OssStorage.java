@@ -155,7 +155,7 @@ public class S3OssStorage extends AbstractOssStorageSupport implements AutoClose
         }
     }
 
-    /** 删除对象，不存在时静默成功 */
+    /** 删除对象，不存在时按成功返回 */
     @Override
     public void deleteObject(String uri) {
         OssUri.BucketKey bk = OssUri.parse(uri);

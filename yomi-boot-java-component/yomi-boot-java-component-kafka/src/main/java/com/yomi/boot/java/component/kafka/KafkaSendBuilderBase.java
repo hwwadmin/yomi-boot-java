@@ -13,7 +13,7 @@ import java.util.Objects;
 
 /**
  * 链式发送公共字段与方法。
- * <p>{@code send()} 在参数校验通过后、提交发送前即作废本实例（与 broker 是否确认无关），需重新 {@link KafkaUtils#sync()} / {@link KafkaUtils#async()}。</p>
+ * <p>{@code send()} 在参数校验通过后、提交发送前即作废本实例，需重新 {@link KafkaUtils#sync()} / {@link KafkaUtils#async()}。</p>
  * <p>参数校验失败时不作废，可改参数后再次 {@code send()}。</p>
  *
  * @author zwei
@@ -97,7 +97,7 @@ abstract class KafkaSendBuilderBase<T extends KafkaSendBuilderBase<T>> {
         return self();
     }
 
-    /** 批量追加 Header（与 {@link #header} 合并，同名后者覆盖）；任一条不合法即抛，不部分生效 */
+    /** 批量追加 Header（与 {@link #header} 合并，同名后者覆盖）；先整体校验，任一条不合法即抛 */
     public T headers(Map<String, byte[]> headers) {
         ensureOpen();
         if (headers == null || headers.isEmpty()) {
@@ -130,7 +130,7 @@ abstract class KafkaSendBuilderBase<T extends KafkaSendBuilderBase<T>> {
         return self();
     }
 
-    /** Header 名称与值校验：不合法直接抛，不静默丢弃 */
+    /** Header 名称与值校验：不合法直接抛 {@link IllegalArgumentException} */
     private static void validateHeader(String name, byte[] value) {
         if (StringUtils.isBlank(name)) {
             throw new IllegalArgumentException("Kafka header 名称不能为空");
@@ -140,7 +140,7 @@ abstract class KafkaSendBuilderBase<T extends KafkaSendBuilderBase<T>> {
         }
     }
 
-    /** 已结束的 sender 不允许再配置 */
+    /** 已结束的 sender 再配置即抛异常 */
     protected void ensureOpen() {
         if (terminated) {
             throw new IllegalStateException(SENDER_CLOSED_MESSAGE);
@@ -157,7 +157,7 @@ abstract class KafkaSendBuilderBase<T extends KafkaSendBuilderBase<T>> {
         }
     }
 
-    /** 校验通过后调用：标记 sender 已结束，禁止复用 */
+    /** 校验通过后调用：标记 sender 已结束，复用即抛异常 */
     protected void terminate() {
         terminated = true;
     }

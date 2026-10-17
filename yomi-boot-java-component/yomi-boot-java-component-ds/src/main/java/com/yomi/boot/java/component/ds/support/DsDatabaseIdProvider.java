@@ -10,12 +10,12 @@ import java.util.Properties;
 
 /**
  * 方言标识（MyBatis {@code databaseId}）解析：MySQL → {@code mysql}、PostgreSQL → {@code pgsql}，
- * 与组件 SQL 脚本目录 {@code sql/mysql|pgsql} 同名；mapper XML 用 {@code databaseId} 按方言各写一条语句，
- * 由 MyBatis 按当前数据源选择（避免为双库通用把 SQL 写成复杂/低效的一条）。
+ * 与组件 SQL 脚本目录 {@code sql/mysql|pgsql} 同名；mapper XML 可用 {@code databaseId} 按方言各写一条语句，
+ * 由 MyBatis 按当前数据源选择。
  * <p>
- * 两种失败分开处理：**库连不上**（宿主未配数据源，或库未就绪）返回 null、不阻断启动——组件的数据源
- * 预热与建表检查本就按"无数据源则跳过"处理，此时 DB 能力不启用；**库连上但方言不认识**则在启动期
- * 直接失败——只支持 MySQL / PostgreSQL，方言不明时继续跑会撞 {@code Invalid bound statement}。
+ * 两种失败分开处理：库连不上（宿主未配数据源，或库未就绪）返回 null、不阻断启动——组件的数据源预热与
+ * 建表检查在没有数据源时跳过，此时 DB 能力不启用；库连上但方言不认识则在启动期直接失败——只支持
+ * MySQL / PostgreSQL，方言不明时继续跑会撞 {@code Invalid bound statement}。
  *
  * @author zwei
  */
@@ -50,7 +50,7 @@ public class DsDatabaseIdProvider extends VendorDatabaseIdProvider {
         return databaseId;
     }
 
-    /** 失败路径专用：把产品名拼进报错（正常路径不再开连接） */
+    /** 失败路径专用：把产品名拼进报错（正常路径不建立连接） */
     private static String describe(DataSource dataSource) {
         try (Connection connection = dataSource.getConnection()) {
             return connection.getMetaData().getDatabaseProductName();

@@ -82,7 +82,7 @@ public final class OssUri {
     /**
      * 对象键安全校验：拒绝 {@code .}/{@code ..} 段与空段 {@code //}
      * <p>浏览器、CDN、反向代理会按 RFC 3986 归一化点段，含点段的直链会指向另一个对象（或跨出桶前缀）；
-     * 空段同理让 URL 与键不再一一对应，故在唯一入口（本类）拒绝</p>
+     * 空段同理会破坏 URL 与键的一一对应，故在唯一入口（本类）拒绝</p>
      */
     private static void assertKeySafe(String key) {
         if (key.contains("//")) {

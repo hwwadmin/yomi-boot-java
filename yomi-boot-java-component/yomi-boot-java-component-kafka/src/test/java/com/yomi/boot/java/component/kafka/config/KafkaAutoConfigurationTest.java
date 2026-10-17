@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 /**
- * kafka 模块启动期自检：多 KafkaTemplate 且无 @Primary 时 WARN（不失败——宿主可能总是显式指定 beanName）
+ * kafka 模块启动期自检：多 KafkaTemplate 且无 @Primary 时打 WARN，启动不失败
  */
 class KafkaAutoConfigurationTest {
 
@@ -55,7 +55,7 @@ class KafkaAutoConfigurationTest {
         assertFalse(runAndCollect(SingleCase.class).contains("且没有 @Primary"), "单候选不应告警");
     }
 
-    /** 执行 Runner 并收集 ApplicationContext */
+    /** 执行 Runner 并收集日志 */
     private static String runAndCollect(Class<?> userConfig) {
         ListAppender<ILoggingEvent> appender = attach();
         try {

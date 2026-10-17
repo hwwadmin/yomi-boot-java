@@ -30,7 +30,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 装配测试：开关、模式条件装配、启动行为（空词表 WARN 放行 / 未注册策略 fail-fast）；
+ * 装配测试：开关、模式条件装配、启动行为（空词表 WARN 放行 / 未注册策略启动失败）；
  * Mapper 由装配类的 {@code @MapperScan} 扫出（宿主无需扫描 {@code com.yomi}）
  *
  * @author zwei
@@ -71,7 +71,7 @@ class HttpLogAutoConfigurationTest {
 
     @Test
     void emptyKeyTypes_startsWithWarn() {
-        // 空词表 WARN 放行（不 fail-fast）
+        // 空词表只记 WARN，正常启动
         runner.withPropertyValues(baseProperties())
                 .run(context -> {
                     assertThat(context).hasNotFailed();
@@ -130,8 +130,8 @@ class HttpLogAutoConfigurationTest {
 
     @Test
     void modeUppercase_wiresSameAsLowercase() {
-        // 锁事实（2026-10-15 实测 + OnPropertyCondition$Spec.isMatch 字节码核实）：havingValue 比较是 equalsIgnoreCase，
-        // 大写写法（mode: MEMORY / 环境变量 YOMI_HTTPLOG_MODE=REDIS）照常装配——勿按"条件区分大小写"去改宽松条件
+        // 条件匹配：OnPropertyCondition 的 havingValue 比较为 equalsIgnoreCase（大小写不敏感），
+        // 大写写法（mode: MEMORY / 环境变量 YOMI_HTTPLOG_MODE=REDIS）照常装配
         runner.withPropertyValues(baseProperties())
                 .withPropertyValues("yomi.httplog.mode=MEMORY")
                 .run(context -> {
@@ -154,10 +154,10 @@ class HttpLogAutoConfigurationTest {
 
     @Test
     void modeWithSurroundingBlank_bindsButNoTransportWired() {
-        // 记录现状（非期望契约，2026-10-15 H4 复核实测）：绑定层的 lenient 枚举转换会 trim（" redis " → REDIS）能绑定成功，
+        // 绑定层的 lenient 枚举转换会 trim（" redis " → REDIS），带空格的 mode 仍能绑定成功，
         // 而 @ConditionalOnProperty 的比较不 trim → 三个传输都不装配、最终报"缺 HttpLogSink Bean"。
-        // 属性源只能经 withInitializer 注入：TestPropertyValues 自己会 trim 值（Pair 构造时 trim 键与值），用 withPropertyValues 复现不出来。
-        // Boot 全局行为（各组件同款条件写法），要改属全局议题；条件改为 trim 容忍时本用例应一并调整。
+        // 属性源经 withInitializer 注入：TestPropertyValues 会 trim 值（Pair 构造时 trim 键与值），withPropertyValues 注入不了带空格的原值。
+        // 该行为来自 Boot 全局条件写法；条件改为 trim 容忍时本用例应一并调整。
         runner.withInitializer(context -> context.getEnvironment().getPropertySources().addFirst(
                         new MapPropertySource("blank-padded-mode", Map.of("yomi.httplog.mode", " redis "))))
                 .withPropertyValues(baseProperties())

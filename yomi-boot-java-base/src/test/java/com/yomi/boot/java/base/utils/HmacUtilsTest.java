@@ -51,7 +51,7 @@ class HmacUtilsTest {
         assertEquals(16, mac.length);
     }
 
-    /** NIST SP 800-185 §8.4.1：密钥不得短于安全强度（KMAC128 16 / KMAC256 32 字节），BC 自身不校验 */
+    /** NIST SP 800-185 §8.4.1：密钥长度下限为安全强度（KMAC128 16 / KMAC256 32 字节），BC 自身不校验 */
     @Test
     void kmacRejectsKeyShorterThanSecurityStrength() {
         byte[] data = new byte[] {1};
@@ -74,7 +74,7 @@ class HmacUtilsTest {
 
     @Test
     void verifyRejectsNullAlgorithmWithAssert() {
-        // 回归锁：null 算法原先在 algorithm.isKmac() 处直接 NPE，现已统一为 AssertException
+        // null 算法统一抛 AssertException
         assertThrows(AssertException.class,
                 () -> HmacUtils.verify(new byte[1], new byte[1], new byte[1], null));
         assertThrows(AssertException.class,
@@ -91,7 +91,7 @@ class HmacUtilsTest {
 
     /**
      * KMAC 黄金向量：密钥取 NIST SP 800-185 样例密钥（0x40 起 16 / 32 字节），空消息，customization
-     * "My Tagged Application"；期望值经 OpenSSL 3.2.3 KMAC128 / KMAC256 交叉验证
+     * "My Tagged Application"，期望值与 OpenSSL 3.2.3 的 KMAC128 / KMAC256 输出一致
      */
     @Test
     void kmacGoldenVectors() {

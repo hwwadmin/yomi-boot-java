@@ -33,7 +33,7 @@ public class RbacAuthService implements IRbacAuthService {
     /** Redis/内存鉴权投影 */
     private final RbacProjectionStore projectionStore;
 
-    /** 按快照实例缓存权限索引，避免同一快照重复构建 */
+    /** 按快照实例缓存权限索引，同一快照只构建一次 */
     private final RbacAuthIndexCache indexCache = new RbacAuthIndexCache();
 
     /** 判断用户对 method+path 是否有 API 权限 */

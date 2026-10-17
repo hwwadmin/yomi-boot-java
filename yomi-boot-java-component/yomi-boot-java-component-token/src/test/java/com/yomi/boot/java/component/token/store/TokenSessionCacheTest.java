@@ -11,8 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 薄缓存的契约：TTL=0 整体关闭、条目按（逐条）TTL 过期、容量有界（防伪造 token 撑内存）、
- * <b>条目 TTL = min(配置 TTL, 令牌剩余有效期)</b>
+ * 进程内缓存的契约：TTL=0 整体关闭、条目按逐条 TTL 过期、容量有界（限制伪造 token 的内存占用）、
+ * 条目 TTL = min(配置 TTL, 令牌剩余有效期)
  */
 class TokenSessionCacheTest {
 

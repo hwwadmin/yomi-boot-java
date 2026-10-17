@@ -33,7 +33,7 @@ public class EventPublisher implements IEventPublisher {
     /** 载荷大小等限制 */
     private final EventProperties properties;
 
-    /** 校验后写入发件箱 PENDING，重复 eventId 按唯一键忽略 */
+    /** 校验后以 PENDING 写入发件箱，重复 eventId 抛业务异常 */
     @Override
     public void publish(WireEvent event) {
         if (event == null || StringUtils.isBlank(event.getEventId()) || StringUtils.isBlank(event.getTopic())) {
@@ -60,8 +60,8 @@ public class EventPublisher implements IEventPublisher {
     }
 
     /**
-     * 超过 {@code yomi.event.max-payload-bytes} 的事件 Kafka 不会接受，
-     * 必须在业务事务内直接失败，而不是写进发件箱后在 DLQ 里耗尽重试次数
+     * 超过 {@code yomi.event.max-payload-bytes} 的事件 Kafka 不会接受：
+     * 发布时即失败，事件不会进入发件箱与 DLQ 重试
      */
     private void requireDeliverableSize(String eventId, String topic, String payload) {
         int maxBytes = properties.getMaxPayloadBytes();

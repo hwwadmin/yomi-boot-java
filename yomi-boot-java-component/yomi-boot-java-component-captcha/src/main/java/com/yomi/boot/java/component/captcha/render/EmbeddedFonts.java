@@ -8,8 +8,8 @@ import java.io.InputStream;
 /**
  * 内嵌字体：Roboto-Bold v2.138（Apache-2.0，许可全文见 resources/fonts/LICENSE.txt）
  * <p>
- * 内嵌的价值是字形全覆盖（含 ×）与跨环境渲染一致；注意 JDK 在 Linux 上加载自定义字体
- * 仍要求系统存在至少一款已安装字体（实测：空字体目录下 {@code Font.createFont} 直接失败），
+ * 内嵌保证字形全覆盖（含 ×）与跨环境渲染一致；JDK 在 Linux 上加载自定义字体
+ * 要求系统至少有一款已安装字体（空字体目录下 {@code Font.createFont} 直接失败），
  * 精简镜像需安装 fontconfig 与任一字体系。
  *
  * @author zwei

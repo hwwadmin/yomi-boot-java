@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 端到端验证启动期建表：表在 → 正常启动（只探活）；缺表 → 按当前数据库方言自动执行组件建表脚本创建；
- * 脚本没建出表 → 启动失败（fail-fast），报错点名表与脚本路径。
+ * 脚本没建出表 → 启动失败，报错点名表与脚本路径。
  * <p>依赖全部为 stub，离线运行；建表脚本用模块内真实 sql/mysql|pgsql 脚本（走 Spring ScriptUtils 真实解析）。
  */
 class IdempotencyTableCheckTest {

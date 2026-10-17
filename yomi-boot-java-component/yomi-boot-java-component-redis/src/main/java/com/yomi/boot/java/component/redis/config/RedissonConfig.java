@@ -40,7 +40,7 @@ public class RedissonConfig {
 
     /**
      * 将 Boot 的连接信息映射为 Redisson 配置（包级可见，供离线单测断言，不建连）。
-     * <p>优先级：哨兵 → 集群 → 单机；只配了主从（masterreplica）时明确报错请宿主自带 RedissonClient</p>
+     * <p>优先级：哨兵 → 集群 → 单机；只配主从（masterreplica）时抛出异常，由宿主自带 RedissonClient 覆盖</p>
      */
     static Config toRedissonConfig(DataRedisConnectionDetails details) {
         if (details == null) {
@@ -98,7 +98,7 @@ public class RedissonConfig {
                 + "请配置 host/url/sentinel/cluster，或自定义 RedissonClient Bean 覆盖");
     }
 
-    /** Redisson 4.7+：主库鉴权写在 {@link Config} 上，勿再用各 ServerConfig 的弃用 setter */
+    /** Redisson 4.7+：主库鉴权写在 {@link Config} 上，各 ServerConfig 的 setter 已弃用 */
     private static void applyRedisAuth(Config config, String username, String password) {
         if (StringUtils.isNotBlank(username)) {
             config.setUsername(username);

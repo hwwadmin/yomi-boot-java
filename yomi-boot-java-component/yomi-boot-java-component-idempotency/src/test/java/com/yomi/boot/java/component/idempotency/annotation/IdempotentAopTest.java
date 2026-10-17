@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *   <li>注解写在实现类方法上：CGLIB（Boot 默认）与 JDK 代理（宿主配 {@code spring.aop.proxy-target-class=false}）都必须生效；</li>
  *   <li>SpEL 参数名与 namespace 缺省回退按"最具体方法"/目标类取，JDK 代理下键才算得对；</li>
  *   <li>边界：注解只写在接口方法上时 {@code @annotation} 切点不匹配（切面整体不生效），
- *   注解必须落在实现类方法上——用例锁定该边界，避免静默假设。</li>
+ *   注解要落在实现类方法上。</li>
  * </ol>
  */
 class IdempotentAopTest {
@@ -101,7 +101,7 @@ class IdempotentAopTest {
                 "注解只在接口方法上时 @annotation 切点不匹配（切面不生效）——注解须写在实现类方法上");
     }
 
-    /** JDK 动态代理（宿主配 spring.aop.proxy-target-class=false 的等价形态） */
+    /** JDK 动态代理（宿主配 spring.aop.proxy-target-class=false 时的形态） */
     private static <T> T jdkProxy(Class<T> serviceInterface, Object target, IdempotencyGuard guard) {
         AspectJProxyFactory factory = new AspectJProxyFactory(target);
         factory.setInterfaces(serviceInterface);

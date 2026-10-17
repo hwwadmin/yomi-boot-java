@@ -20,13 +20,13 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * redis 组件装配验证（离线）：
  * <ol>
- *   <li>imporst 清单声明正确；</li>
+ *   <li>imports 清单声明正确；</li>
  *   <li>未配置 {@code spring.data.redis.*} 连接目标时组件不装配；
- *       即使 Boot 已创建指向 localhost 的默认连接工厂，也不能把组件带起来（Redisson 启动即建连）；</li>
+ *       即使 Boot 已创建指向 localhost 的默认连接工厂，组件仍保持不激活（Redisson 启动即建连）；</li>
  *   <li>host / url / sentinel / cluster 四种写法都能把组件装配起来。</li>
  * </ol>
- * 激活路径的连通性（真实 Redisson 建连）由 quick-starter 现网流程覆盖；本测试统一以 stub RedissonClient 让位，
- * 避免 Redisson.create 真实建连
+ * 激活路径的连通性（真实 Redisson 建连）由 quick-starter 现网流程覆盖；本测试统一注册 stub RedissonClient，
+ * 跳过 Redisson.create 真实建连
  */
 class RedisAutoConfigurationTest {
 
@@ -121,7 +121,7 @@ class RedisAutoConfigurationTest {
     static class ScanBootstrap {
     }
 
-    /** 宿主自带 RedissonClient 时必须让位（新能力：@ConditionalOnMissingBean） */
+    /** 宿主自带 RedissonClient 时以宿主的为准（@ConditionalOnMissingBean） */
     @Test
     void hostProvidedRedissonClientWins() {
         RedissonClient stub = proxyClient();

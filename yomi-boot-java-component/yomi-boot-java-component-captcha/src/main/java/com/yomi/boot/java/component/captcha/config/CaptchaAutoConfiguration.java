@@ -63,8 +63,8 @@ public class CaptchaAutoConfiguration {
     @Conditional(RedisStoreCondition.class)
     public CaptchaStore redisCaptchaStore(ObjectProvider<StringRedisTemplate> redisTemplateProvider, CaptchaKeys keys,
                                           CaptchaProperties properties) {
-        // 取 ObjectProvider 而非直接注入：宿主排除 Boot 的 DataRedisAutoConfiguration 时，
-        // 直接注入只会报"No qualifying bean of type StringRedisTemplate"，看不出与哪个配置项有关
+        // 用 ObjectProvider 惰性获取 StringRedisTemplate：Bean 缺失时抛出下面的错误，
+        // 报错文案里带上所属组件与两种处理方式，便于按配置项排查
         StringRedisTemplate redisTemplate = redisTemplateProvider.getIfAvailable();
         if (redisTemplate == null) {
             throw new IllegalStateException("yomi.captcha.store=redis 但容器中没有 StringRedisTemplate："

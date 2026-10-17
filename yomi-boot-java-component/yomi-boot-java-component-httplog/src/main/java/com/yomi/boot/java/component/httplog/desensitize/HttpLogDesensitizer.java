@@ -22,7 +22,7 @@ import java.util.Set;
  * <p>
  * 组件只做"定位与编排"：键名 → 策略名的词表全部来自配置（{@code yomi.httplog.desensitize.key-types}，
  * 零内置词表）；键名匹配为写法宽松相等（大小写、驼峰/下划线/中划线差异被吸收），配什么命中什么；
- * 脱敏规则本身一律由 {@link IDesensitizeService#mask(String, String)} 执行。
+ * 脱敏规则本身由 {@link IDesensitizeService#mask(String, String)} 执行。
  * <p>body 结构化脱敏支持 JSON 与 application/x-www-form-urlencoded；无法识别或无命中时原样返回。
  *
  * @author zwei
@@ -42,7 +42,7 @@ public class HttpLogDesensitizer {
     /** 是否对 body 做结构化脱敏 */
     private final boolean bodyEnabled;
 
-    /** 是否在请求线程内同步脱敏（否则延迟到发送线程） */
+    /** 是否在请求线程内同步脱敏；false 时延迟到后台发送线程 */
     private final boolean inRequestThread;
 
     public HttpLogDesensitizer(IDesensitizeService desensitizeService, HttpLogProperties.Desensitize properties) {
@@ -113,7 +113,7 @@ public class HttpLogDesensitizer {
 
     /**
      * 后台补脱敏：请求线程未执行时，对 record 的请求体/响应体做结构化脱敏；
-     * 被截断的 body 无法解析，保持原样（文档声明的脱敏盲区）
+     * 被截断的 body 无法解析，保持原样
      */
     public void maskDeferredBodies(HttpLogRecord record) {
         if (inRequestThread || !bodyEnabled || !active()) {

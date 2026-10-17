@@ -33,7 +33,7 @@ public class IdempotencyRecordRepository extends MyBatisDao<IdempotencyRecordMap
     /** 业务成功后更新状态与结果 */
     public void markCompleted(Long id, String resultType, String resultPayload) {
         Assert.nonNull(id, "幂等记录ID不能为空");
-        // 用 mapper.update(null, wrapper) 而非 lambdaUpdate() 链：后者只返回 boolean，这里要行数判"未生效"
+        // 这里要用行数判断更新是否生效，因此直接调 mapper.update(null, wrapper)（lambdaUpdate() 链只返回 boolean）
         int rows = getMapper().update(null, new LambdaUpdateWrapper<IdempotencyRecord>()
                 .set(IdempotencyRecord::getStatus, IdempotencyStatus.COMPLETED)
                 .set(IdempotencyRecord::getResultType, resultType)

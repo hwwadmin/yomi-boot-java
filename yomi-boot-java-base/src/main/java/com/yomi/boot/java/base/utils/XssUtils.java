@@ -9,12 +9,12 @@ import org.jsoup.safety.Safelist;
 /**
  * xss工具类
  * <p>
- * 检测与清洗共用同一白名单（{@link #SAFELIST}），保证通过 {@link #isXssAttack} 检测的内容
+ * 检测与清洗共用同一白名单（{@link #SAFELIST}）：通过 {@link #isXssAttack} 检测的内容
  * 经 {@link #cleanXss} 清洗后保持原样。
- * 检测基于 jsoup 白名单清洗比对实现：将原始 DOM 与按白名单清洗后的 DOM 做全文档比对，
- * 清洗导致内容变化即认为包含不安全内容（script 标签、事件属性、危险协议 URL、白名单外标签等）。
- * 比较发生在规范化后的 DOM 层，纯书写差异（标签大小写、单双引号、多余空格、文本中的
- * {@code &} 转义等）不会误报；构成标签或未闭合标签的裸露 {@code <} 仍会被判为不安全。
+ * 检测为全文档比对：原始 DOM 与按白名单清洗后的 DOM 有差异即判为不安全，差异来源包括
+ * script 标签、事件属性、危险协议 URL、白名单外标签等。
+ * 比对在规范化 DOM 层进行，标签大小写、引号、多余空格、文本中的 {@code &} 转义等书写差异
+ * 不会误报；裸露的 {@code <}（构成标签或未闭合标签）判为不安全。
  *
  * @author zwei
  */
@@ -24,14 +24,14 @@ public abstract class XssUtils {
     }
 
     /**
-     * 哑 baseUri：仅用于让相对路径 URL（如 src="a.png"）解析出可校验的协议，
-     * 不产生任何网络请求；配合 preserveRelativeLinks 输出仍保留相对路径原文
+     * baseUri 占位值：让相对路径 URL（如 src="a.png"）解析出可校验的协议，不发起网络请求；
+     * 配合 preserveRelativeLinks，输出仍保留相对路径原文
      */
     private static final String LOCAL_BASE_URI = "http://xss.detect.local/";
 
     /**
-     * 统一白名单：relaxed 基础上保留相对路径 URL（使 src="a.png"、href="#top" 等不被误判），
-     * 并去掉强制附加的 rel=nofollow 属性（使正常超链接不被误判）
+     * 统一白名单：在 relaxed 基础上保留相对路径 URL（src="a.png"、href="#top" 等按原文保留），
+     * 并去掉强制附加的 rel=nofollow 属性，正常超链接原样通过
      */
     private static final Safelist SAFELIST = Safelist.relaxed()
             .preserveRelativeLinks(true)

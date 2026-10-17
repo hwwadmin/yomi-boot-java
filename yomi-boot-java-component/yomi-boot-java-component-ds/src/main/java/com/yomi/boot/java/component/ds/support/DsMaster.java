@@ -9,12 +9,12 @@ import java.util.List;
  * 主库（master）的固定命名与解析规则
  * <p>
  * ds 只装配主数据源：数据源、工厂、模板、事务管理器四个 Bean 用 {@code masterXxx} 命名并全部 {@code @Primary}，
- * 于是"所有不指定名称的按类型注入"（业务与组件的 {@code @MapperScan}、{@code @Transactional}、
- * {@code TransactionTemplate}）自然落在主库上。附加库完全由业务系统自行定义与装配（用
+ * 所有不指定名称的按类型注入（业务与组件的 {@code @MapperScan}、{@code @Transactional}、
+ * {@code TransactionTemplate}）都落在主库上。附加库完全由业务系统自行定义与装配（用
  * {@code @MapperScan(sqlSessionFactoryRef = ..., sqlSessionTemplateRef = ...)} 显式绑定），本组件不参与。
  * <p>
- * 解析顺序：① ds 声明的 {@code masterXxx}（宿主要用自己的实现，就用同名 Bean 顶替）；② 容器里唯一或
- * {@code @Primary} 的那个；③ 多候选且无 {@code @Primary} → 启动失败并列出候选（不猜）。
+ * 解析顺序：① ds 声明的 {@code masterXxx}（宿主要用自己的实现就声明同名 Bean）；② 容器里唯一或
+ * {@code @Primary} 的那个；③ 多候选且无 {@code @Primary} → 启动失败并列出候选。
  *
  * @author zwei
  */
@@ -59,7 +59,7 @@ public final class DsMaster {
                 + "；附加库的" + description + "请用 @MapperScan(sqlSessionFactoryRef = ...) 显式绑定");
     }
 
-    /** 解析结果：命中的 Bean 名（走"唯一/@Primary"兜底时为空串）+ 实例 */
+    /** 解析结果：命中的 Bean 名（按"唯一或 @Primary"命中时为空串）+ 实例 */
     public record Resolved<T>(String beanName, T bean) {
     }
 

@@ -23,21 +23,21 @@ import javax.sql.DataSource;
 import java.util.Map;
 
 /**
- * ds 组件自动装配：**只装配主数据源（master）**（见 {@link MasterDataSourceConfiguration}），
+ * ds 组件自动装配：只装配主数据源（master，见 {@link MasterDataSourceConfiguration}），
  * 附加库由业务系统自行定义与装配
  * <p>
  * 通过 {@code META-INF/spring/...AutoConfiguration.imports} 注册，宿主无需扫描 {@code com.yomi}；
- * 主库的 {@code spring.datasource.*} 由本组件自己注册的 {@code DataSourceProperties} 绑定，
- * 不依赖 Boot 的 {@code DataSourceAutoConfiguration} 是否在场（宿主排除它时主库照常可配）。
+ * 主库的 {@code spring.datasource.*} 由本组件注册的 {@code DataSourceProperties} 绑定，宿主排除 Boot 的
+ * {@code DataSourceAutoConfiguration} 时主库照常可配。
  * {@link MybatisPlusConfig}（分页 + 防全表写）无开关、随组件强制生效；
  * {@link InstantJdbcTypeHandler}（Instant 写库，MySQL/PG 通用）同样无开关；
  * 数据源预热保留 {@code yomi.ds.preheat.enabled} 开关。
  * <p>
- * <b>必须排在 MyBatis-Plus 的自动配置之前</b>：本组件接管主库工厂/模板后，MP 的同名 Bean 按类型让位
- * （{@code @ConditionalOnMissingBean}）；同时本组件要在 {@code MybatisPlusInnerInterceptorAutoConfiguration}
- * 之前注册拦截器链，否则 MP 的默认链会先占位（见 {@link MybatisPlusConfig} 注释）。
- * 兜底还有 {@link MybatisPlusChainChecker} 启动自检：容器里每个 {@code SqlSessionFactory} 都必须带分页与防全表写，
- * 且 Mapper 绑定不能"只写一半 ref"。
+ * <b>必须排在 MyBatis-Plus 的自动配置之前</b>：本组件接管主库工厂/模板后，MP 的同名 Bean 因
+ * {@code @ConditionalOnMissingBean} 跳过注册；同时本组件要在 {@code MybatisPlusInnerInterceptorAutoConfiguration}
+ * 之前注册拦截器链，MP 的默认链先注册即占位在先（见 {@link MybatisPlusConfig} 注释）。
+ * 另有 {@link MybatisPlusChainChecker} 启动自检：容器里每个 {@code SqlSessionFactory} 都必须带分页与防全表写，
+ * Mapper 绑定的两个 ref 也要写成对。
  *
  * @author zwei
  */
@@ -61,7 +61,7 @@ public class DsAutoConfiguration {
         return new DsInfo(dataSourceBeans);
     }
 
-    /** 链 / 工厂 / Mapper 绑定自检：缺失即 fail-fast；随组件强制生效，无开关 */
+    /** 链 / 工厂 / Mapper 绑定自检：缺失即启动失败；随组件强制生效，无开关 */
     @Bean
     @ConditionalOnMissingBean(MybatisPlusChainChecker.class)
     public MybatisPlusChainChecker mybatisPlusChainChecker(ApplicationContext context) {

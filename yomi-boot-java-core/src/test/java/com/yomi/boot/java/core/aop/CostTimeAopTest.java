@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 耗时阈值解析：注解标在实现类方法上、JDK 动态代理拿到的却是接口方法时，
- * 也必须取到自定义阈值（历史上静默退回 200ms 默认值）
+ * 自定义阈值依然生效（200ms 默认值只在无注解时使用）
  */
 class CostTimeAopTest {
 
@@ -91,7 +91,7 @@ class CostTimeAopTest {
         } finally {
             logger.detachAppender(appender);
         }
-        // 耗时 60ms：命中 50ms 自定义阈值应告警；若退回 200ms 默认阈值则不会出现 WARN
+        // 耗时 60ms：命中 50ms 自定义阈值应告警（200ms 默认阈值不会触发）
         assertTrue(appender.list.stream().anyMatch(event -> event.getLevel() == Level.WARN
                         && event.getFormattedMessage().contains("请求超过50ms")),
                 () -> "期望命中 50ms 自定义阈值，实际日志: " + appender.list);

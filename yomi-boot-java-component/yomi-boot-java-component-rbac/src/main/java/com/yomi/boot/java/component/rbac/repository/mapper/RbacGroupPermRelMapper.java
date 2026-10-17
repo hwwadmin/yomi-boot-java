@@ -6,7 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 
 
 /**
- * sys_rbac_group_perm_rel Mapper：**仅供 {@link RbacRelationRepository}、{@link RbacSnapshotRepository} 使用**（其余代码一律经仓储端口访问，不直接调用）
+ * sys_rbac_group_perm_rel Mapper：由 {@link RbacRelationRepository}、{@link RbacSnapshotRepository} 使用；其余代码经仓储端口访问
  *
  * @author zwei
  */

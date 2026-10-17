@@ -9,7 +9,7 @@ class RedisRateLimiterTest {
 
     /**
      * ttl 至少为 1 秒，保证令牌桶状态写回 Redis；
-     * 所以任何合法参数组合都必须得到不小于 1 秒的 ttl
+     * 合法参数组合得到的 ttl 均不小于 1 秒
      */
     @Test
     void ttlNeverDropsBelowOneSecond() {
@@ -30,7 +30,7 @@ class RedisRateLimiterTest {
         assertEquals(1, RedisRateLimiter.ttlSeconds(10, 5));
     }
 
-    /** 高补充速率 + 小桶容量（如 100 qps、不允许突发）曾经算出 0 */
+    /** 高补充速率 + 小桶容量（如 100 qps、不允许突发）时取 1 秒下限 */
     @Test
     void ttlFallsBackToOneSecondForHighRateSmallBurst() {
         assertEquals(1, RedisRateLimiter.ttlSeconds(100, 10));

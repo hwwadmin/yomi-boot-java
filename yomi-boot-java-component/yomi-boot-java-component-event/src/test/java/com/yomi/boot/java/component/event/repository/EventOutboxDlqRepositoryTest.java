@@ -23,8 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * DLQ 仓储：扫描拆成"未排期 + 已到期"两段（现由 LambdaQueryWrapper + MP Page 表达，上限靠分页拦截器落到
- * LIMIT——分页拦截器由 ds 自检强制在位）后的合并顺序、limit 分摊与索引友好排序；运维复位与抢占的参数/行数语义。
+ * DLQ 仓储：扫描分"未排期 + 已到期"两段（由 LambdaQueryWrapper + MP Page 表达，上限由分页拦截器落到
+ * LIMIT），验证两段的合并顺序、limit 分摊与索引友好排序；以及运维复位与 in-flight 认领的参数/行数语义。
  */
 class EventOutboxDlqRepositoryTest {
 
@@ -55,7 +55,7 @@ class EventOutboxDlqRepositoryTest {
         assertTrue(mapper.pages.stream().noneMatch(IPage::searchCount), "只取一页，不要 count 查询");
     }
 
-    /** 未排期段已用满额度：不再查到期的（总量仍受 limit 约束） */
+    /** 未排期段已用满额度：跳过到期段查询（总量仍受 limit 约束） */
     @Test
     void fetchRetryableSkipsDueQueryWhenLimitExhausted() {
         FakeMapper mapper = new FakeMapper();
@@ -69,7 +69,7 @@ class EventOutboxDlqRepositoryTest {
         assertEquals(List.of("select:unscheduled"), mapper.calls);
     }
 
-    /** 非法 limit 仍要拦（沿用原断言） */
+    /** 非法 limit 直接拒绝 */
     @Test
     void fetchRetryableRejectsNonPositiveLimit() {
         EventOutboxDlqRepository repository = new EventOutboxDlqRepository(new FakeMapper().stub());
@@ -77,7 +77,7 @@ class EventOutboxDlqRepositoryTest {
         assertThrows(AssertException.class, () -> repository.fetchRetryable("test", 30, 0, NOW));
     }
 
-    /** maxRetry 非正（原 XML 的 `1 = 0` 分支）：结果为空且不触库 */
+    /** maxRetry 非正：结果为空且不触库 */
     @Test
     void fetchRetryableReturnsEmptyWhenMaxRetryNotPositive() {
         FakeMapper mapper = new FakeMapper();
@@ -87,7 +87,7 @@ class EventOutboxDlqRepositoryTest {
         assertTrue(mapper.calls.isEmpty(), "未达重试上限的条件恒不成立，不应触库");
     }
 
-    /** 排序回归锁：两段各自按索引列排序、不得出现表达式（COALESCE 这类用不上索引，大表每轮全表排序） */
+    /** 排序只用索引列：两段各自按索引列排序（COALESCE 这类表达式用不上索引，大表每轮会全表排序） */
     @Test
     void segmentOrderStaysIndexFriendly() {
         FakeMapper mapper = new FakeMapper();
@@ -101,7 +101,7 @@ class EventOutboxDlqRepositoryTest {
         orderBys.forEach(orderBy -> assertFalse(orderBy.contains("("), "排序不得含表达式: " + orderBy));
     }
 
-    /** 两段的过滤条件必须有：未删除 + 未达重试上限 + （未排期 / 已到退避窗口） */
+    /** 两段的过滤条件：未删除 + 未达重试上限 + （未排期 / 已到退避窗口） */
     @Test
     void segmentsFilterByRetryGuardAndWindow() {
         FakeMapper mapper = new FakeMapper();
@@ -119,7 +119,7 @@ class EventOutboxDlqRepositoryTest {
         assertTrue(due.contains("delete_timeisnull"), due);
     }
 
-    /** 运维复位：from/to 为空必须抛业务异常（不再让 NPE 逃逸到调用方），且不触库 */
+    /** 运维复位：from/to 为空抛业务异常，且不触库 */
     @Test
     void resetRetryCountInRangeRejectsNullArgs() {
         FakeMapper mapper = new FakeMapper();
@@ -138,7 +138,7 @@ class EventOutboxDlqRepositoryTest {
                 () -> repository.resetRetryCountInRange("test", NOW, NOW.minusSeconds(1)));
     }
 
-    /** 抢占 in-flight：SET 推退避窗口与更新时间，WHERE 带"可重试"守卫；只有更新到恰好 1 行才算抢到 */
+    /** in-flight 认领：SET 推退避窗口与更新时间，WHERE 带"可重试"条件；只有更新到恰好 1 行才算认领成功 */
     @Test
     void tryClaimInFlightPushesRetryWindowWithRetryableGuard() {
         FakeMapper mapper = new FakeMapper();
@@ -173,7 +173,7 @@ class EventOutboxDlqRepositoryTest {
         return row;
     }
 
-    /** SQL 片段比较前压掉空白并统一小写，避免断言绑在 MP 的排版/大小写细节上 */
+    /** SQL 片段比较前压掉空白并统一小写，断言不绑定 MP 的排版/大小写细节 */
     private static String compact(String sql) {
         return sql == null ? "" : sql.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
@@ -199,7 +199,7 @@ class EventOutboxDlqRepositoryTest {
                             return handleSelect(args);
                         }
                         if ("update".equals(method.getName())) {
-                            // 抢占 in-flight 现由仓储的 LambdaUpdateWrapper 表达（两参重载），args[0] 为空实体
+                            // in-flight 认领由仓储的 LambdaUpdateWrapper 表达（两参重载），args[0] 为空实体
                             calls.add("update");
                             claimWrapper = (LambdaUpdateWrapper<EventOutboxDlq>) args[1];
                             return claimRows;

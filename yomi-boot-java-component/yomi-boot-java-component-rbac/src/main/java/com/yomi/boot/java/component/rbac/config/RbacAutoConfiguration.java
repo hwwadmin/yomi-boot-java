@@ -61,7 +61,7 @@ import java.util.List;
 @ConditionalOnProperty(value = "yomi.rbac.enabled", havingValue = "true")
 public class RbacAutoConfiguration {
 
-    // ---- 仓储（端口）：数据访问唯一出入口；Mapper 只在此注入，宿主可自行实现端口并注册 Bean 顶替 ----
+    // ---- 仓储（端口）：数据访问统一入口；Mapper 只在此注入，宿主可实现端口并注册自己的 Bean ----
 
     @Bean
     @ConditionalOnMissingBean(IRbacPermRepository.class)
@@ -251,7 +251,7 @@ public class RbacAutoConfiguration {
     }
 
     /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_rbac.sql 自动创建
-     *（含内置超管种子），避免"应用起来了但所有请求 403" */
+     *（含内置超管种子），建表后请求可正常通过鉴权 */
     @Bean
     public TableInitializer rbacTableInitializer(ObjectProvider<DataSource> dataSourceProvider) {
         return new TableInitializer(dataSourceProvider, "RBAC", "sys_rbac.sql", List.of(

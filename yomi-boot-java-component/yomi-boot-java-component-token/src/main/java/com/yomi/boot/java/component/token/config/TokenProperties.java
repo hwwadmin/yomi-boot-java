@@ -11,7 +11,7 @@ import java.util.List;
  * 令牌服务配置，对应 yml 前缀 yomi.token
  * <p>
  * 由 {@link TokenAutoConfiguration} 在 {@code yomi.token.enabled=true} 时绑定并校验；
- * 未启用时不注册，避免无效配置导致启动失败。
+ * 未启用时不绑定，配置错误不影响启动。
  *
  * @author zwei
  */
@@ -37,7 +37,7 @@ public class TokenProperties {
     /** 单点登录签发时的等锁上限 */
     private Duration lockWait = Duration.ofSeconds(5);
 
-    /** 单点登录签发时的持锁上限（等价于关闭 watchdog 的固定租期） */
+    /** 单点登录签发时的持锁上限，固定租期（不启用 watchdog 续期） */
     private Duration lockLease = Duration.ofSeconds(30);
 
     /**
@@ -46,7 +46,7 @@ public class TokenProperties {
     private boolean renewOnValidate = false;
 
     /**
-     * 会话绝对存活上限（滑动续期不得超过 {@code issuedAt + maxLifetime}）；默认 1 天。
+     * 会话绝对存活上限（滑动续期以 {@code issuedAt + maxLifetime} 为上限）；默认 1 天。
      * <p>{@link Duration#ZERO} 表示不限制（可无限续期），仅建议在明确接受该风险的场景使用；
      * 达到上限后停止续期，会话按既有过期时间结束，需重新登录</p>
      */

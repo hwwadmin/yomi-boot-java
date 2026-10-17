@@ -3,10 +3,10 @@ package com.yomi.boot.java.component.rbac.repository;
 import com.yomi.boot.java.component.rbac.snapshot.RbacSnapshot;
 
 /**
- * 快照仓储（端口）：一次性装载鉴权/投影全量快照的持久化唯一出入口
+ * 快照仓储（端口）：一次性装载鉴权/投影全量快照的数据访问入口
  * <p>
- * 组件内其余代码（投影存储/刷新）一律经本接口访问，**不得越过仓储直接调用 Mapper**；
- * 默认实现 {@link RbacSnapshotRepository}，宿主可自行实现本接口并注册 Bean 顶替。
+ * 组件内其余代码（投影存储/刷新）都经本接口读写数据，Mapper 只由默认实现调用；
+ * 默认实现 {@link RbacSnapshotRepository}，宿主可实现本接口并注册自己的 Bean。
  *
  * @author zwei
  */

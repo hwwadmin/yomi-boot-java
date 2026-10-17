@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * core 装配契约：imports 文件可达、宿主无需扫描也能拿到全部能力、
+ * core 装配契约：imports 文件可达、能力全部经自动装配就绪、
  * 宿主的 {@code @Bean} 优先（自动装配阶段晚于宿主注册）、扫描 + imports 双通道各 Bean 只一份
  */
 class CoreAutoConfigurationTest {
@@ -31,7 +31,7 @@ class CoreAutoConfigurationTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(CoreAutoConfiguration.class));
 
-    /** 宿主旧写法：连 com.yomi 一起扫（含 core 的配置类与实现类），与自动装配双通道同时命中 */
+    /** 宿主把 com.yomi 一起扫到的形态（含 core 的配置类与实现类），与自动装配双通道同时命中 */
     @Configuration(proxyBeanMethods = false)
     @ComponentScan("com.yomi.boot.java.core")
     static class ScanChannelHost {

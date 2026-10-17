@@ -9,7 +9,7 @@ import java.time.Duration;
 /**
  * 统一对象存储门面。
  * <p>
- * 业务侧持久化请存逻辑 URI（{@code bucket/key}，见 {@link com.yomi.boot.java.component.oss.uri.OssUri}），不要存预签名 URL。
+ * 业务侧持久化请存逻辑 URI（{@code bucket/key}，见 {@link com.yomi.boot.java.component.oss.uri.OssUri}），预签名 URL 用于临时访问。
  * 默认由 {@link com.yomi.boot.java.component.oss.config.OssAutoConfiguration} 按 {@code yomi.oss.provider} 装配实现，
  * 也可自行声明 {@link OssStorage} Bean 覆盖；自定义实现须实现 {@link #close()} 释放资源（无资源可空实现）。
  * <p>
@@ -22,7 +22,7 @@ public interface OssStorage extends AutoCloseable {
     /**
      * 上传对象。{@code body} 由调用方关闭；{@code contentLength &lt; 0} 表示长度未知
      * （S3 要求已知长度，传负值会抛 {@code OSS_INVALID_ARGUMENT}；AliOSS 支持未知长度）。
-     * <p>key 会做安全校验：拒绝 {@code .}/{@code ..} 段与空段（{@code //}），避免直链被 URL 归一化后指向别的对象</p>
+     * <p>key 会做安全校验：拒绝 {@code .}/{@code ..} 段与空段（{@code //}），保证直链经 URL 归一化后仍指向本对象</p>
      *
      * @return 可入库的逻辑 URI，不是完整 HTTP URL
      */
@@ -36,7 +36,7 @@ public interface OssStorage extends AutoCloseable {
     /**
      * 下载对象。
      *
-     * @return 对象流，必须由调用方在 finally 或 try-with-resources 中关闭，否则会占用连接
+     * @return 对象流，由调用方在 finally 或 try-with-resources 中关闭；未关闭会占用连接
      */
     InputStream getObject(String uri);
 

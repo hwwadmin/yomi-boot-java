@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 内置策略名齐备性校验测试（{@link DesensitizeAutoConfiguration#requireBuiltinStrategies}）
  * <p>
- * 该类刻意不含任何 @Configuration/@Component 夹具：它所在包会被装配测试的 @ComponentScan 扫到。
+ * 本类不含 @Configuration/@Component 夹具：所在包会被装配测试的 @ComponentScan 扫到。
  *
  * @author zwei
  */

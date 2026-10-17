@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 /**
  * 失效通知的真实 Redis 语义（两个"实例"共享一个 Redis、各自订阅同一通道）：
  * <ol>
- *   <li>一个实例撤销后，另一个<b>已订阅</b>的实例条目被通知清掉（不等 TTL）；</li>
- *   <li><b>没订阅</b>的实例退化为 TTL 兜底：窗口内仍命中，TTL 到点失效（pub/sub 是"至多一次"）</li>
+ *   <li>一个实例撤销后，另一个已订阅的实例条目被通知立即清掉（不等 TTL）；</li>
+ *   <li>未订阅的实例按条目 TTL 生效：窗口内仍命中，TTL 到点失效（pub/sub 是"至多一次"）</li>
  * </ol>
  * 默认跳过；配置 {@code yomi.test.redis.host}（或环境变量 YOMI_REDIS_HOST 等）后执行
  *

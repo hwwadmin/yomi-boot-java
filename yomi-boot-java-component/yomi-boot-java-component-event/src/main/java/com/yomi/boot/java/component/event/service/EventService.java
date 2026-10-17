@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 /**
  * 事件查询与运维服务默认实现（{@link IEventService}）：数据统一按当前服务隔离
  * <p>依赖按需获取：查询/重发需 publisher-enabled（发件箱仓储），消费凭证需 consumer-enabled（收件箱仓储）；
- * 未启用的能力调用时抛出带配置指引的异常，而不是返回误导性的空结果。
+ * 未启用的能力调用时抛出带配置指引的异常。
  *
  * @author zwei
  */
@@ -106,9 +106,9 @@ public class EventService implements IEventService {
         if (row == null || row.getStatus() == OutboxStatus.SENT_SUCCESS) {
             return false;
         }
-        // 两步必须同成同败：单独执行时若在中间崩溃/第二步失败，"DLQ 行已删、行还停在 SENT_FAIL"
-        // 会让这条事件永不再投（中继只抓 PENDING、DLQ 扫描已无行），只能人工再 requeue 一次。
-        // 顺序保持：先删 DLQ 行（阻断既有 DLQ 重试路径，其重试前会重查 DLQ 行），再重置 PENDING。
+        // 两步同成同败：单独执行时若在中间崩溃/第二步失败，"DLQ 行已删、行还停在 SENT_FAIL"
+        // 这条事件会一直停在 SENT_FAIL 无人投递（中继只抓 PENDING、DLQ 扫描已无行），只能人工再 requeue 一次。
+        // 顺序保持：先删 DLQ 行（既有 DLQ 重试路径重试前会重查 DLQ 行），再重置 PENDING。
         Boolean requeued = transactionTemplate.execute(status -> {
             IEventOutboxDlqRepository dlqRepository = dlqProvider.getIfAvailable();
             if (dlqRepository != null) {
@@ -125,7 +125,7 @@ public class EventService implements IEventService {
         return dlq().resetRetryCountInRange(keys.getServiceName(), from, to);
     }
 
-    /** 批量补全 DLQ 关联的 eventId（一批一次查询，避免逐行 N+1） */
+    /** 批量补全 DLQ 关联的 eventId（一次批量查询代替逐行查询） */
     private void fillEventIds(List<EventDlqModel> models) {
         if (models.isEmpty()) {
             return;

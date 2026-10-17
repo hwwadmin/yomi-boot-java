@@ -6,8 +6,8 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * 验证码相关存储键构造
  * <p>
- * 句柄为 128 位随机值（不可枚举），因此直接作为键后缀，答案不做散列（答案空间小，散列无收益）。
- * 前缀的合法性在这里校验——它是唯一落键方，store=local 不构造本对象也不校验未使用的前缀。
+ * 句柄为 128 位随机值、不可枚举，直接作为键后缀，答案按原文存储。
+ * 前缀的合法性在这里校验：本类是唯一落键方，store=local 不构造本对象。
  *
  * @author zwei
  */
@@ -25,7 +25,7 @@ public class CaptchaKeys {
             throw new IllegalStateException("yomi.captcha.store-prefix 不能含首尾空白（当前 [" + prefix + "]）");
         }
         if (prefix.indexOf('{') >= 0 || prefix.indexOf('}') >= 0) {
-            // `${XXX}` 未解析时占位符会原样落到这里（Boot 绑定不强求解析），单独点名避免误导成"配了 hash tag"
+            // `${XXX}` 未解析时占位符会原样落到这里（Boot 绑定不强求解析），下面的报错单独点出这种情况
             boolean unresolvedPlaceholder = prefix.contains("${");
             throw new IllegalStateException("yomi.captcha.store-prefix 不能包含 Redis hash tag 字符 { 或 }（当前 [" + prefix + "]）"
                     + (unresolvedPlaceholder ? "：值形如 ${...} 说明占位符未解析，请检查对应配置项或环境变量是否存在" : ""));

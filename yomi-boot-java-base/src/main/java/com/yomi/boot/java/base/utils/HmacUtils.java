@@ -47,7 +47,7 @@ public abstract class HmacUtils {
     }
 
     /**
-     * HMAC 计算 MAC（不可用于 KMAC，请用 {@link #kmac}）。
+     * HMAC 计算 MAC（KMAC 请用 {@link #kmac}）。
      */
     public static byte[] mac(byte[] data, byte[] key, HmacAlgorithm algorithm) {
         Assert.nonNull(data, "data must not be null");

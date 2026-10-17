@@ -11,8 +11,8 @@ import org.springframework.core.type.AnnotatedTypeMetadata;
 /**
  * Redis 存储装配条件：{@code yomi.captcha.store=redis}（或 auto）且配置了 Redis 连接目标
  * <p>
- * 判定复用 redis 组件的 {@link RedisConfiguredCondition}（委托，不复制其配置键列表）：
- * 不能用 {@code StringRedisTemplate} 是否存在来判定——Boot 默认的 localhost 工厂会让它恒为真。
+ * 判定复用 redis 组件的 {@link RedisConfiguredCondition}（委托，不复制其配置键列表），依据是配置里的连接目标；
+ * {@code StringRedisTemplate} 是否存在不可作为依据——Boot 默认的 localhost 工厂会让它恒为真。
  *
  * @author zwei
  */

@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * 权限组视图（管理服务出入参用模型；**不暴露表实体**）
+ * 权限组视图（管理服务出入参模型，与表实体相互隔离）
  * <p>列表查询只填基础字段；详情查询额外填充 {@link #permIds}
  *
  * @author zwei

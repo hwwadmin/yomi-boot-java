@@ -162,9 +162,9 @@ public abstract class JsonUtils {
         builder.enable(EnumFeature.WRITE_ENUMS_USING_TO_STRING);
         builder.enable(EnumFeature.READ_ENUMS_USING_TO_STRING);
         builder.disable(EnumFeature.WRITE_ENUMS_USING_INDEX);
-        // 类为空时，不要抛异常
+        // 空 bean 正常序列化
         builder.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
-        // 反序列化时，遇到未知属性时是否引起结果失败
+        // 反序列化忽略未知属性
         builder.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         // 单引号处理
         builder.enable(JsonReadFeature.ALLOW_SINGLE_QUOTES);

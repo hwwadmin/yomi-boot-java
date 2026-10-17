@@ -31,7 +31,7 @@ public class TextCaptchaGenerator implements CaptchaGenerator {
         }
         String value = text.toString();
         // 逐 code point 大写：String.toUpperCase 会把 ß 这类字符扩成多字符（ß→SS），
-        // 答案与图上所见不再等长，用户照着图输入也恒 MISMATCH
+        // 答案与图上所见长度不符，用户照着图输入会恒 MISMATCH
         StringBuilder answer = new StringBuilder(value.length());
         value.codePoints().forEach(codePoint -> answer.appendCodePoint(Character.toUpperCase(codePoint)));
         return new CaptchaContent(value, answer.toString());

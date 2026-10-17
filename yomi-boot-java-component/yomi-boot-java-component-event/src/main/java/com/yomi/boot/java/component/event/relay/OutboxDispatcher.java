@@ -98,7 +98,7 @@ public class OutboxDispatcher {
         }
     }
 
-    /** 提交 DLQ 重试到发送线程池，避免阻塞 RoundRobin 线程 */
+    /** 提交 DLQ 重试到发送线程池，RoundRobin 调度线程随即返回 */
     public void offerFromDlq(EventOutbox outbox, EventOutboxDlq dlq) {
         try {
             executor.execute(() -> runTaskQuietly("DLQ 重试", outbox.getEventId(), () -> dispatchFromDlq(outbox, dlq)));
@@ -108,8 +108,8 @@ public class OutboxDispatcher {
     }
 
     /**
-     * DLQ 重试：先抢占 in-flight，再同步发送到 Kafka 并更新状态。
-     * <p>抢占后的查行、序列化、发送与回写均在异常保护内；失败时记录日志并推进重试次数与退避，
+     * DLQ 重试：先取得 in-flight 租约，再同步发送到 Kafka 并更新状态。
+     * <p>取得租约后的查行、序列化、发送与回写均在异常保护内；失败时记录日志并推进重试次数与退避，
      * 耗尽后进入 {@code [EXHAUSTED]} 终态</p>
      */
     void dispatchFromDlq(EventOutbox outbox, EventOutboxDlq dlq) {
@@ -127,7 +127,7 @@ public class OutboxDispatcher {
         }
     }
 
-    /** DLQ 抢占后的查行、发送 Kafka 与状态回写 */
+    /** 取得 DLQ 租约后的查行、发送 Kafka 与状态回写 */
     private void dispatchClaimedFromDlq(EventOutbox scannedOutbox, EventOutboxDlq scannedDlq) {
         EventOutboxDlq dlq = dlqRepository.findById(scannedDlq.getId());
         if (dlq == null) {
@@ -169,7 +169,7 @@ public class OutboxDispatcher {
         }
     }
 
-    /** 线程池任务兜底：捕获未处理异常并记录日志 */
+    /** 线程池任务包装：捕获未处理异常并记录日志 */
     private static void runTaskQuietly(String stage, String eventId, Runnable task) {
         try {
             task.run();
@@ -178,7 +178,7 @@ public class OutboxDispatcher {
         }
     }
 
-    /** 更新SentSuccess状态 */
+    /** 标记 SENT_SUCCESS 状态 */
     private void markSentSuccess(EventOutbox row) {
         Instant sentTime = Instant.now();
         row.setStatus(OutboxStatus.SENT_SUCCESS);
@@ -198,7 +198,7 @@ public class OutboxDispatcher {
                 row.getEventId(), row.getTopic());
     }
 
-    /** 更新DlqSuccessWithRetry状态 */
+    /** 事务内标记发件箱成功并删除 DLQ 行 */
     private boolean markDlqSuccessWithRetry(EventOutbox outbox, EventOutboxDlq dlq, Instant sentTime) {
         for (int retry = 1; retry <= SENT_SUCCESS_PERSIST_RETRIES; retry++) {
             try {
@@ -215,7 +215,7 @@ public class OutboxDispatcher {
         return false;
     }
 
-    /** 更新SentFailAndEnqueueDlq状态 */
+    /** 标记发送失败并写入 DLQ 行 */
     private void markSentFailAndEnqueueDlq(EventOutbox row, Exception cause) {
         String errorMsg = cause == null ? "" : cause.getMessage();
         transactionTemplate.executeWithoutResult(status -> {
@@ -263,7 +263,7 @@ public class OutboxDispatcher {
         try {
             dlqRepository.updateRow(dlq);
         } catch (Exception e) {
-            // 回写失败也不能无声逃逸：行停在 IN_FLIGHT，租约到期后由下轮扫描继续处理
+            // 回写失败时只记日志：行停在 IN_FLIGHT，租约到期后由下轮扫描继续处理
             log.error("[事件]DLQ 重试计数回写失败 dlqId={}, eventId={}", dlq.getId(), outbox.getEventId(), e);
         }
     }

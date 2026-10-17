@@ -22,9 +22,9 @@ public enum CaptchaStoreType {
     /**
      * 宽松解析（yml 通常写 local/redis/auto，大小写不限）
      * <p>
-     * 装配条件里必须走这里：{@code Environment.getProperty(key, Class)} 的枚举转换是大小写敏感的，
-     * 而 {@code @ConfigurationProperties} 绑定是宽松的，两条路径若不统一会在启动装配期直接报错。
-     * 未知值按兜底处理，由属性绑定期给出明确的取值报错。
+     * 装配条件走这里解析（{@code Environment.getProperty(key, Class)} 的枚举转换大小写敏感），
+     * 与 {@code @ConfigurationProperties} 的宽松绑定口径保持一致。
+     * 未知值返回 fallback，由属性绑定期给出明确的取值报错。
      */
     public static CaptchaStoreType parse(String value, CaptchaStoreType fallback) {
         if (StringUtils.isBlank(value)) {

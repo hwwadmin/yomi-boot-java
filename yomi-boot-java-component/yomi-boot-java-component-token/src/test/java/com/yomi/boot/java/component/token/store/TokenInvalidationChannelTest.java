@@ -19,8 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 失效通知通道的契约：
  * <ol>
  *   <li>发布只发通道名 + 令牌散列，接收侧按散列清本实例条目；</li>
- *   <li>发布失败/报文异常一律吞掉（撤销本身已生效，靠条目 TTL 兜底）；</li>
- *   <li>进程内缓存关闭时整层空转</li>
+ *   <li>发布失败/报文异常只记日志（撤销本身已生效，其它实例按条目 TTL 到期后失效）；</li>
+ *   <li>进程内缓存关闭时通道的发布与接收均为空操作</li>
  * </ol>
  */
 class TokenInvalidationChannelTest {
@@ -72,7 +72,7 @@ class TokenInvalidationChannelTest {
 
         assertDoesNotThrow(() -> channel.onMessage(null, null));
         assertDoesNotThrow(() -> channel.onMessage(message("   "), null));
-        // pub/sub 没有 PEL：异常吞掉即可，不该抛出去
+        // pub/sub 没有 PEL，报文异常忽略即可，不向外抛出
         assertDoesNotThrow(() -> channel.onMessage(message("h1"), null));
     }
 

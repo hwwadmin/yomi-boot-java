@@ -105,7 +105,7 @@ class OutboxDispatcherDlqTest {
         assertDoesNotThrow(() -> dispatcher.dispatchFromDlq(outbox(9L), dlq(7L, null)));
     }
 
-    /** 投递er */
+    /** 构造投递器 */
     private OutboxDispatcher dispatcher(Stubs stubs) {
         EventOutboxRepository outboxRepository = new EventOutboxRepository(stubs.outboxMapper());
         EventOutboxDlqRepository dlqRepository = new EventOutboxDlqRepository(stubs.dlqMapper());
@@ -113,7 +113,7 @@ class OutboxDispatcherDlqTest {
                 new TransactionTemplate(proxy(PlatformTransactionManager.class)));
     }
 
-    /** 构造发件箱 Mapper 桩 */
+    /** 构造发件箱行 */
     private static EventOutbox outbox(Long id) {
         EventOutbox row = new EventOutbox();
         row.setId(id);
@@ -124,7 +124,7 @@ class OutboxDispatcherDlqTest {
         return row;
     }
 
-    /** 构造 DLQ Mapper 桩 */
+    /** 构造 DLQ 行 */
     private static EventOutboxDlq dlq(Long id, Integer retryCount) {
         EventOutboxDlq row = new EventOutboxDlq();
         row.setId(id);
@@ -133,7 +133,7 @@ class OutboxDispatcherDlqTest {
         return row;
     }
 
-    /** 从 ApplicationContext 取 Bean 的 ObjectProvider */
+    /** 创建返回固定桩值的动态代理 */
     @SuppressWarnings("unchecked")
     private static <T> T proxy(Class<T> type) {
         return (T) Proxy.newProxyInstance(OutboxDispatcherDlqTest.class.getClassLoader(),
@@ -186,7 +186,7 @@ class OutboxDispatcherDlqTest {
         EventOutboxDlqMapper dlqMapper() {
             return (EventOutboxDlqMapper) Proxy.newProxyInstance(OutboxDispatcherDlqTest.class.getClassLoader(),
                     new Class<?>[]{EventOutboxDlqMapper.class}, (proxy, method, args) -> switch (method.getName()) {
-                        // 抢占 in-flight 现由仓储的 LambdaUpdateWrapper 表达（update 两参重载），仅此一处用它
+                        // in-flight 认领由仓储的 LambdaUpdateWrapper 表达（update 两参重载），仅此一处使用
                         case "update" -> claimResult;
                         case "selectById" -> {
                             dlqReads.add((Long) args[0]);

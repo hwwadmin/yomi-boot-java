@@ -42,7 +42,7 @@ public class TestCaptchaFlowController {
      * 生成挑战（type 取 text/arithmetic，缺省用配置的默认类型）；响应带 {@code Cache-Control: no-store}
      * <p>
      * 收字符串后走 {@code CaptchaType.parse}：MVC 的 {@code @RequestParam} 枚举转换大小写敏感，直接声明枚举会拒掉小写取值；
-     * 显式传入非法取值报参数错误（不静默回退默认类型）。
+     * 显式传入非法取值报参数错误。
      */
     @GetMapping("/generate")
     public ResponseEntity<Response<TestCaptchaChallengeResult>> generate(@RequestParam(required = false) String type) {

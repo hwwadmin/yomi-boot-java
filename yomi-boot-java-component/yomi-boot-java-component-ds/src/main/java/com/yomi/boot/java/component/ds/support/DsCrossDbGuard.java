@@ -20,19 +20,19 @@ import java.util.stream.Collectors;
 /**
  * 跨库访问守卫：一个事务里访问了"不是该事务绑定的那个库"，记 ERROR
  * <p>
- * 静态分包下没有运行期路由，但"在一个 {@code @Transactional} 里用两个库的 Mapper"仍然是容易写错的形态，
- * 而且它的后果是**静默**的：MyBatis 取连接走 {@code DataSourceUtils.getConnection(本 Mapper 所在库)}，
+ * 静态分包下没有运行期路由，但"在一个 {@code @Transactional} 里用两个库的 Mapper"仍是容易写错的形态，
+ * 后果也不显眼：MyBatis 取连接走 {@code DataSourceUtils.getConnection(本 Mapper 所在库)}，
  * 事务绑的是别的库时本库拿到的是另一条连接，语句不在该事务里（提交/回滚都不受控）。
- * 本拦截器把这种误用变成一条显式日志，而不是生产环境里"回滚撤不回来"的事故。
+ * 本拦截器把这种误用变成一条显式日志。
  * <p>
- * 形态：**每个工厂一个实例**（绑定该工厂的库名与数据源），因为判定需要知道"本语句属于哪个库"：
+ * 形态：每个工厂一个实例（绑定该工厂的库名与数据源），因为判定需要知道"本语句属于哪个库"：
  * {@code DsCrossDbGuard.of(库名, 该工厂的数据源)}。主库由本组件自动挂上；附加库由业务按
  * 《组件使用说明》的模板挂（一行 {@code factory.setPlugins(chain, DsCrossDbGuard.of(...))}）。
  * <p>
- * 判定：事务活跃 + 本库不是事务绑定的库（{@code hasResource(本库)} 为假）+ 事务确实绑定了**别的**库的
+ * 判定：事务活跃 + 本库不是事务绑定的库（{@code hasResource(本库)} 为假）+ 事务确实绑定了其它库的
  * 连接 ⇒ ERROR。无事务或本库就是事务绑定的库时只做两次 ThreadLocal 读，零额外开销。
  * <p>
- * 覆盖边界（别当成全覆盖）：只覆盖<b>经 MyBatis</b> 的语句，且只覆盖挂了本守卫的工厂；
+ * 覆盖边界：只覆盖经 MyBatis 的语句，且只覆盖挂了本守卫的工厂；
  * {@code JdbcTemplate}、原生 JDBC、未挂守卫的自建工厂不在覆盖内。
  * <p>
  * 开关：{@code yomi.ds.transaction-guard=error|off}（默认 {@code error}）。ds 装配时把它设进

@@ -15,10 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 装配顺序回归：宿主**不扫描** {@code com.yomi}（主类在 com.acme）且声明了 {@code InnerInterceptor} 时，
- * 容器里的链必须由 ds 组件接管（含分页 + 防全表写），不得让位给 MyBatis-Plus 的默认链。
+ * 装配顺序：宿主不扫描 {@code com.yomi}（主类在 com.acme）且声明了 {@code InnerInterceptor} 时，
+ * 容器里的链由 ds 组件提供，含分页 + 防全表写，不使用 MyBatis-Plus 的默认链。
  * <p>用真实 {@link SpringApplication} 启动：自动配置排序只在真实启动路径上发生，
- * {@code ApplicationContextRunner} 的注册顺序与之不等价（实测过）。</p>
+ * {@code ApplicationContextRunner} 复现不了这一顺序。</p>
  */
 class DsInterceptorOrderingTest {
 
@@ -35,8 +35,8 @@ class DsInterceptorOrderingTest {
     void dsChainWinsWhenHostDeclaresInnerInterceptor() {
         SpringApplication app = new SpringApplication(HostApp.class);
         app.setWebApplicationType(WebApplicationType.NONE);
-        // 无数据源宿主（不接数据库，只借用 ds 的工具类）：排除 Boot 的数据源自动配置（Boot 标准做法：
-        // jdbc starter 在场但不接库时它自己会因"没有 url/driver"启动失败），主库四件套不装配，拦截器链照常就位
+        // 无数据源宿主（不接库，只用 ds 的工具类）：排除 Boot 的数据源自动配置（jdbc starter 在场但不接库时，
+        // 它自己会因没有 url/driver 而启动失败），主库四件套不装配，拦截器链照常就位
         try (ConfigurableApplicationContext context = app.run(
                 "--yomi.ds.preheat.enabled=false",
                 "--spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")) {
@@ -46,7 +46,7 @@ class DsInterceptorOrderingTest {
                     "分页插件必须在链里（宿主声明 InnerInterceptor 时不得让位）: " + chain.getInterceptors());
             assertTrue(chain.getInterceptors().stream().anyMatch(BlockAttackInnerInterceptor.class::isInstance),
                     "防全表更新/删除也必须在链里: " + chain.getInterceptors());
-            // 该 Bean 名是 MP 默认链的方法名：它出现即说明本组件让位了；MP 若改名，本断言会先红（提醒同步自检里的常量）
+            // 该 Bean 名是 MP 默认链的方法名：它出现即说明生效的是 MP 默认链；MP 若改名，本断言会先红（提醒同步自检里的常量）
             assertFalse(context.containsBean("defaultMybatisPlusInterceptor"),
                     "MP 默认链不应注册（本组件已抢占该 Bean）");
         }

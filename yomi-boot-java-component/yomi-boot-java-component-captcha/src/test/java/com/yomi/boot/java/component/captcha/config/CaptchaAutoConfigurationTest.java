@@ -24,7 +24,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 装配契约：开关、存储选择（auto/local/redis）、fail-fast、Web Bean 只在 Servlet 应用注册
+ * 装配契约：开关、存储选择（auto/local/redis）、配置非法即启动失败、Web Bean 只在 Servlet 应用注册
  */
 class CaptchaAutoConfigurationTest {
 
@@ -98,7 +98,7 @@ class CaptchaAutoConfigurationTest {
     @Test
     void redisStoreWithoutStringRedisTemplateNamesTheCause() {
         // 宿主排除了 Boot 的 DataRedisAutoConfiguration（StringRedisTemplate 由它提供）：
-        // 报错必须点名是哪个配置项、缺的是什么 Bean，而不是一句 No qualifying bean
+        // 报错点名缺失的 Bean 与所属组件，便于按配置项排查
         runner("yomi.captcha.enabled=true", "yomi.captcha.store=redis", "spring.data.redis.host=127.0.0.1")
                 .run(context -> {
                     assertNotNull(context.getStartupFailure(), "store=redis 但容器无 StringRedisTemplate 必须启动失败");
@@ -110,7 +110,7 @@ class CaptchaAutoConfigurationTest {
 
     @Test
     void unresolvedPrefixPlaceholderIsReportedAsPlaceholder() {
-        // `${XXX}` 未解析时 Boot 绑定不强求解析，字面量会落到前缀校验里：不能被报成"配了 hash tag"
+        // `${XXX}` 未解析时 Boot 绑定不强求解析，字面量会落到前缀校验里：报错点出占位符未解析
         runner("yomi.captcha.enabled=true", "yomi.captcha.store=redis", "spring.data.redis.host=127.0.0.1",
                 "yomi.captcha.store-prefix=${NO_SUCH_PREFIX_PROP}")
                 .withBean(StringRedisTemplate.class, CaptchaAutoConfigurationTest::stubRedisTemplate)
@@ -210,7 +210,7 @@ class CaptchaAutoConfigurationTest {
                 new Class<?>[]{RedisConnectionFactory.class}, (proxy, method, args) -> null));
     }
 
-    /** 取根因消息（Bean 创建异常会包一层） */
+    /** 取最内层异常的消息（Bean 创建异常会包一层） */
     private static String rootMessage(Throwable error) {
         Throwable current = error;
         while (current.getCause() != null) {

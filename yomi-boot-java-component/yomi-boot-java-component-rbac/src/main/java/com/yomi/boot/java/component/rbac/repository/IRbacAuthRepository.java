@@ -5,10 +5,10 @@ import com.yomi.boot.java.component.rbac.entity.RbacPerm;
 import java.util.List;
 
 /**
- * 鉴权查询仓储（端口）：鉴权链 SQL 的持久化唯一出入口
+ * 鉴权查询仓储（端口）：鉴权链 SQL 的数据访问入口
  * <p>
- * 组件内其余代码（鉴权服务/快照/投影）一律经本接口访问，**不得越过仓储直接调用 Mapper**；
- * 默认实现 {@link RbacAuthRepository}，宿主可自行实现本接口并注册 Bean 顶替。
+ * 组件内其余代码（鉴权服务/快照/投影）都经本接口读写数据，Mapper 只由默认实现调用；
+ * 默认实现 {@link RbacAuthRepository}，宿主可实现本接口并注册自己的 Bean。
  *
  * @author zwei
  */

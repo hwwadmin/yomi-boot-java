@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 启动日志契约：每个任务打印任务名 + 作用简介，否则运维只看到任务名、不知道它在做什么
+ * 启动日志契约：每个任务打印任务名 + 作用简介，运维据此知道任务在做什么
  */
 class RoundRobinLifecycleTest {
 
@@ -107,7 +107,7 @@ class RoundRobinLifecycleTest {
         return condition.getAsBoolean();
     }
 
-    /** 启动之后注册的任务必须真的被调度（历史缺陷：注册成功却永不执行，且无任何日志） */
+    /** 启动之后注册的任务会被增量调度并执行 */
     @Test
     void lateRegistrationAfterStartActuallyRuns() throws Exception {
         scheduler = Executors.newScheduledThreadPool(1);
@@ -138,7 +138,7 @@ class RoundRobinLifecycleTest {
         }
     }
 
-    /** 停止之后注册：入表但不调度（下次 start 生效），不得在建了调度后立刻又被取消 */
+    /** 停止之后注册：只入表、不调度（下次 start 生效），不会出现建了调度又被取消的情况 */
     @Test
     void registrationAfterStopIsNotScheduled() throws Exception {
         scheduler = Executors.newScheduledThreadPool(1);
@@ -187,7 +187,7 @@ class RoundRobinLifecycleTest {
         }
     }
 
-    /** 锁客户端桩：频率锁永远抢不到 → 任务一次都不会真正执行，全程不触达 Redis */
+    /** 锁客户端桩：频率锁始终获取不到 → 任务一次都不会真正执行，全程不触达 Redis */
     static class IdleLockClient extends RoundRobinLockClient {
 
         IdleLockClient() {

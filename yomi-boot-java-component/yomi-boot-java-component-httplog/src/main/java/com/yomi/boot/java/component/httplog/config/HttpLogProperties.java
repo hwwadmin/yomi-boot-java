@@ -98,10 +98,10 @@ public class HttpLogProperties {
         /** 采样率（0,1]，默认全采 */
         private double sampleRate = 1.0;
 
-        /** 大于 0 时只记耗时达到该值（毫秒）的请求（降量逃生门） */
+        /** 大于 0 时只记耗时达到该值（毫秒）的请求（降量开关） */
         private int minDurationMs = 0;
 
-        /** 大于 0 时只记状态码达到该值的响应（降量逃生门） */
+        /** 大于 0 时只记状态码达到该值的响应（降量开关） */
         private int statusThreshold = 0;
 
         /** 采集过滤器顺序（越小越靠前；默认在基础设施过滤器之后、业务之前） */
@@ -232,7 +232,7 @@ public class HttpLogProperties {
         /** 消费并发数 */
         private int concurrency = 1;
 
-        /** 多 KafkaTemplate 时指定 Bean 名（沿用 event 组件校验模式） */
+        /** 多 KafkaTemplate 时指定 Bean 名 */
         private String templateBeanName = "";
 
     }

@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 数据源预热
  * <p>
- * 并行预热容器内**每一个**数据源（含业务自建的附加库）：单个数据源受单池超时约束，整体受总预算约束，
+ * 并行预热容器里所有数据源（含业务自建的附加库）：单个数据源受单池超时约束，整体受总预算约束，
  * 启动耗时上限为总预算；预热失败或超时只记录 ERROR 日志，不阻断应用启动。
  * 可通过 yomi.ds.preheat.enabled=false 关闭预热（默认开启）
  *
@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 public class DsPreheat {
 
-    /** 单个数据源预热超时（毫秒），兜底连接池自身未配置合理 connectionTimeout 的场景 */
+    /** 单个数据源预热超时（毫秒），用于连接池自身未配置合理 connectionTimeout 的场景 */
     private static final long SINGLE_TIMEOUT_MILLIS = 10_000L;
 
     /** 单连接探活超时（秒），传给 {@link Connection#isValid(int)}；四目标库通用 */
@@ -61,7 +61,7 @@ public class DsPreheat {
             List<CompletableFuture<Void>> futures = targets.stream()
                     .map(target -> CompletableFuture
                             .<Boolean>supplyAsync(() -> preheat(target), executor)
-                            // 单池硬超时：到点不再等（池自身 connectionTimeout 可能更长），预热线程在后台跑完即止
+                            // 单池硬超时：到点即放弃等待（池自身 connectionTimeout 可能更长），预热线程在后台跑完即止
                             .orTimeout(SINGLE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
                             .<Void>handle((success, ex) -> {
                                 if (Objects.nonNull(ex)) {

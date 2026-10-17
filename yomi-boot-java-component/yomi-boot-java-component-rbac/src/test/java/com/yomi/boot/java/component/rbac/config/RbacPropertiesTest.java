@@ -10,13 +10,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * `skip-authorize-paths` 装配期自检：首尾空格型笔误经 `excludePathPatterns` **既不报错也永不命中**
- * （RbacWebMvcConfig 照常注册，放行路径静默变成全量 403），只能启动期拦下；口径与 token 的
+ * `skip-authorize-paths` 装配期自检：首尾空格型笔误经 `excludePathPatterns` 既不报错也永不命中
+ * （RbacWebMvcConfig 照常注册，放行路径未生效、全部请求返回 403），只能在启动期拦下；口径与 token 的
  * `skip-validate-paths` 一致
  */
 class RbacPropertiesTest {
 
-    /** 默认即 scheduled-refresh-enabled=false：校验不得被"定时刷新关闭"的分支短路 */
+    /** 默认即 scheduled-refresh-enabled=false：校验照常执行，不受"定时刷新关闭"影响 */
     @Test
     void whitespaceSkipAuthorizePathRejected() {
         RbacProperties properties = enabled();
@@ -44,7 +44,7 @@ class RbacPropertiesTest {
         assertDoesNotThrow(properties::validate);
     }
 
-    /** 未启用时不校验：与 token 一致，避免"没开组件却被配置拦停" */
+    /** 未启用时不校验：与 token 一致，没开组件时配置问题不会拦停启动 */
     @Test
     void disabledSkipsValidation() {
         RbacProperties properties = new RbacProperties();

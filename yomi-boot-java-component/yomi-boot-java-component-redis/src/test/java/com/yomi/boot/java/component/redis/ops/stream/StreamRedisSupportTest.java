@@ -22,11 +22,11 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Stream 消费语义（离线驱动）：
  * <ol>
- *   <li>listen 必须注册"手动 ack"订阅（消息进 PEL），不得再用 receiveAutoAck（NOACK 异常即丢）；</li>
+ *   <li>listen 注册"手动 ack"订阅（消息进 PEL）；receiveAutoAck 的 NOACK 模式会丢消息；</li>
  *   <li>handler 成功 → 立即 XACK；handler 失败 → 不 ACK、异常不逃逸（逃逸会因 cancelOnError 默认值取消整个订阅）；</li>
- *   <li>订阅永不被处理/读取异常取消；</li>
+ *   <li>处理/读取异常都不取消订阅；</li>
  *   <li>claimAndRedeliver 认领超时未确认消息并重新投递，成功自动 ACK；</li>
- *   <li>返回值区分"认领/成功/失败/跳过"，毒消息（投递次数超限）跳过重投不再占用认领窗口。</li>
+ *   <li>返回值区分"认领/成功/失败/跳过"，投递次数超限的消息跳过重投，不占用本轮认领窗口。</li>
  * </ol>
  */
 class StreamRedisSupportTest {
@@ -159,7 +159,7 @@ class StreamRedisSupportTest {
     @Test
     void claimAndRedeliverSkipsPoisonMessagesBeyondDeliveryLimit() {
         StubTemplate template = new StubTemplate();
-        // 毒消息在 PEL 头部：累计投递次数已达阈值，跳过重投；后面的正常积压必须仍能认领
+        // 投递次数超限的消息在 PEL 头部：本轮跳过重投；后面的正常积压仍能认领
         template.pending = new PendingMessages("grp", List.of(
                 new PendingMessage(RecordId.of("1-0"), Consumer.from("grp", "c-dead"), Duration.ofMinutes(30),
                         StreamRedisSupport.DEFAULT_MAX_DELIVERY_ATTEMPTS),

@@ -28,7 +28,7 @@ public class OutboxRelayCoordinator {
 
     /** RoundRobin 任务名前缀，完整名为 {@code 前缀 + "_" + serviceName} */
     public static final String TASK_FETCH = "MqIEventPublisherFetch";
-    /** 出站拉取任务名 */
+    /** FETCHED 超时回收任务名 */
     public static final String TASK_FETCH_TIMEOUT = "MqIEventPublisherFetchTimeout";
     /** DLQ 重试任务名 */
     public static final String TASK_DLQ = "MqIEventPublisherDlq";
@@ -63,7 +63,7 @@ public class OutboxRelayCoordinator {
     /**
      * 将长时间停留在 FETCHED 的行重置为 PENDING
      * <p>按批回收：Kafka 长时间不可用时 FETCHED 行会持续累积（每轮抓取 fetchBatchSize 行），
-     * 一次把全部行读进内存、并把等量 id 压进单条 UPDATE 会撑爆参数上限（PG 65535 绑定参数）
+     * 一次性加载全部行并把等量 id 放进单条 UPDATE 会超过绑定参数上限（PG 65535）
      */
     public void recoverFetchedTimeout(RoundRobinContext ctx) {
         Instant before = Instant.now().minus(properties.getFetchedTimeout());

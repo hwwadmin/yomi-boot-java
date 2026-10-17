@@ -24,13 +24,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * 端口写方法的原子性：`IRbacRelationRepository` 是公开端口（宿主可绕过管理服务直接调用），
- * 默认实现整类带 REQUIRED 事务 —— 直接调用时事务自开，"先删后插"期间任一步失败整体回滚，
- * 不会留下"已删未插"的绑定丢失（真实回滚由事务管理器完成，本用例锁定"同一事务 + 失败请求回滚"）
+ * 端口写方法的原子性：`IRbacRelationRepository` 是公开端口，宿主可绕过管理服务直接调用，
+ * 默认实现整类带 REQUIRED 事务——直接调用时事务自开，"先删后插"任一步失败整体回滚，
+ * 删除前的绑定在回滚后保持原样（真实回滚由事务管理器完成，本用例验证"同一事务 + 失败请求回滚"）
  */
 class RbacRelationRepositoryTransactionTest {
 
-    /** 仓储写方法经 BaseEntity.init() 生成雪花主键，测试内自行初始化（不依赖别的用例先跑） */
+    /** 仓储写方法经 BaseEntity.init() 生成雪花主键，测试内自行初始化，用例之间互不依赖 */
     @BeforeAll
     static void initIds() {
         IdUtils.initialize(1L, 0L);

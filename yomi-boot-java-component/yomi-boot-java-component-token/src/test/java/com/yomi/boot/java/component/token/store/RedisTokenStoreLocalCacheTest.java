@@ -26,11 +26,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 存储层与进程内薄缓存的接线契约：
+ * 存储层与进程内缓存的接线契约：
  * <ol>
- *   <li>第二次读取命中缓存，不再产生 Redis 往返；命中返回新解析实例（不共享可变 TokenSession）；</li>
+ *   <li>第二次读取命中缓存，跳过 Redis 往返；命中返回新解析实例（不共享可变 TokenSession）；</li>
  *   <li>条目按 TTL 过期后回源，且 TTL 被令牌剩余有效期截断；{@code local-cache-ttl=0} 时行为与无缓存完全一致；</li>
- *   <li>撤销在同一实例上立即清条目、续期也清（避免命中旧 expireAt 被误判过期）</li>
+ *   <li>撤销在同一实例上立即清条目、续期也清（缓存中的旧 expireAt 会让校验误判过期）</li>
  * </ol>
  * 真实 Redis 语义由 gated 的 {@code TokenIntegrationTest} 覆盖
  */
@@ -78,7 +78,7 @@ class RedisTokenStoreLocalCacheTest {
     @Test
     void entryTtlCappedBySessionRemainingLifetime() throws InterruptedException {
         SessionTemplate template = new SessionTemplate();
-        // 令牌只剩 150ms，而配置 TTL 是 30 秒：条目必须按剩余有效期过期
+        // 令牌只剩 150ms，而配置 TTL 是 30 秒：条目随剩余有效期过期
         template.seed(TOKEN, session(Duration.ofMillis(150)));
         RedisTokenStore store = store(template, Duration.ofSeconds(30));
 

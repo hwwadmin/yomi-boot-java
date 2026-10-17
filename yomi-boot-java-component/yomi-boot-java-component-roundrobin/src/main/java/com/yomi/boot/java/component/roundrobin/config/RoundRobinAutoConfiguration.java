@@ -64,9 +64,9 @@ public class RoundRobinAutoConfiguration {
 
     /**
      * 专用调度线程池（承载 50ms 周期的锁存活检测与 max-hold）。
-     * <p>只有宿主提供<b>名为 {@code roundRobinScheduler}、且类型为 {@link ScheduledExecutorService}</b> 的 Bean 才会顶替内置池
-     * （普通的同类型 Bean 不再被静默接管）；池太小或 Redis 变慢会让检测/max-hold 延迟，检测延迟会被量出来并按次告警。
-     * 同名但类型不符的 Bean 会让 {@link RoundRobinLifecycle} 在启动期注入失败（明确报错，不静默降级）</p>
+     * <p>宿主提供名为 {@code roundRobinScheduler}、类型为 {@link ScheduledExecutorService} 的 Bean 时以宿主的为准，
+     * 其它同类型 Bean 不参与（注入按名限定）；池太小或 Redis 变慢会让检测/max-hold 延迟，检测延迟会被量出来并按次告警。
+     * 同名但类型不符的 Bean 会让 {@link RoundRobinLifecycle} 在启动期注入失败（明确报错）</p>
      */
     @Bean(name = "roundRobinScheduler", destroyMethod = "shutdown")
     @ConditionalOnMissingBean(name = "roundRobinScheduler")

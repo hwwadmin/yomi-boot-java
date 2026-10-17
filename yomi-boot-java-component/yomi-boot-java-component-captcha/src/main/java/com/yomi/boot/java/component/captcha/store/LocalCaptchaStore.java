@@ -10,7 +10,7 @@ import java.time.Duration;
  * 本地内存存储（单实例）
  * <p>
  * Caffeine 承担 TTL 与容量上限：过期条目对读取与 remove 都不可见
- * （实测：过期后 {@code asMap().remove} 返回 null），因此一次性消费语义与 Redis 一致。
+ * （过期后 {@code asMap().remove} 返回 null），一次性消费语义与 Redis 一致。
  *
  * @author zwei
  */

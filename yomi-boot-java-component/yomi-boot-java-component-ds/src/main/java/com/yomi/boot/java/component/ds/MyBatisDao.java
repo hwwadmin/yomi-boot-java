@@ -81,7 +81,7 @@ public abstract class MyBatisDao<M extends BaseMapper<T>, T extends BaseEntity> 
 
     /**
      * 构建分页对象
-     * pageNo从1开始，MP的current同为1基页码（偏移量由IPage.offset()按(current-1)*size计算），直接传入无需减1
+     * pageNo从1开始，与 MP 的 current 同为 1 基页码，直接传入即可，无需减1
      */
     public Page<T> page(long pageNo, long pageSize) {
         Assert.isTrue(pageNo >= 1, "{}页码不能小于1", getTableDesc());
@@ -155,7 +155,7 @@ public abstract class MyBatisDao<M extends BaseMapper<T>, T extends BaseEntity> 
 
     /**
      * 更新（id不存在时抛出异常）
-     * 批量见 updateBatch：id不存在的行静默跳过，不抛错
+     * 批量见 updateBatch：id不存在的行不更新、不抛错
      */
     public void update(T entity) {
         Assert.nonNull(entity, "{}不能为空", getTableDesc());
@@ -167,7 +167,7 @@ public abstract class MyBatisDao<M extends BaseMapper<T>, T extends BaseEntity> 
 
     /**
      * 批量更新
-     * id不存在的行静默跳过：不校验受影响行数、不抛错（受影响行数可由 BatchResult.getUpdateCounts() 自查），
+     * id不存在的行不更新、不抛错，受影响行数不做校验（可由 BatchResult.getUpdateCounts() 自查）；
      * 需要"未命中即失败"的严格语义请用单条 update()
      */
     public void updateBatch(Collection<T> entityList) {
@@ -179,7 +179,7 @@ public abstract class MyBatisDao<M extends BaseMapper<T>, T extends BaseEntity> 
     /**
      * 保存/更新
      * id为空新增，id非空更新（不查库校验存在性，id不存在时更新失败抛错）
-     * 批量见 saveOrUpdateBatch：id不存在的更新行静默跳过、不补插
+     * 批量见 saveOrUpdateBatch：id不存在的更新行不更新、不补插
      */
     public void saveOrUpdate(T entity) {
         Assert.nonNull(entity, "{}不能为空", getTableDesc());
@@ -192,8 +192,8 @@ public abstract class MyBatisDao<M extends BaseMapper<T>, T extends BaseEntity> 
 
     /**
      * 批量保存/更新
-     * id为空的新增、id非空的更新，分组后各执行一次批量SQL，避免逐条查库判断存在性
-     * id非空但库中不存在的行更新未命中，静默跳过（不补插、不抛错），与单条 saveOrUpdate() 的抛错语义不同
+     * id为空的新增、id非空的更新，分组后各执行一次批量SQL，不逐条查库判断存在性
+     * id非空但库中不存在的行更新未命中，不补插、不抛错，与单条 saveOrUpdate() 的抛错语义不同
      */
     public void saveOrUpdateBatch(Collection<T> entityList) {
         if (CollectionUtils.isEmpty(entityList)) return;

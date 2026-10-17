@@ -11,10 +11,10 @@ import org.springframework.context.annotation.Import;
 /**
  * redis 组件自动装配
  * <p>
- * 通过 {@code META-INF/spring/...AutoConfiguration.imports} 注册，宿主无需扫描
- * {@code com.yomi}（继续扫描也不冲突：Spring 对同一配置类去重）。
- * 各 Bean 受 {@link RedisConfiguredCondition} 等条件约束：须配置有效的
- * {@code spring.data.redis.*} 连接目标后才会装配（含 host、url、sentinel、cluster 等写法）。
+ * 通过 {@code META-INF/spring/...AutoConfiguration.imports} 注册；宿主扫描 {@code com.yomi} 时，
+ * Spring 对同一配置类去重。
+ * 各 Bean 受 {@link RedisConfiguredCondition} 等条件约束：配置有效的
+ * {@code spring.data.redis.*} 连接目标后装配（host、url、sentinel、cluster 等写法均可）。
  *
  * @author zwei
  */

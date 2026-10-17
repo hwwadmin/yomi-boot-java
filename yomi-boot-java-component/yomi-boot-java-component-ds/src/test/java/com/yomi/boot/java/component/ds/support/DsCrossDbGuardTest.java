@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 跨库访问守卫：事务绑定了别的库时记 ERROR（语句不在该事务里、提交回滚都不受控）；
- * 无事务、本库就是事务绑定的库、事务没绑任何库（如纯 Redis 事务）时一律不报；开关可关、非法值启动失败。
+ * 无事务、本库就是事务绑定的库、事务没绑任何库（如纯 Redis 事务）时都不报；开关可关、非法值启动失败。
  */
 class DsCrossDbGuardTest {
 
@@ -114,7 +114,7 @@ class DsCrossDbGuardTest {
         assertEquals("", errors());
     }
 
-    /** 开关取值：error/空=开，off=关，其余 fail-fast */
+    /** 开关取值：error/空=开，off=关，其余直接抛异常 */
     @Test
     void parsesSwitchValues() {
         assertTrue(DsCrossDbGuard.parseEnabled(null));
@@ -132,7 +132,7 @@ class DsCrossDbGuardTest {
         assertEquals("report", DsCrossDbGuard.of("report", report).libraryName());
     }
 
-    /** 复位线程级事务状态：注意 {@code TransactionSynchronizationManager.clear()} 不会解绑 resources，必须显式 unbind */
+    /** 复位线程级事务状态：{@code TransactionSynchronizationManager.clear()} 不解绑 resources，这里显式 unbind */
     private static void resetTransactionState() {
         TransactionSynchronizationManager.setActualTransactionActive(false);
         new ArrayList<>(TransactionSynchronizationManager.getResourceMap().keySet())
@@ -164,7 +164,7 @@ class DsCrossDbGuardTest {
         return new Invocation(executor, method, new Object[]{statement, null, RowBounds.DEFAULT, null});
     }
 
-    /** 原始类型默认值（代理桩用，避免 NPE 拆箱） */
+    /** 原始类型默认值（代理桩用：返回 null 会让原始类型拆箱 NPE） */
     private static Object defaultValue(Class<?> type) {
         if (type == boolean.class) return Boolean.TRUE;
         if (type == int.class) return 0;

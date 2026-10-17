@@ -20,8 +20,8 @@ import java.util.stream.Collectors;
 
 /**
  * 关系表读写（物理覆盖）；Bean 由 {@code RbacAutoConfiguration} 注册，不做组件扫描
- * <p>"先删后插"必须原子，故整类带 REQUIRED 事务：组件内服务方法自带事务时汇入，
- * 宿主绕过管理服务直接调端口时也能自成事务，不会留下"已删未插"的绑定丢失
+ * <p>"先删后插"须原子，故整类带 REQUIRED 事务：组件内服务方法自带事务时汇入，
+ * 宿主直接调端口时也能自成事务，绑定替换要么全部生效要么全部回滚
  *
  * @author zwei
  */

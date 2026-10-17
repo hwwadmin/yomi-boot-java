@@ -12,15 +12,15 @@ import java.util.Locale;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 两套方言 DDL 的守卫：脚本在 classpath（随 jar 打包，见根 pom 的 sql resources），
- * 两个方言都必须声明组件全部表，且 pgsql 脚本不得残留 MySQL 专属写法。
+ * 两套方言 DDL 的校验：脚本在 classpath（随 jar 打包，见根 pom 的 sql resources），
+ * 两个方言都声明组件全部表，且 pgsql 脚本不出现 MySQL 专属写法。
  */
 class EventDdlScriptTest {
 
     /** 组件声明的表清单（与装配类里的 TableInitializer 一致） */
     private static final List<String> TABLES = List.of("sys_event_inbox", "sys_event_outbox", "sys_event_outbox_dlq");
 
-    /** MySQL 专属写法：pgsql 脚本里出现即执行失败（注释行已剔除） */
+    /** MySQL 专属写法：pgsql 脚本里出现即测试失败（注释行已剔除） */
     private static final List<String> MYSQL_ONLY = List.of("`", "mediumtext", "datetime(", "tinyint",
             "engine=innodb", "on update current_timestamp");
 
@@ -40,7 +40,7 @@ class EventDdlScriptTest {
         }
     }
 
-    /** 读 classpath 脚本并剔除 -- 行注释、转小写（守卫只看真正的 SQL 语句） */
+    /** 读 classpath 脚本并剔除 -- 行注释、转小写（只校验真正的 SQL 语句） */
     private static String body(String path) throws IOException {
         ClassPathResource resource = new ClassPathResource(path);
         assertTrue(resource.exists(), "classpath 必须包含 " + path + "（jar 打包配置见根 pom resources）");

@@ -34,7 +34,7 @@ public enum RsaPadding {
     /**
      * 传给 {@code Cipher.init} 的参数；PKCS1 无参数，返回 {@code null}。
      * <p>
-     * OAEP 必须显式指定 MGF1 摘要：无参时 SunJCE 默认 MGF1 用 SHA-1，与 OpenSSL/WebCrypto 不兼容。
+     * OAEP 需显式指定 MGF1 摘要：无参时 SunJCE 默认 MGF1 用 SHA-1，与 OpenSSL/WebCrypto 不兼容。
      */
     public AlgorithmParameterSpec getParameterSpec() {
         if (this == OAEP_SHA256) {

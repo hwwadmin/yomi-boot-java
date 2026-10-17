@@ -112,7 +112,7 @@ class JsonUtilsTest {
 
     @Test
     void jsonStr2ListRejectsNonObjectElements() {
-        // 元素必须是 JSON 对象：非对象当场抛异常，不再返回裸 List 让调用方遍历时抛延迟 CCE
+        // 元素必须为 JSON 对象，非对象元素当场抛异常
         assertThrows(UtilsException.class, () -> JsonUtils.jsonStr2List("[1,2,3]"));
         // 元素（含嵌套对象/数组）按声明类型解析，遍历与取值不产生 CCE
         List<Map<String, Object>> list = JsonUtils.jsonStr2List("[{\"a\":{\"b\":2}},{\"c\":[1,2]}]");

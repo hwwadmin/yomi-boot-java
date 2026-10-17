@@ -13,9 +13,9 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * {@link LockUtils#execute} 的异常语义（两段分开）：
  * <ul>
- *     <li>锁内<b>业务异常原样抛出</b>——不再被包装成锁文案（原先业务报错最终显示成"抢锁失败"，排查方向被带偏）；</li>
- *     <li>锁忙等业务化异常原样抛；<b>只有抢锁阶段的基础设施异常</b>按 exceptionMsg 包装；</li>
- *     <li>业务失败也必须释放锁；锁未到手时不得误解锁。</li>
+ *     <li>锁内<b>业务异常原样抛出</b>，不包装成锁文案，排查时能直接看到原始报错；</li>
+ *     <li>锁忙等业务异常原样抛出；<b>只有抢锁阶段的基础设施异常</b>按 exceptionMsg 包装；</li>
+ *     <li>业务失败也释放锁；锁未到手时保持未解锁。</li>
  * </ul>
  */
 class LockUtilsTest {

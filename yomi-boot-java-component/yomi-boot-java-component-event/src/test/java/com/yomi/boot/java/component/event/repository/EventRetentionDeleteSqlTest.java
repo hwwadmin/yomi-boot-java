@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 保留期删除的方言语句选择：受限删除两库语法不同，XML 里按 {@code databaseId} 各写一条，
  * MyBatis 按当前数据源选（方言由 ds 的 {@code DsDatabaseIdProvider} 解析为 mysql / pgsql）。
- * 这里用真实 MyBatis 解析器验证"选中的是哪一条"，并锁住两条各自保持简单、直接（不做双库通用写法）。
+ * 这里用真实 MyBatis 解析器验证"选中的是哪一条"，两条语句各自保持简单、直接。
  */
 class EventRetentionDeleteSqlTest {
 
@@ -61,7 +61,7 @@ class EventRetentionDeleteSqlTest {
         assertEquals(1, count(inbox, "SELECT"), inbox);
     }
 
-    /** 方言不在支持列表（非 MySQL/PG）：语句不注册 → 宿主在方言提供者处即启动失败，不会静默跑错 SQL */
+    /** 方言不在支持列表（非 MySQL/PG）：语句不注册 → 宿主在方言提供者处即启动失败 */
     @Test
     void unsupportedDialectRegistersNoStatement() throws Exception {
         Configuration configuration = parse("oracle");
@@ -88,7 +88,7 @@ class EventRetentionDeleteSqlTest {
         return configuration.getMappedStatement(statementId).getBoundSql(new HashMap<>(params)).getSql();
     }
 
-    /** SQL 比较前把连续空白压成单空格，避免断言绑在 XML 缩进上 */
+    /** SQL 比较前把连续空白压成单空格，断言不绑定 XML 缩进 */
     private static String norm(String sql) {
         return sql.replaceAll("\\s+", " ").trim();
     }

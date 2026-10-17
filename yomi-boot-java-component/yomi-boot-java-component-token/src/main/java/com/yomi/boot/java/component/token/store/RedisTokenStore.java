@@ -31,8 +31,8 @@ import java.util.Set;
  * </ul>
  * 索引与快照的跨键原子性由 Lua 保证（同 hash tag）；路由键在 Lua 成功后写入。
  * <p>
- * 读取路径挂一层进程内薄缓存（{@code yomi.token.local-cache-ttl}，默认 5 秒，0 关闭）：命中即跳过两次 GET，
- * 条目 TTL 取 {@code min(配置, 令牌剩余有效期)}——本地条目绝不比令牌活得久。
+ * 读取路径挂一层进程内缓存（{@code yomi.token.local-cache-ttl}，默认 30 秒，0 关闭）：命中即跳过两次 GET，
+ * 条目 TTL 取 {@code min(配置, 令牌剩余有效期)}，本地条目不会比令牌活得久。
  * 删除/替换/续期路径同步清掉对应条目（本实例撤销立即生效），删除/替换还会经 {@link TokenInvalidationChannel}
  * 广播失效通知让其它实例即时生效；通知丢失时其它实例最迟在条目 TTL 内生效
  *
@@ -108,8 +108,8 @@ public class RedisTokenStore implements TokenStore {
 
     /**
      * 按用户撤销：原子删除全部快照与索引
-     * <p>与签发脚本在 Redis 端串行（单线程执行脚本），消除"读索引 → 并发签发 → 删索引"把新令牌
-     * 留成"快照在、索引不在"漏网会话的窗口；先执行脚本者撤销全部、后执行者（签发）生效，语义线性可比</p>
+     * <p>与签发脚本在 Redis 端串行执行（Redis 单线程跑脚本）：先执行的一方先生效，
+     * 并发签发不会留下"快照在、索引不在"的会话</p>
      * KEYS[1]=用户索引键 ARGV[1]=快照键前缀（{@code {prefix:u:userId}:s:}）
      */
     private static final RedisScript<Long> DELETE_ALL_FOR_USER_SCRIPT = new DefaultRedisScript<>("""
@@ -128,7 +128,7 @@ public class RedisTokenStore implements TokenStore {
     /** Redis 键名 */
     private final TokenKeys keys;
 
-    /** 进程内会话薄缓存（TTL 由 {@code yomi.token.local-cache-ttl} 决定，0 关闭时空转） */
+    /** 进程内会话缓存（TTL 由 {@code yomi.token.local-cache-ttl} 决定，0 表示关闭） */
     private final TokenSessionCache sessionCache;
 
     /** 失效通知通道（发布删除/替换产生的失效；订阅侧由装配类注册到监听容器） */
@@ -242,7 +242,7 @@ public class RedisTokenStore implements TokenStore {
         boolean renewed = result != null && result == 1L;
         if (renewed) {
             saveRoute(storageHash, userId, ttlMillis);
-            // 续期改了 expireAt：清掉缓存里的旧值，避免临近过期时命中旧 expireAt 被误判过期。
+            // 续期改了 expireAt，同步清掉缓存里的旧值：缓存中的旧 expireAt 会让校验误判过期。
             // 不发通知：其它实例的条目 TTL ≤ 旧剩余有效期，到点自然回源拿到续期后的值
             sessionCache.invalidate(storageHash);
         }
@@ -270,8 +270,8 @@ public class RedisTokenStore implements TokenStore {
     @Override
     public void deleteByUserId(Long userId) {
         Assert.nonNull(userId, "用户ID不能为空");
-        // 成员只用于路由键清理（路由键无 hash tag、Lua 访问不了）；索引与快照的删除必须在同一条脚本内，
-        // 否则并发签发会把新令牌留成"快照在、索引不在"的漏网会话（撤销不了、列表也看不到）
+        // 成员只用于路由键清理（路由键无 hash tag、Lua 访问不了）；索引与快照的删除放在同一条脚本内，
+        // 这样并发签发不会留下"快照在、索引不在"的会话（撤销不了、列表也看不到）
         Set<String> membersBeforeRevoke = redisTemplate.opsForSet().members(keys.userTokensKey(userId));
         redisTemplate.execute(DELETE_ALL_FOR_USER_SCRIPT,
                 List.of(keys.userTokensKey(userId)),
@@ -319,7 +319,7 @@ public class RedisTokenStore implements TokenStore {
 
     /**
      * 会话写入进程内缓存：TTL 取 {@code min(yomi.token.local-cache-ttl, 令牌剩余有效期)}，
-     * 空值/已过期不缓存（本地条目绝不比令牌活得久）
+     * 空值/已过期不写入（本地条目不会比令牌活得久）
      */
     private void cacheSession(String storageHash, String payload, TokenSession session) {
         if (!sessionCache.isEnabled() || session == null || StringUtils.isBlank(payload)) {
@@ -350,8 +350,8 @@ public class RedisTokenStore implements TokenStore {
     }
 
     /**
-     * 撤销/替换成功后：先清本实例条目，再逐条通知其它实例（顺序不可反——先发通知后删 Redis 会把
-     * "读到旧值→撤销→旧值才写进缓存"的竞态从瞬间放大到每次撤销）
+     * 撤销/替换成功后：先清本实例条目，再逐条通知其它实例。
+     * 顺序固定为先删 Redis、后发通知：反过来会让"读到旧值→撤销→旧值写进缓存"的竞态持续到每次撤销
      */
     private void invalidateAndPublish(Collection<String> storageHashes) {
         if (CollectionUtils.isEmpty(storageHashes)) {
@@ -369,7 +369,7 @@ public class RedisTokenStore implements TokenStore {
             redisTemplate.delete(keys.sessionKeyByStorageToken(userId, storageHash));
             redisTemplate.opsForSet().remove(keys.userTokensKey(userId), storageHash);
         } catch (Exception ignored) {
-            // 补偿清理失败不掩盖原始异常
+            // 补偿清理失败时保留原始异常继续抛出
         }
     }
 

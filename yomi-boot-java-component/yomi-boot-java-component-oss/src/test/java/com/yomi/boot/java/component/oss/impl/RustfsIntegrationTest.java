@@ -115,7 +115,7 @@ class RustfsIntegrationTest {
         }
     }
 
-    /** 用例失败后的对象清理尽力而为 */
+    /** 清理测试对象，失败不影响用例结论 */
     private static void deleteObjectQuietly(S3Client client, String key) {
         try {
             client.deleteObject(DeleteObjectRequest.builder().bucket(BUCKET).key(key).build());

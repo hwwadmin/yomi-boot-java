@@ -8,8 +8,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 
 /**
  * kafka 组件自动装配：模块本身是纯静态工具（{@code KafkaUtils}），本配置只注册一个启动期自检。
- * <p>{@code @ConditionalOnClass} 必须保留：imports 会被任何 classpath 上有本 jar 的宿主发现，
- * 缺 spring-kafka 的宿主加载本类会 ClassNotFound</p>
+ * <p>本类经 imports 被任何 classpath 上有本 jar 的宿主发现，{@code @ConditionalOnClass} 保证
+ * 缺 spring-kafka 的宿主不会加载本类（否则 ClassNotFound）</p>
  *
  * @author zwei
  */

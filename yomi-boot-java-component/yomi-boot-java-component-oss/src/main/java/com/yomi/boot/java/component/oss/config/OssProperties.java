@@ -82,7 +82,7 @@ public class OssProperties {
         /** 访问密钥 ID */
         private String accessKeyId;
 
-        /** 不参与 toString：避免对象被日志/Actuator 打印时泄露密钥 */
+        /** 不参与 toString，日志/Actuator 打印时不会泄露密钥 */
         @ToString.Exclude
         private String secretAccessKey;
 
@@ -109,7 +109,7 @@ public class OssProperties {
         /** 访问密钥 ID（官方 Docker 镜像默认 rustfsadmin） */
         private String accessKeyId;
 
-        /** 不参与 toString：避免对象被日志/Actuator 打印时泄露密钥 */
+        /** 不参与 toString，日志/Actuator 打印时不会泄露密钥 */
         @ToString.Exclude
         private String secretAccessKey;
 
@@ -133,7 +133,7 @@ public class OssProperties {
         /** 访问密钥 ID */
         private String accessKeyId;
 
-        /** 不参与 toString：避免对象被日志/Actuator 打印时泄露密钥 */
+        /** 不参与 toString，日志/Actuator 打印时不会泄露密钥 */
         @ToString.Exclude
         private String secretAccessKey;
 

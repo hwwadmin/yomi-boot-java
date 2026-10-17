@@ -76,7 +76,7 @@ import java.util.Set;
                 RoundRobinAutoConfiguration.class,
                 DesensitizeAutoConfiguration.class,
                 KafkaAutoConfiguration.class},
-        // Boot 4 已模块化（类名不复用 auto-configure 包），按名引用避免编译期依赖
+        // Boot 4 已模块化（类名不复用 auto-configure 包），按名引用，无需编译期依赖
         name = {
                 "org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration",
                 "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration"})
@@ -111,7 +111,7 @@ public class HttpLogAutoConfiguration {
         return new HttpLogRecordFactory(properties, keys, desensitizer, enrichers.orderedStream().toList());
     }
 
-    /** 仓储（端口）：持久化唯一出入口；Mapper 仅注入此处，宿主可自行实现 IHttpLogRepository 注册 Bean 顶替 */
+    /** 仓储（端口）：持久化唯一出入口；Mapper 仅注入此处，宿主自行实现 IHttpLogRepository 并注册 Bean 后以宿主的实现为准 */
     @Bean
     @ConditionalOnMissingBean(IHttpLogRepository.class)
     public IHttpLogRepository httpLogRepository(HttpLogMapper httpLogMapper,
@@ -131,7 +131,7 @@ public class HttpLogAutoConfiguration {
         return new DefaultHttpLogStore(properties, httpLogRepository, metrics);
     }
 
-    /** 查询服务（业务接入）：宿主可自行实现 IHttpLogService 注册 Bean 顶替 */
+    /** 查询服务（业务接入）：宿主自行实现 IHttpLogService 并注册 Bean 后以宿主的实现为准 */
     @Bean
     @ConditionalOnMissingBean(IHttpLogService.class)
     public IHttpLogService httpLogService(IHttpLogRepository httpLogRepository, HttpLogKeys httpLogKeys) {
@@ -151,7 +151,7 @@ public class HttpLogAutoConfiguration {
         return new HttpLogLifecycle(properties, httpLogSink, httpLogConsumer, httpLogStore);
     }
 
-    /** 启动自检 + 生效摘要：配置错误 fail-fast，配置缺失 WARN 放行 */
+    /** 启动自检 + 生效摘要：配置错误直接抛异常，配置缺失 WARN 放行 */
     @Bean
     public HttpLogBootstrap httpLogBootstrap(HttpLogProperties properties, HttpLogKeys keys,
                                              HttpLogDesensitizer desensitizer,
@@ -168,7 +168,7 @@ public class HttpLogAutoConfiguration {
         return new HttpLogBootstrap();
     }
 
-    /** 脱敏校验：空词表 WARN 放行；引用未注册策略名 fail-fast */
+    /** 脱敏校验：空词表 WARN 放行；引用未注册策略名直接抛异常 */
     private static void validateDesensitize(HttpLogProperties properties, DesensitizeStrategyRegistry registry) {
         HttpLogProperties.Desensitize desensitize = properties.getDesensitize();
         if (!desensitize.isEnabled()) {
@@ -198,7 +198,7 @@ public class HttpLogAutoConfiguration {
         }
     }
 
-    /** 模式依赖校验：缺依赖 fail-fast（与 event 组件同款风格） */
+    /** 模式依赖校验：缺依赖直接抛异常 */
     private static void validateMode(HttpLogProperties properties, ApplicationContext context,
                                      ObjectProvider<StringRedisTemplate> redisProvider,
                                      ObjectProvider<ConsumerFactory<?, ?>> consumerFactoryProvider) {
@@ -220,7 +220,7 @@ public class HttpLogAutoConfiguration {
         }
     }
 
-    /** 多 KafkaTemplate 时的启动期强校验（沿用 event 组件规则） */
+    /** 多 KafkaTemplate 时的启动期校验 */
     private static void requireKafkaTemplate(HttpLogProperties properties, ApplicationContext context) {
         String beanName = properties.getKafka().getTemplateBeanName();
         if (StringUtils.isNotBlank(beanName)) {

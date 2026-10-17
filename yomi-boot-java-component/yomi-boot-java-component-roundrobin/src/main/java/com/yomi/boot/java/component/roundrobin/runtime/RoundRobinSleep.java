@@ -19,7 +19,7 @@ public final class RoundRobinSleep {
     /**
      * 休眠指定时长；取消令牌被取消时提前返回 false
      * <p>
-     * 休眠前暂存并清除线程中断标志，返回前恢复，避免 {@link LockSupport#parkNanos} 因中断标志立即返回导致忙等。
+     * 休眠前暂存并清除线程中断标志，返回前恢复；中断标志残留会让 {@link LockSupport#parkNanos} 立即返回并忙等。
      */
     public static boolean sleep(CancellationToken token, Duration duration) {
         if (duration == null || duration.isZero() || duration.isNegative()) {

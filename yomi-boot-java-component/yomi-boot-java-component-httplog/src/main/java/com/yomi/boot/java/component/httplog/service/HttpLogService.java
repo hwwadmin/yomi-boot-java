@@ -13,7 +13,7 @@ import org.apache.commons.lang3.StringUtils;
 
 /**
  * 查询服务默认实现（{@link IHttpLogService}）：业务规则（默认服务过滤）在服务层，持久化细节在仓储层
- * <p>宿主可自行实现 {@link IHttpLogService} 并注册 Bean 顶替本实现。
+ * <p>宿主自行实现 {@link IHttpLogService} 并注册 Bean 后以宿主的实现为准。
  *
  * @author zwei
  */
@@ -49,7 +49,7 @@ public class HttpLogService implements IHttpLogService {
         return entity == null ? null : HttpLogModelConverter.toHttpLogModel(entity);
     }
 
-    /** 服务维度过滤：allServices 放开；显式 serviceName 优先；否则限当前服务 */
+    /** 服务维度过滤：allServices 放开；显式 serviceName 优先；默认限当前服务 */
     private String resolveServiceFilter(HttpLogQuery condition) {
         if (condition.isAllServices()) {
             return null;

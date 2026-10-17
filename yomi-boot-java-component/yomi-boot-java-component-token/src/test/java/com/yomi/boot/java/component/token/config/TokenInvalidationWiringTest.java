@@ -20,12 +20,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 失效通知的装配契约：<b>复用现成的监听容器</b>，不另建。
+ * 失效通知的装配契约：复用现成的监听容器，不自建。
  * <p>
- * 早先版本按类型 {@code @ConditionalOnMissingBean} 自建 {@code RedisMessageListenerContainer}——Boot 默认
- * 就注册了同名同类型的容器，自建那个被条件顶掉、结果"谁都没订阅"（条件报告实测：Did not match
- * @ConditionalOnMissingBean found beans of type RedisMessageListenerContainer）。本用例锁住现在的行为：
- * 监听器注册到已存在的容器上；容器缺席时只发不收、不影响装配
+ * Boot 默认会注册同类型的 {@code RedisMessageListenerContainer}；同类型容器已存在，
+ * 按类型判断的 {@code @ConditionalOnMissingBean} 不成立，本组件把监听器直接注册到
+ * 现成容器上，容器缺席时只发不收、不影响装配。
+ * 用例覆盖注册行为与无容器时的装配结果
  */
 class TokenInvalidationWiringTest {
 

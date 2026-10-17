@@ -18,8 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * 滑动续期的两道约束（离线）：
  * <ol>
- *   <li>续期不得超过 {@code issuedAt + max-lifetime}（默认 1 天）；达上限时不写回</li>
- *   <li>写回走原子守卫：会话已被注销/踢出时不复活、内存态还原</li>
+ *   <li>续期以 {@code issuedAt + max-lifetime}（默认 1 天）为上限，达上限时不写回</li>
+ *   <li>写回走原子守卫：会话已被注销/踢出时保持删除状态、内存态还原</li>
  * </ol>
  */
 class TokenServiceRenewTest {
@@ -29,7 +29,7 @@ class TokenServiceRenewTest {
     @Test
     void renewExtendsWithinCap() {
         StubStore store = new StubStore();
-        // 老会话：签发已 1 分钟、剩余有效期 9 分钟，续期（ttl=2h）能实际延长
+        // 既有会话：签发已 1 分钟、剩余有效期 9 分钟，续期（ttl=2h）能实际延长
         Instant issuedAt = Instant.now().minus(Duration.ofMinutes(1));
         TokenSession session = session(7L, issuedAt, issuedAt.plus(Duration.ofMinutes(10)));
         Instant previousExpireAt = session.getExpireAt();
@@ -148,7 +148,7 @@ class TokenServiceRenewTest {
         return session;
     }
 
-    /** 断言测试条件：Close */
+    /** 断言两个 Instant 相差不超过 5 秒 */
     private static void assertClose(Instant expected, Instant actual, String message) {
         assertTrue(Math.abs(Duration.between(expected, actual).toSeconds()) <= 5,
                 message + "：expected≈" + expected + ", actual=" + actual);

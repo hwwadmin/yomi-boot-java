@@ -72,7 +72,7 @@ class IdempotencyGuardCacheTest {
         AtomicInteger runs = new AtomicInteger();
 
         tx.execute(status -> {
-            // 等价于守卫的 transactionTemplate.execute：默认传播 REQUIRED，加入外层事务且不自行提交
+            // 与守卫的 transactionTemplate.execute 同形态：默认传播 REQUIRED，加入外层事务且不自行提交
             tx.execute(inner -> null);
             IdempotencyGuard.runAfterCommit(runs::incrementAndGet);
             writtenBeforeCommit.set(runs.get() > 0);
@@ -83,7 +83,7 @@ class IdempotencyGuardCacheTest {
         assertEquals(1, runs.get(), "外层事务提交后必须写缓存");
     }
 
-    /** 外层事务回滚时缓存不能留下成功结果（否则重试命中缓存即幻影成功） */
+    /** 外层事务回滚时缓存不写：重试若命中缓存会返回一个未提交的成功结果 */
     @Test
     void neverWritesWhenOuterTransactionRollsBack() {
         TransactionTemplate tx = new TransactionTemplate(new RecordingTxManager());

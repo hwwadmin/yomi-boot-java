@@ -24,11 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 令牌存储的"缺 Redis 启动即失败"契约：
  * <ol>
- *   <li><b>不能只看 {@link StringRedisTemplate} 是否存在</b>——Boot 默认也会注册指向 localhost 的模板，
- *       旧判定（{@code getIfAvailable() != null}）在 {@code allow-multi-login=true} 时会装配成功但每请求 500；</li>
- *   <li>未配置 {@code spring.data.redis.*} 连接目标时必须启动失败且报错点名出路；</li>
- *   <li>配置了连接目标时正常装配 {@link RedisTokenStore}；</li>
- *   <li>宿主自定义 {@link TokenStore} 时必须让位，且不因"没配 Redis"被拦。</li>
+ *   <li>判定 Redis 可用性时只看 {@link StringRedisTemplate} 是否存在并不够——Boot 默认也会注册指向 localhost 的模板，
+ *       只按模板判断会装配成功但每个请求报 500；</li>
+ *   <li>未配置 {@code spring.data.redis.*} 连接目标时启动失败，报错点名组件与出路；</li>
+ *   <li>配置了连接目标时装配 {@link RedisTokenStore}；</li>
+ *   <li>宿主自定义 {@link TokenStore} 时以宿主实现为准，且不校验 Redis 连接目标。</li>
  * </ol>
  */
 class TokenStoreWiringTest {
@@ -38,18 +38,18 @@ class TokenStoreWiringTest {
                 .withConfiguration(AutoConfigurations.of(DataRedisAutoConfiguration.class,
                         RedisAutoConfiguration.class, TokenAutoConfiguration.class))
                 .withPropertyValues("yomi.token.enabled=true", "yomi.token.store-prefix=yomi:token:test",
-                        // 多端登录打开：此时没有任何其它检查兜底，全靠本判定
+                        // 多端登录打开：此处没有其它检查，本判定是唯一的 Redis 可用性依据
                         "yomi.token.allow-multi-login=true")
-                // 失效通知会注册到监听容器上；用桩容器避免离线上下文真去连 Redis（真实容器在无法建连时会让启动失败，
-                // 那是生产想要的 fail-fast，但离线用例不该受它影响）
+                // 失效通知会注册到监听容器上；用桩容器让离线上下文不去真连 Redis（真实容器建连失败会让启动失败，
+                // 那是生产环境期望的行为，离线用例用桩容器绕开）
                 .withBean("redisMessageListenerContainer", RedisMessageListenerContainer.class,
                         TokenInvalidationWiringTest.RecordingContainer::new);
     }
 
     @Test
     void enabledWithoutRedisTargetFailsFastEvenThoughDefaultTemplateExists() {
-        // 前提：Boot 未配置时也会注册指向 localhost 的默认模板——旧判定（只看模板是否存在）正是被它骗过。
-        // 单独跑一个只含 DataRedisAutoConfiguration 的上下文来取证（失败的上下文不允许再取 Bean）
+        // 前提：Boot 未配置时也会注册指向 localhost 的默认模板，只看模板是否存在会误判 Redis 可用。
+        // 单独跑一个只含 DataRedisAutoConfiguration 的上下文验证该前提（失败的上下文不能再取 Bean）
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DataRedisAutoConfiguration.class))
                 .run(context -> assertTrue(context.getBeanNamesForType(StringRedisTemplate.class).length > 0,

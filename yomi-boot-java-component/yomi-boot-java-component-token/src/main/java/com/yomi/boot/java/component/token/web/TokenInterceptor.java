@@ -21,7 +21,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * 从 Authorization 提取令牌并校验，成功后将会话与原始令牌挂到请求域供业务读取。
  * 校验中的基础设施异常（如 Redis 故障）统一包装为 TOKEN_VALIDATE_FAILED（响应码 500），不向客户端暴露细节。
  * <p>错误转发（{@link DispatcherType#ERROR}，如 404/500 转发到 {@code /error}）直接放行：
- * 否则真实状态会被改写成"缺少访问令牌"，客户端把"接口不存在/服务出错"误判为"没登录"
+ * 放行后真实状态得以保留，客户端不会把"接口不存在/服务出错"误判为"没登录"
  * </p>
  *
  * @author zwei

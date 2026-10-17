@@ -16,7 +16,7 @@ import java.util.*;
  * 授权快照求值（纯函数，单点求值）
  * <p>
  * API 权限路径匹配规则：精确相等优先；登记路径含 Ant 通配（{@code *} 单段、{@code **} 多段、
- * {@code {var}} 单段变量、{@code ?} 单字符）时按 pattern 匹配。默认拒绝方向不变。
+ * {@code {var}} 单段变量、{@code ?} 单字符）时按 pattern 匹配；未匹配即拒绝。
  * </p>
  *
  * @author zwei
@@ -45,12 +45,12 @@ public final class RbacAuthEvaluator {
         return path != null && (path.indexOf('*') >= 0 || path.indexOf('?') >= 0 || path.indexOf('{') >= 0);
     }
 
-    /** 快照上判断 HTTP 是否允许；method 大写，path 不含 query（内部自建索引；热点路径请用带索引的重载） */
+    /** 快照上判断 HTTP 是否允许；method 大写，path 不含 query（内部自建索引；热点路径用带索引的重载） */
     public static boolean canAccessHttp(RbacSnapshot snap, long userId, String method, String path) {
         return canAccessHttp(snap, buildIndex(snap), userId, method, path);
     }
 
-    /** 快照上判断 HTTP 是否允许（复用调用方缓存的索引，避免每请求重建） */
+    /** 快照上判断 HTTP 是否允许（复用调用方缓存的索引，省去每请求重建） */
     public static boolean canAccessHttp(RbacSnapshot snap, EvalIndex idx, long userId, String method, String path) {
         if (snap == null || userId <= 0) {
             return false;
@@ -174,7 +174,7 @@ public final class RbacAuthEvaluator {
         return out;
     }
 
-    /** 构建三类 id 索引（Hot path 应缓存复用：见 RbacAuthIndexCache） */
+    /** 构建三类 id 索引（热点路径由 {@link RbacAuthIndexCache} 缓存复用） */
     public static EvalIndex buildIndex(RbacSnapshot snap) {
         Map<Long, RbacRole> roles = new HashMap<>();
         for (RbacRole role : snap.getRoles()) {

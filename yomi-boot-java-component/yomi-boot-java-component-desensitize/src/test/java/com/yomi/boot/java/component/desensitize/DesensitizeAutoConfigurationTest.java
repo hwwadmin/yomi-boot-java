@@ -146,8 +146,8 @@ class DesensitizeAutoConfigurationTest {
 
     @Test
     void sameBeanNameAsBuiltin_failsFast() {
-        // 不支持"同名实现替换内置"：同名 Bean 启动即失败（本上下文由策略名重复校验兜住；
-        // 宿主连策略包一起扫时则是 Bean 定义重名，真实 Boot 应用两种形态均已实测）
+        // 不支持"同名实现替换内置"：同名 Bean 启动即失败（本上下文由策略名重复校验触发；
+        // 宿主连策略包一起扫时则是 Bean 定义重名）
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DesensitizeAutoConfiguration.class))
                 .withUserConfiguration(SameBeanNameHost.class)
@@ -203,7 +203,7 @@ class DesensitizeAutoConfigurationTest {
 
     @Test
     void componentScanOnly_wiresDefaultBeans() {
-        // 只有扫描通道（宿主未走自动装配）时同样装配——这条保证下面的双通道用例不是空跑
+        // 仅扫描通道（宿主未走自动装配）时同样装配，双通道用例的扫描侧由此覆盖
         new ApplicationContextRunner()
                 .withUserConfiguration(ScanBootstrap.class)
                 .run(context -> {

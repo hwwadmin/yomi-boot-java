@@ -16,7 +16,7 @@ import java.util.Set;
  * 验证码组件配置，对应 yml 前缀 yomi.captcha
  * <p>
  * 由 {@link CaptchaAutoConfiguration} 在 {@code yomi.captcha.enabled=true} 时绑定；
- * 绑定完成即自检（{@link #validate()}，装配期 fail-fast），未启用时不注册，避免无效配置导致启动失败。
+ * 绑定完成即自检（{@link #validate()}，装配期校验）；未启用时不注册，配置错误不阻断启动。
  *
  * @author zwei
  */
@@ -39,7 +39,7 @@ public class CaptchaProperties {
     /** 生成未指定类型时的默认挑战类型 */
     private CaptchaType defaultType = CaptchaType.TEXT;
 
-    /** 是否把答案打进日志（仅联调，生产禁止开启） */
+    /** 是否把答案打进日志（仅联调使用） */
     private boolean logAnswer = false;
 
     /** 图片参数 */
@@ -58,7 +58,7 @@ public class CaptchaProperties {
     private Local local = new Local();
 
     /**
-     * 绑定完成即自检：不依赖其它 Bean 是否被宿主顶替，组件启用即生效
+     * 绑定完成即自检：组件启用就执行，与其它 Bean 的装配结果无关
      */
     @PostConstruct
     void init() {
@@ -69,7 +69,7 @@ public class CaptchaProperties {
      * 配置自检（装配期调用）
      * <p>
      * 只校验本类各参数的自洽性；{@code store-prefix} 的合法性由真正落键的 {@code CaptchaKeys} 校验
-     * （store=local 不落键，未配置/配错的前缀都不应阻断启动）。
+     * （store=local 不落键，前缀配置只影响 redis 存储）。
      */
     public void validate() {
         requirePositive(ttl, "yomi.captcha.ttl");
@@ -251,7 +251,7 @@ public class CaptchaProperties {
             /** 是否启用 */
             private boolean enabled = true;
 
-            /** 幅度（像素）：实测 150×50 画布、28px 字号下超过 2 开始破字，默认 1.5 */
+            /** 幅度（像素）：150×50 画布、28px 字号下超过 2 会破字，默认 1.5 */
             private double amplitude = 1.5;
 
             /** 波长（像素） */
@@ -273,7 +273,7 @@ public class CaptchaProperties {
     @Data
     public static class Local {
 
-        /** 条目上限：防止被刷爆内存（超出按 Caffeine 淘汰策略回收） */
+        /** 条目上限：超出按 Caffeine 淘汰策略回收，内存占用有上界 */
         private int maxEntries = 10000;
 
         void validate() {

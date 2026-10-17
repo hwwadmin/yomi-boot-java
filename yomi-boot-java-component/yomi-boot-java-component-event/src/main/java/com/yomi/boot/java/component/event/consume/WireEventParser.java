@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
- * 解析 Kafka 消息为 {@link WireEvent}；JSON 语法错误或校验失败一律返回 empty，不抛异常
+ * 解析 Kafka 消息为 {@link WireEvent}；JSON 语法错误或校验失败都返回 empty，不抛异常
  *
  * @author zwei
  */

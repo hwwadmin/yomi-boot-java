@@ -10,7 +10,7 @@ import lombok.Getter;
  * <ul>
  *     <li>401 鉴权失败：缺令牌 / 令牌无效，由 {@link TokenAuthException} 经组件的令牌异常处理器输出；</li>
  *     <li>500 基础设施故障：校验过程异常（如 Redis 不可用），不向客户端暴露细节——
- *         用 500 而非 401，避免前端按"登录失效"清 token 跳登录、监控把故障计成掉线；</li>
+ *         用 500 与 401 区分：前端不会按"登录失效"清 token 跳登录，监控也不会把故障计成掉线；</li>
  *     <li>601 业务与内部错误：由 {@link com.yomi.boot.java.base.exception.BizException} 经全局异常处理器输出。</li>
  * </ul>
  *

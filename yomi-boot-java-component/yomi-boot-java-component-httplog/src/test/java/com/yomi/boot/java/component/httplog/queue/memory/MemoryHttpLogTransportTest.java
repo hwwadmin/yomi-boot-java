@@ -41,7 +41,7 @@ class MemoryHttpLogTransportTest {
         List<HttpLogRecord> received = new CopyOnWriteArrayList<>();
         CountDownLatch firstBatchArrived = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        // 消费者被 handler 卡住：offer 期间队列状态完全由主线程控制（避免消费竞态）
+        // 消费者被 handler 卡住：offer 期间队列状态由主线程独占，无消费竞态
         transport.start(batch -> {
             received.addAll(batch);
             firstBatchArrived.countDown();

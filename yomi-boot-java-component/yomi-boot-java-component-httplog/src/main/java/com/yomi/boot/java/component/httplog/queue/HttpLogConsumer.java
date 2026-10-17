@@ -4,7 +4,7 @@ import java.time.Duration;
 
 /**
  * 日志消费端：从介质（或本地缓冲）批量取出并回调
- * <p>生命周期由组件 SmartLifecycle 驱动（start/stop），实现类不实现 {@link AutoCloseable}。
+ * <p>生命周期由组件 SmartLifecycle 驱动（start/stop），实现类通过这两个方法参与生命周期。
  *
  * @author zwei
  */

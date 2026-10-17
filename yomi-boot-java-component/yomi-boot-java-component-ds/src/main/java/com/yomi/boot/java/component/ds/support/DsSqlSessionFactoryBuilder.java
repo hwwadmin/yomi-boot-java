@@ -35,13 +35,13 @@ import java.util.List;
 /**
  * 主库 SqlSessionFactory 构建器：逐条对齐 MP 的 {@code MybatisPlusAutoConfiguration#sqlSessionFactory(DataSource)}
  * <p>
- * 本组件接管主库工厂后，MP 的 {@code MybatisPlusAutoConfiguration} 会按类型让位（它的工厂/模板 Bean 都是
- * {@code @ConditionalOnMissingBean}），所以"挂什么"的口径必须在这里保持等价：配置（configuration/configLocation）、
+ * 本组件接管主库工厂后，MP 的 {@code MybatisPlusAutoConfiguration} 的同名 Bean 因
+ * {@code @ConditionalOnMissingBean} 跳过创建，所以本类挂的东西与它保持一致：配置（configuration/configLocation）、
  * 拦截器链（分页 + 防全表 + 宿主 {@code InnerInterceptor}）、{@code TypeHandler}（含 Instant 处理器）、
  * 方言 provider、{@code mapper-locations}、{@code GlobalConfig} 的各类处理器注入。
- * <b>升级 MyBatis-Plus 时必须回读该方法并同步本类</b>；{@link MybatisPlusChainChecker} 做启动期兜底自检。
+ * <b>升级 MyBatis-Plus 时必须回读该方法并同步本类</b>；{@link MybatisPlusChainChecker} 做启动期自检。
  * <p>
- * 与 MP 的一处刻意差异：{@link GlobalConfig} 每个工厂一份副本。MP 在 {@code GlobalConfig} 里放了
+ * 与 MP 的差异：{@link GlobalConfig} 每个工厂一份副本。MP 在 {@code GlobalConfig} 里放了
  * "mapper 已注入"缓存（{@code mapperRegistryCache}），多工厂共享同一实例时，先在别的工厂注册过的 Mapper
  * 在本工厂会被跳过注入（CRUD 语句缺失 → 运行期 {@code Invalid bound statement}）。
  *

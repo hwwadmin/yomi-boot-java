@@ -31,8 +31,8 @@ import java.util.Map;
 /**
  * kafka 模式传输：L1 有界缓冲 → 发送线程异步发送 → 批量消费 → 回调
  * <p>发送走 component-kafka 的 {@code KafkaUtils.async()}（producer 自带批量）；消费端自建批量容器
- * （不复用宿主 @KafkaListener 的 listener 配置），按批提交（AckMode.BATCH），处理失败只计数不抛出
- * ——允许重复（雪花主键收敛），也允许丢弃，绝不让毒批阻塞分区。
+ * （自建批量容器与宿主的 @KafkaListener 配置相互隔离），按批提交（AckMode.BATCH），处理失败只计数不抛出
+ * ——允许重复（雪花主键收敛），也允许丢弃，失败批次不阻塞分区。
  * <p>发送前完成 body 补脱敏：进入 topic 的即为脱敏后数据。
  *
  * @author zwei
@@ -64,7 +64,7 @@ public class KafkaHttpLogTransport extends AbstractBufferedTransport implements 
         this.group = keys.kafkaConsumerGroup(properties);
     }
 
-    /** 启动 Kafka 生产者 */
+    /** 启动发送线程与消费容器 */
     @Override
     public void start(HttpLogBatchHandler handler) {
         if (!running.compareAndSet(false, true)) {
@@ -77,7 +77,7 @@ public class KafkaHttpLogTransport extends AbstractBufferedTransport implements 
                 topic, group, properties.getKafka().getConcurrency());
     }
 
-    /** flush 并关闭生产者 */
+    /** flush 后停止发送线程与消费容器 */
     @Override
     public void stop(Duration timeout) {
         flush(timeout);
@@ -106,7 +106,7 @@ public class KafkaHttpLogTransport extends AbstractBufferedTransport implements 
         }
     }
 
-    /** 自建批量消费容器：以 spring.kafka.* 为基线，覆盖组与提交策略，避免与宿主 listener 互相污染 */
+    /** 自建批量消费容器：以 spring.kafka.* 为基线，覆盖组与提交策略，与宿主的 listener 相互隔离 */
     private ConcurrentMessageListenerContainer<String, String> buildContainer(HttpLogBatchHandler handler) {
         Map<String, Object> configs = new HashMap<>(consumerFactory.getConfigurationProperties());
         configs.put(ConsumerConfig.GROUP_ID_CONFIG, group);

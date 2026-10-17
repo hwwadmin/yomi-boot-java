@@ -38,7 +38,7 @@ class TimeZoneUtilsTest {
         assertEquals(ZoneId.of("GMT+8"), TimeZoneUtils.resolveZoneId("  GMT+8  ", null));
     }
 
-    /** 未知 ID（ZoneRulesException）与格式非法（DateTimeException）都应给出带键值的明确异常 */
+    /** 未知 ID（ZoneRulesException）与格式非法（DateTimeException）都抛出带键值的 UtilsException */
     @Test
     void resolveZoneIdRejectsInvalidIdWithKeyAndValue() {
         UtilsException propertyEx = assertThrows(UtilsException.class,

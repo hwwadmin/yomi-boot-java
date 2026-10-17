@@ -28,7 +28,7 @@ public class EventProperties {
     /** 多 Kafka 集群时指定 KafkaTemplate Bean 名 */
     private String kafkaTemplateBeanName;
 
-    /** 抓取待发件箱的轮询间隔 */
+    /** 抓取待发件箱行的轮询间隔 */
     private Duration fetchInterval = Duration.ofSeconds(1);
 
     /** 每轮抓取发件箱的最大条数 */
@@ -39,7 +39,7 @@ public class EventProperties {
      * 必须不超过 Kafka 侧 {@code max.request.size} 与 topic 的 {@code max.message.bytes}
      * 减去 message key、头部与记录开销后的余量：Kafka 默认上限均为 1 MiB，
      * 默认值 1000000 字节（约 0.95 MiB）即为留出该余量；调大 Kafka 上限后可同步调大本值。
-     * 不校验时超限事件能写入发件箱却永远投递不出去，只能在 DLQ 里耗尽重试次数。
+     * 发布时即校验：超限事件直接失败，不会进入发件箱与 DLQ 重试。
      */
     private int maxPayloadBytes = 1_000_000;
 
@@ -61,12 +61,12 @@ public class EventProperties {
     /** DLQ 最大自动重试次数，0 表示关闭自动重试 */
     private int dlqMaxRetry = 30;
     /**
-     * DLQ 投递占用 {@code retry_after_time} 的时长，防止同一行被并行重试；
+     * DLQ 投递占用 {@code retry_after_time} 的时长，占用期内同一行不会被并行重试；
      * 建议不小于 Kafka 同步发送超时（默认约 60s）
      */
     private Duration dlqInFlightLease = Duration.ofSeconds(90);
 
-    /** 消费抢锁最长等待 */
+    /** 消费侧获取锁的最长等待 */
     private Duration consumeLockWait = Duration.ofSeconds(30);
 
     /** 持锁租期；0 表示 Redisson 看门狗 */
@@ -90,7 +90,7 @@ public class EventProperties {
         /**
          * 收件箱清理开关；默认关闭。
          * <p>收件箱行是"只消费一次"的依据：保留期必须不短于事件可能被重投的最长时间
-         * （Kafka topic retention，默认 7 天），否则超期重投的事件会被当作新消息再消费一次</p>
+         * （Kafka topic retention，默认 7 天）；保留期短于这个窗口时，超期重投的事件会被当作新消息再消费一次</p>
          */
         private boolean inboxRetentionEnabled = false;
 

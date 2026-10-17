@@ -7,9 +7,9 @@ import org.slf4j.LoggerFactory;
 /**
  * id 生成工具类（雪花算法）。
  * <p>
- * 机器号必须显式配置（0~31），不支持自动推导：Spring 应用由框架启动监听器读取
- * {@code yomi.id.worker-id}（yml / 系统属性 / 环境变量 三者等价）后调用 {@link #initialize}；
- * 非 Spring 场景自行调用；未初始化即生成 ID 抛异常。数据中心号未配置时默认 0。
+ * 机器号需显式配置（0~31），不做自动推导：Spring 应用由框架启动监听器读取
+ * {@code yomi.id.worker-id} 后调用 {@link #initialize}，非 Spring 场景自行调用；
+ * 未初始化即生成 ID 抛异常，数据中心号未配置时默认 0。
  *
  * @author zwei
  */
@@ -43,9 +43,9 @@ public abstract class IdUtils {
     }
 
     /**
-     * 初始化雪花参数（幂等）：须在生成 ID 前调用，重复初始化且参数不一致时抛异常
+     * 初始化雪花参数（幂等）：在生成 ID 前调用，重复初始化且参数不一致时抛异常
      *
-     * @param workerId     机器号，0~31，多实例部署时须互不相同
+     * @param workerId     机器号，0~31，多实例部署时各实例互不相同
      * @param datacenterId 数据中心号，0~31
      */
     public static synchronized void initialize(long workerId, long datacenterId) {

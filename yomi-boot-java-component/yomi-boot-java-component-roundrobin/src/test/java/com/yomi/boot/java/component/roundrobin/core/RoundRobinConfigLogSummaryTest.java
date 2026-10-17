@@ -26,7 +26,7 @@ class RoundRobinConfigLogSummaryTest {
         assertTrue(cfg.toLogSummary().contains("description=清理超时订单"), cfg.toLogSummary());
     }
 
-    /** 未填写时打印占位符而非空白（空白看不出是"没写"还是"打漏了"） */
+    /** 未填写时打印占位符"未填写"（空白分不清是"没写"还是"打漏了"） */
     @Test
     void blankDescriptionPrintsPlaceholder() {
         RoundRobinConfig cfg = RoundRobinConfig.simple("demo", "   ", Duration.ofSeconds(5),

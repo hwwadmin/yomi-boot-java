@@ -17,7 +17,7 @@ import java.util.List;
  * Excel 导入导出胶水样板（Apache Fesod 直接用，不封装组件）
  * <p>
  * 导入：监听器收集成功行与错误行，整体返回逐行回显；
- * 导出：分页查数分批 write 同一个 sheet，避免一次性把全量结果拉进内存。
+ * 导出：分页查数分批 write 同一个 sheet，内存里只保留单页数据。
  *
  * @author zwei
  */

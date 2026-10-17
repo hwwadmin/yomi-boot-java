@@ -18,10 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 按用户撤销的结构契约：索引与快照必须由同一条 Lua 原子删除。
- * <p>旧实现是"Java 侧先 SMEMBERS / 删快照，再 DEL 索引"，两步之间若发生并发签发，
- * 新令牌会被留成"快照在、索引不在"的漏网会话（撤销不掉、列表也看不到）。
- * 本用例锁住该实现不再回退（真 Redis 语义由 gated 的 {@code TokenIntegrationTest} 覆盖）。</p>
+ * 按用户撤销的结构契约：索引与快照由同一条 Lua 原子删除。
+ * <p>Java 侧先 SMEMBERS / 删快照、再 DEL 索引时，两步之间的并发签发会留下
+ * "快照在、索引不在"的会话（撤销不掉、列表也看不到）。
+ * 真 Redis 语义由 gated 的 {@code TokenIntegrationTest} 覆盖。</p>
  */
 class RedisTokenStoreTest {
 
@@ -47,7 +47,7 @@ class RedisTokenStoreTest {
         assertTrue(lua.contains("SMEMBERS") && lua.contains("DEL") && lua.contains("KEYS[1]"),
                 "脚本需在自身内完成 读成员 → 删快照 → 删索引: " + lua);
 
-        // ② 索引键不得在 Java 侧被单独删除——那正是竞态窗口的入口
+        // ② 索引键的删除只发生在脚本内——Java 侧单独删除会打开并发签发的竞态窗口
         assertTrue(template.deletedKeys.stream()
                         .flatMap(Collection::stream)
                         .noneMatch(KEYS.userTokensKey(USER_ID)::equals),
@@ -103,7 +103,7 @@ class RedisTokenStoreTest {
             return (long) keys.size();
         }
 
-        /** 旧实现会单键删索引键：一并记录，让"索引删除不在脚本内"的断言能干净地报错 */
+        /** 单键删除也记录下来，索引键若走 Java 侧单删时断言会报错 */
         @Override
         public Boolean delete(String key) {
             deletedKeys.add(List.of(key));

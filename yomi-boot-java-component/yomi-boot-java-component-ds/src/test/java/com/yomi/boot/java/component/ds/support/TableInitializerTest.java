@@ -29,7 +29,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 启动期建表：表齐全只探活、缺表按方言（sql/mysql|pgsql）自动执行脚本建表、方言不支持/脚本缺失/脚本失败/建后仍缺均 fail-fast。
+ * 启动期建表：表齐全只探活、缺表按方言（sql/mysql|pgsql）自动执行脚本建表、方言不支持/脚本缺失/脚本失败/建后仍缺都拦启动。
  * 全程离线：stub 的 DataSource/Connection/Statement 按产品名与表名模拟"存在/不存在"，
  * 建表脚本用 src/test/resources/sql 下的真实脚本（走 Spring ScriptUtils 真实解析）。
  */

@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * TTL 入参守卫：0/负数在 Redis 与 Spring Data 语义下是"写成永久键 / 直接删键 / 抹掉原过期时间"，
- * 必须在组件入口被挡下。正数路径不得受影响（模板用吞命令的桩，不连 Redis）。
+ * TTL 入参守卫：0/负数在 Redis 与 Spring Data 语义下会"写成永久键 / 直接删键 / 抹掉原过期时间"，
+ * 统一在组件入口拦截。正数路径原值透传（模板用吞命令的桩，不连 Redis）。
  */
 class RedisTtlGuardTest {
 
@@ -81,7 +81,7 @@ class RedisTtlGuardTest {
         assertTrue(ex.getMessage().contains("必须大于 0"), ex.getMessage());
     }
 
-    /** 吞命令的字符串模板：opsForValue 用接口代理，避免真连 Redis */
+    /** 吞命令的字符串模板：opsForValue 用接口代理，不连接真实 Redis */
     static class SilentStringTemplate extends StringRedisTemplate {
 
         SilentStringTemplate() {

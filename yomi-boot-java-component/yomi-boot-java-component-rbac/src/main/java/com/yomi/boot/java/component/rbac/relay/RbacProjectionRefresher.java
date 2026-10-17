@@ -24,7 +24,7 @@ public class RbacProjectionRefresher {
     /** 触发投影刷新的授权服务 */
     private final IRbacAuthService authService;
 
-    /** 定时任务入口：全量刷新鉴权投影；刷新锁忙时静默跳过 */
+    /** 定时任务入口：全量刷新鉴权投影；投影刷新进行中时跳过本次 */
     public void refresh(RoundRobinContext ctx) {
         try {
             authService.refreshProjection();

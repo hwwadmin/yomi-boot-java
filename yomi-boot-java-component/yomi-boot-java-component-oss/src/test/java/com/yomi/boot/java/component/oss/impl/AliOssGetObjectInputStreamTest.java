@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 下载流的异常语义：close 顺带释放 {@link GetObjectResult}，失败如实抛出，
- * 且响应体与结果都失败时不能丢掉先出现的那个。
+ * 下载流的异常语义：close 顺带释放 {@link GetObjectResult}，失败如实抛出；
+ * 响应体与结果都失败时保留先出现的异常。
  */
 class AliOssGetObjectInputStreamTest {
 

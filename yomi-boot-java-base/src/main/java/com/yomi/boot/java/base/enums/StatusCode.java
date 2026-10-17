@@ -8,7 +8,7 @@ import lombok.Getter;
  * 码段划分：
  * <ul>
  *     <li>-1 与 4xx/5xx：与 HTTP 语义对齐，用于系统级/框架级错误</li>
- *     <li>6xx：业务与内部错误，与 HTTP 语义解耦（避免业务失败被监控按 500 系统故障处理）</li>
+ *     <li>6xx：业务与内部错误，与 HTTP 语义解耦（业务失败按 6xx 统计，与 500 系统故障区分开）</li>
  * </ul>
  * 参数校验使用 422（HTTP Unprocessable Content），不占用 412（Precondition Failed）。
  *

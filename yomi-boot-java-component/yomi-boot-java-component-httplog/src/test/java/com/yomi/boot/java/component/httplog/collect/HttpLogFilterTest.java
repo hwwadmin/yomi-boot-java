@@ -39,8 +39,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * 采集过滤器分发语义：async 请求等到 ASYNC 分发结束才采集一次（响应体/状态/耗时是最终值），
- * async 线程经包装 writer 写出的内容随该分发的 flush 落到真实响应（客户端与日志都不丢）；
- * 同步请求行为不变。MockMvc 的 asyncDispatch 与容器一致：同请求/响应、DispatcherType=ASYNC、isAsyncStarted=false
+ * async 线程经包装 writer 写出的内容随该分发的 flush 落到真实响应（客户端与日志内容一致）；
+ * 同步请求同样只采集一次。MockMvc 的 asyncDispatch 与容器一致：同请求/响应、DispatcherType=ASYNC、isAsyncStarted=false
  *
  * @author zwei
  */
@@ -90,7 +90,7 @@ class HttpLogFilterTest {
         assertThat(record.isAsyncStarted()).isTrue();
         assertThat(record.getStatus()).isEqualTo(200);
         assertThat(record.getResponseBody()).isEqualTo("async-ok");
-        // 耗时覆盖 async 等待，不是"async 起始时的几毫秒"
+        // 耗时覆盖 async 等待，取分发结束时的最终值
         assertThat(record.getDurationMs()).isGreaterThanOrEqualTo(60);
     }
 
@@ -114,7 +114,7 @@ class HttpLogFilterTest {
 
         MvcResult dispatched = mockMvc.perform(asyncDispatch(result)).andExpect(status().isOk()).andReturn();
 
-        // 首次分发取到的包装 writer 在 async 线程续写且不 flush：须在 ASYNC 分发结束时落到底层响应
+        // 首次分发取到的包装 writer 在 async 线程续写且不 flush，数据在 ASYNC 分发结束时落到真实响应
         assertThat(dispatched.getResponse().getContentAsString()).isEqualTo("async-writer-body");
         assertThat(sink.records).hasSize(1);
         assertThat(sink.records.get(0).getResponseBody()).isEqualTo("async-writer-body");

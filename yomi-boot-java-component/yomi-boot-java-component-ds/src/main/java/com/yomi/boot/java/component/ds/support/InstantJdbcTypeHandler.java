@@ -15,9 +15,9 @@ import java.time.Instant;
 /**
  * Instant 的 JDBC 类型处理器：写参数走 {@code setTimestamp(Timestamp.from(instant))}，读取用 {@code getTimestamp} 还原。
  * <p>
- * 用于覆盖 MyBatis 内置的 {@code InstantTypeHandler}：后者写库用 {@code setObject(Instant)}，
+ * 覆盖 MyBatis 内置的 {@code InstantTypeHandler}：后者写库用 {@code setObject(Instant)}，
  * PostgreSQL 驱动无法推断类型会直接抛"无法推测实例 java.time.Instant 的 SQL 类型"（MySQL 驱动支持），
- * 不换就会导致 PG 下所有含 Instant 字段的写库失败。换成本处理器后 MySQL / PG 行为一致：
+ * 会使 PG 下所有含 Instant 字段的写库失败。本处理器下 MySQL / PG 行为一致：
  * Instant 与库中 {@code datetime(3)} / {@code timestamptz(3)} 按瞬时往返，精度到毫秒。
  * <p>
  * 由 ds 自动装配注册为 Bean，MyBatis-Plus 收集后按 javaType=Instant 注册（覆盖内置映射），宿主无需配置。

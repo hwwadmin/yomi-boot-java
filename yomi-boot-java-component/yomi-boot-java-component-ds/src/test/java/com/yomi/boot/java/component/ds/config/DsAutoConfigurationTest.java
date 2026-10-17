@@ -46,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * ds 自动装配验证：宿主不扫描 com.yomi 时（仅靠 imports 清单）主库四件套（{@code masterXxx} + {@code @Primary}）
- * 与预热/信息 Bean 也能注册；宿主自带同名 Bean 时自动装配让位；无数据源宿主不装配主库。
+ * 与预热/信息 Bean 也能注册；宿主自带同名 Bean 时以宿主的为准；无数据源宿主不装配主库。
  * 全部离线运行（stub DataSource，{@link DsPreheat} 预热失败仅记日志不阻断）。
  */
 class DsAutoConfigurationTest {
@@ -73,7 +73,7 @@ class DsAutoConfigurationTest {
                 });
     }
 
-    /** 宿主自带 DataSource：主库四件套绑定它，且全部 @Primary（不指定名称的注入一律落主库） */
+    /** 宿主自带 DataSource：主库四件套绑定它，且全部 @Primary（不指定名称的注入都落主库） */
     @Test
     void masterBeansArePrimaryAndBoundToHostDataSource() {
         new ApplicationContextRunner()
@@ -239,8 +239,8 @@ class DsAutoConfigurationTest {
     }
 
     /**
-     * 宿主用同名 Bean 接管主库：ds 让位（工厂/事务管理器不再声明）；
-     * 宿主自管的工厂同样要满足"链里有分页 + 防全表"（自检对每个工厂都强制）
+     * 宿主用同名 Bean 提供主库：工厂与事务管理器以宿主那份为准；
+     * 宿主自管的工厂同样要满足"链里有分页 + 防全表"（自检对每个工厂都检查）
      */
     @Test
     void hostTakesOverMasterBySameNamedBeans() {
@@ -281,7 +281,7 @@ class DsAutoConfigurationTest {
                 });
     }
 
-    /** 宿主注册的 InnerInterceptor Bean 必须被收进链（链 Bean 由本组件接管，MP 自动组装的默认链让位） */
+    /** 宿主注册的 InnerInterceptor Bean 收进链（链 Bean 由本组件装配，MP 不组装默认链） */
     @Test
     void hostProvidedInnerInterceptorIsCollected() {
         Class<?> hostType = HostInterceptor.class;
@@ -293,7 +293,7 @@ class DsAutoConfigurationTest {
                         "宿主自定义拦截器未被装配: " + interceptorClasses(context)));
     }
 
-    /** 宿主注册了与内置同类的拦截器：跳过并告警，绝不重复执行（重复挂载会双重解析/双重执行） */
+    /** 宿主注册了与内置同类的拦截器：跳过并告警，同类只保留一份（重复挂载会双重解析/双重执行） */
     @Test
     void hostInterceptorOfSameBuiltInClassIsSkipped() {
         new ApplicationContextRunner()
@@ -307,7 +307,7 @@ class DsAutoConfigurationTest {
                         "同类拦截器只能有一份: " + interceptorClasses(context)));
     }
 
-    /** 宿主自管链必须自带分页：链自检对缺分页一律 fail-fast（组件里按 Page 取批的语句依赖它加 LIMIT） */
+    /** 宿主自管链必须自带分页：缺分页时链自检直接拦启动（组件里按 Page 取批的语句依赖它加 LIMIT） */
     @Test
     void failsFastWhenHostChainMissesPagination() {
         new ApplicationContextRunner()
@@ -321,7 +321,7 @@ class DsAutoConfigurationTest {
                 });
     }
 
-    /** 分页与防全表写随 ds 组件强制生效：旧开关（pagination.enabled=false）不得再关掉任何一项 */
+    /** 分页与防全表写随 ds 组件强制生效：pagination.enabled=false 也关不掉任何一项 */
     @Test
     void paginationCannotBeDisabledByProperty() {
         new ApplicationContextRunner()
@@ -372,7 +372,7 @@ class DsAutoConfigurationTest {
                 });
     }
 
-    /** 启动日志必须把方言来源打出来：自动探测 vs 显式指定（多方言排查的第一现场） */
+    /** 启动日志打出方言来源：自动探测或显式指定（多方言排查看这条） */
     @Test
     void paginationDialectIsLoggedForBothModes() {
         String autoLogs = startupLogsOfPagination(null);
@@ -494,7 +494,7 @@ class DsAutoConfigurationTest {
 
     /**
      * quick-starter 场景：宿主扫描 com.yomi（会直接扫到自动装配类本身），同时 imports 清单也会注册它。
-     * 同一配置类双通道必须去重，且自动装配的 @ConditionalOnMissingBean 兜底让位后不产生第二份 Bean
+     * 同一配置类双通道注册时去重，@ConditionalOnMissingBean 生效后每种 Bean 只有一份
      */
     @Test
     void componentScanAndImportsRegisterExactlyOneInstanceOfEachBean() {
@@ -518,7 +518,7 @@ class DsAutoConfigurationTest {
 
     /**
      * 方言提供者必须装配，且真的被本组件注入主库工厂（方言语句靠它选择；删了 Bean 就该红）；
-     * MP 的自动配置同时在场也只是让位，工厂仍由本组件装配
+     * MP 的自动配置同时在场时工厂仍由本组件装配
      */
     @Test
     void databaseIdProviderWiresIntoMasterSqlSessionFactory() {
@@ -540,7 +540,7 @@ class DsAutoConfigurationTest {
                 });
     }
 
-    /** 宿主自定义 DatabaseIdProvider 时本组件让位 */
+    /** 宿主自定义 DatabaseIdProvider 时用宿主那份 */
     @Test
     void hostDatabaseIdProviderWins() {
         new ApplicationContextRunner()
@@ -558,7 +558,7 @@ class DsAutoConfigurationTest {
     static class HostInterceptor implements InnerInterceptor {
     }
 
-    /** 宿主自管链必须自带分页：链自检对缺分页一律 fail-fast */
+    /** 宿主自管链必须自带分页：缺分页时链自检直接拦启动 */
     @Configuration(proxyBeanMethods = false)
     static class UserBeans {
 

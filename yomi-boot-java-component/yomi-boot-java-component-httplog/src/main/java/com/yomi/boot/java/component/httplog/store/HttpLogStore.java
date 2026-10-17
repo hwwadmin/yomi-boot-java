@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * 批量落库端口：默认实现为批量写入 {@code sys_http_log}
- * <p>宿主可注册自己的 Bean 顶替（{@code @ConditionalOnMissingBean} 让位），写入异构存储（ClickHouse/ES 等）。
+ * <p>宿主注册自己的 Bean 后以宿主的实现为准（{@code @ConditionalOnMissingBean}），可写入异构存储（ClickHouse/ES 等）。
  *
  * @author zwei
  */

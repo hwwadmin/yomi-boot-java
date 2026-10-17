@@ -28,7 +28,7 @@ class ShaUtilsTest {
 
     @Test
     void utf8NullTextFailsFastWithAssert() {
-        // 回归锁：null 明文原先在 text.getBytes() 处直接 NPE，现已与 digestUtf8 一致地快速失败
+        // null 明文抛 AssertException，digestHexUtf8 与 digestUtf8 行为一致
         assertThrows(AssertException.class, () -> ShaUtils.digestHexUtf8(null));
         assertThrows(AssertException.class, () -> ShaUtils.digestHexUtf8(null, ShaAlgorithm.SHA256));
         assertThrows(AssertException.class, () -> ShaUtils.digestUtf8(null, ShaAlgorithm.SHA256));
@@ -61,7 +61,7 @@ class ShaUtilsTest {
         assertEquals(64, raw.length);
         // 独立编码实现（commons-codec Hex）对齐原始摘要
         assertEquals(Hex.encodeHexString(raw), ShaUtils.digestHex(data, ShaAlgorithm.SHA512));
-        // Base64 用黄金向量锁定：原断言拿实现自身的 Base64 编码对比，恒真
+        // Base64 用黄金向量校验：与实现自身编码对比恒真
         byte[] emptyGolden = Hex.decodeHex(
                 "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce"
                         + "47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e");

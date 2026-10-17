@@ -22,7 +22,7 @@ public class HttpLogMetrics {
     /** 同类告警最小间隔 */
     private static final long WARN_INTERVAL_NANOS = Duration.ofSeconds(10).toNanos();
 
-    /** 脱敏策略注册表 */
+    /** 指标注册表（无则用空实现） */
     private final MeterRegistry registry;
 
     /** 上次打印丢弃告警的时间戳 */

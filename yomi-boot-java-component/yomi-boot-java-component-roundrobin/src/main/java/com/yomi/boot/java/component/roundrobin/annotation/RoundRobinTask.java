@@ -32,13 +32,13 @@ public @interface RoundRobinTask {
      */
     String randomDelayMax() default "";
 
-    /** 空串则按 frequency 推导；抢锁失败时休眠 */
+    /** 空串则按 frequency 推导；未获得锁时的休眠时长 */
     String wakeUpInterval() default "";
 
     /**
      * 执行锁租约，空串默认 30s。实际语义取决于 {@code execWatchdog}：
      * watchdog=true 时不参与锁租约（租约由 Redisson 看门狗续期、无上限），仅作 maxHoldDuration 的下限参照，显式配置会在启动日志 WARN；
-     * watchdog=false 时是硬租约，任务必须在其内完成，否则锁过期、其它实例可能并发执行同一任务
+     * watchdog=false 时是硬租约，任务要在其内完成，超时则锁过期、其它实例可能并发执行同一任务
      */
     String execLockTtl() default "";
 
@@ -48,7 +48,7 @@ public @interface RoundRobinTask {
     /**
      * 空串表示不限制；到期置 {@code RoundRobinContext} 的取消标志（<b>协作式</b>：不强制中断、不停止锁续期，
      * handler 必须轮询 {@code ctx.isCancelled()} 才有效）。
-     * watchdog=false 时必须不大于 execLockTtl（否则锁先过期、max-hold 形同虚设，启动期直接报错）
+     * watchdog=false 时必须不大于 execLockTtl（超过时锁先过期、max-hold 失效，启动期直接报错）
      */
     String maxHoldDuration() default "";
 

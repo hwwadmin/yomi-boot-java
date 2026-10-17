@@ -34,7 +34,7 @@ public class RbacInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         if (request.getDispatcherType() == DispatcherType.ERROR) {
-            // 错误转发（404/500 → /error）不参与鉴权，避免真实状态被改写成 FORBIDDEN
+            // 错误转发（404/500 → /error）不参与鉴权，原状态码照常返回给客户端
             return true;
         }
         if (CorsUtils.isPreFlightRequest(request)) {

@@ -4,7 +4,7 @@ package com.yomi.boot.java.component.desensitize;
  * 内置脱敏策略名称：各项与 {@code strategy} 包下同名的内置策略类一一对应（各策略类以 {@code @Component} 自注册），
  * 规则见对应策略类
  * <p>
- * 仅内置策略用本枚举取名；宿主自定义策略是普通名称，与本枚举无关，注册见 {@link DesensitizeStrategyRegistry}。
+ * 本枚举仅用于内置策略；宿主自定义策略用普通名称，注册见 {@link DesensitizeStrategyRegistry}。
  *
  * @author zwei
  */

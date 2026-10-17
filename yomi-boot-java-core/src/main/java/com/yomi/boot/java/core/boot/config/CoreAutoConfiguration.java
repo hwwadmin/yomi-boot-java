@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Import;
  * 自动装配阶段晚于宿主 Bean 注册，配置类里的 {@code @ConditionalOnMissingBean} 才能稳定看到宿主的自定义 Bean。
  * <p>
  * 排在 Boot 的 HTTP 转换器自动装配之前：JsonConfig 的转换器 Bean 先就位，Boot 的默认 Jackson 转换器定制器
- * 才会因 {@code @ConditionalOnMissingBean(JacksonJsonHttpMessageConverter.class)} 让位，避免出现两套 JSON 转换器。
+ * 因 {@code @ConditionalOnMissingBean(JacksonJsonHttpMessageConverter.class)} 不生效，全局只保留一套 JSON 转换器。
  *
  * @author zwei
  */

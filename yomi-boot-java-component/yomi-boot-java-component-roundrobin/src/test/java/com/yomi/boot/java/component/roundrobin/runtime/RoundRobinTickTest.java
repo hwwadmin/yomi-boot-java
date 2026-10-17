@@ -48,8 +48,8 @@ class RoundRobinTickTest {
     }
 
     /**
-     * 丢锁是严重事件（watchdog=false 时最可能是任务超租约、其它实例并发执行），
-     * 必须是 ERROR 且文案给出排查方向——它也是这类问题唯一的可观测信号
+     * 丢锁是严重事件（watchdog=false 时最可能是任务超租约、其它实例并发执行）：
+     * 记 ERROR 并给出排查方向，这是这类问题唯一的可观测信号
      */
     @Test
     void lockLossIsLoggedAsErrorWithLeaseHintWhenWatchdogOff() {
@@ -99,8 +99,8 @@ class RoundRobinTickTest {
     }
 
     /**
-     * 任务 Error 向上抛（worker 存活由 {@link RoundRobinLoop} 兜住并计入连续失败），执行锁必须释放。
-     * <p>旧行为是"吞掉记成功"：tick 返回 true，Loop 把连续失败清零、按正常频率无限重试</p>
+     * 任务 Error 向上抛（{@link RoundRobinLoop} 计入连续失败并保持 worker 存活），执行锁必须释放。
+     * <p>连续失败因此不会被清零，任务按退避节奏重试</p>
      */
     @Test
     void taskErrorPropagatesAndLockIsReleased() {
@@ -160,7 +160,7 @@ class RoundRobinTickTest {
     }
 
     /**
-     * 检测延迟必须被量出来（池被慢 Redis 占满时只是"跑晚了"，没有异常可捕获）：
+     * 检测延迟没有异常可捕获（池被慢 Redis 占满时只是"跑晚了"），由实测间隔量出：
      * 同一次拥堵只报一条，间隔回归正常后可再报
      */
     @Test
@@ -221,7 +221,7 @@ class RoundRobinTickTest {
 
     /**
      * 任务已结束后，在途的那次存活检测才发现字段缺失（50ms 检测与 unlock 的天然竞态）：
-     * 这是本轮自己的 unlock，不得报丢锁——线上那条误导性"执行锁已丢失"就是这个竞态
+     * 这是本轮自己的 unlock，不报丢锁
      */
     @Test
     void watchLandingAfterTaskFinishedIsNotReportedAsLost() {
@@ -263,7 +263,7 @@ class RoundRobinTickTest {
         assertTrue(logs.contains("exec-lock-ttl=PT30S"), "硬租约模式应带租约值与排查方向: " + logs);
     }
 
-    /** 检测已在任务运行期报过丢锁，解锁再发现易主不得重复报 */
+    /** 检测已在任务运行期报过丢锁，解锁再发现易主只报一条 */
     @Test
     void unlockFindingTakenOverAfterWatchReportedIsNotDuplicated() {
         scheduler = Executors.newScheduledThreadPool(1);

@@ -7,7 +7,7 @@ import lombok.ToString;
 import java.time.Instant;
 
 /**
- * 权限视图（管理服务出入参用模型；**不暴露表实体**）
+ * 权限视图（管理服务的出入参模型，不暴露表实体）
  *
  * @author zwei
  */

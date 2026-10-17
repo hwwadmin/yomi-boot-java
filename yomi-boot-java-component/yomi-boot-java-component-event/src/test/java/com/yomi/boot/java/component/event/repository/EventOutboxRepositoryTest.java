@@ -22,8 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 发件箱仓储的语义回归锁：原 {@code EventOutboxMapper.xml} 的 markFetched / selectFetchedTimeout /
- * resetFetchedToPending 已改由 LambdaWrapper 表达，这里锁住 SET/WHERE 形状与"受影响行数"驱动的分支。
+ * 发件箱仓储的语义：markFetched / selectFetchedTimeout / resetFetchedToPending 由 LambdaWrapper 表达，
+ * 这里验证 SET/WHERE 形状与"受影响行数"驱动的分支。
  */
 class EventOutboxRepositoryTest {
 
@@ -34,7 +34,7 @@ class EventOutboxRepositoryTest {
         MybatisLambdaCache.register(EventOutbox.class);
     }
 
-    /** 抢占：SET 三字段，WHERE 必须带 from 状态守卫 + 未删除 + id IN；抢占成功在内存态回填状态与抓取时间 */
+    /** 认领：SET 三字段，WHERE 带 from 状态条件 + 未删除 + id IN；认领成功在内存态回填状态与抓取时间 */
     @Test
     void fetchAndMarkMarksFetchedWithStatusGuard() {
         Stub stub = new Stub().pendingRows(row(1L), row(2L)).updateRows(2);
@@ -72,7 +72,7 @@ class EventOutboxRepositoryTest {
         assertTrue(stub.selectListWrappers.isEmpty());
     }
 
-    /** 部分抢占：必须按 fetch_time 归属重查，避免把他人已抢占的行当自己的重复投递 */
+    /** 部分认领：按 fetch_time 归属重查，只处理自己认领到的行 */
     @Test
     void fetchAndMarkReQueriesOwnRowsWhenPartiallyClaimed() {
         Stub stub = new Stub().pendingRows(row(1L), row(2L)).updateRows(1)
@@ -90,7 +90,7 @@ class EventOutboxRepositoryTest {
         assertTrue(where.contains("delete_timeisnull"), where);
     }
 
-    /** 取批：一页 + 不要 count + 按 create_time 升序（上限靠分页拦截器落到 SQL 的 LIMIT） */
+    /** 取批：一页、不 count、按 create_time 升序（上限由分页拦截器落到 SQL 的 LIMIT） */
     @Test
     void fetchPendingTakesOneBoundedPageOrderedByCreateTime() {
         Stub stub = new Stub().pendingRows(row(1L));
@@ -109,7 +109,7 @@ class EventOutboxRepositoryTest {
         assertTrue(where.endsWith("orderbycreate_timeasc"), where);
     }
 
-    /** 超时回收查询：service_name + FETCHED + fetch_time < 阈值 + 未删除；一页 + 不要 count + 按 id 升序 */
+    /** 超时回收查询：service_name + FETCHED + fetch_time < 阈值 + 未删除；一页、不 count、按 id 升序 */
     @Test
     void findFetchedTimeoutFiltersByStatusAndFetchTimeBefore() {
         Stub stub = new Stub().pendingRows(row(1L));
@@ -133,7 +133,7 @@ class EventOutboxRepositoryTest {
         assertTrue(query.getParamNameValuePairs().values().contains(FETCH_BEFORE));
     }
 
-    /** 超时回收重置：清 fetch_time（显式 NULL）+ 状态回 PENDING + 状态守卫；空入参不触库 */
+    /** 超时回收重置：清 fetch_time（显式 NULL）+ 状态回 PENDING + 状态条件；空入参不触库 */
     @Test
     void resetFetchedBatchClearsFetchTimeAndResetsStatus() {
         Stub stub = new Stub();
@@ -175,7 +175,7 @@ class EventOutboxRepositoryTest {
 
     // ===== 夹具 =====
 
-    /** SQL 片段比较前压掉空白并统一小写，避免断言绑在 MP 的排版/大小写细节上 */
+    /** SQL 片段比较前压掉空白并统一小写，断言不绑定 MP 的排版/大小写细节 */
     private static String compact(String sql) {
         return sql == null ? "" : sql.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
@@ -198,7 +198,7 @@ class EventOutboxRepositoryTest {
         return row;
     }
 
-    /** 记录型 Mapper 代理：可编排抢占行数与查询结果 */
+    /** 记录型 Mapper 代理：可编排更新行数与查询结果 */
     private static final class Stub {
 
         private final List<EventOutbox> pendingRows = new ArrayList<>();

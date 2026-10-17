@@ -15,8 +15,8 @@ import java.time.Duration;
 
 /**
  * 演示 Topic 的注解消费：{@link EventUtils#onMessage} 幂等 + 按结果手动 ack/重投。
- * <p>RETRY 必须用 {@code acknowledgment.nack(...)} 退回重投；仅"不提交 offset"不会让 Kafka 重投，
- * 同分区后续消息一旦提交，失败那条就被永久跳过
+ * <p>RETRY 走 {@code acknowledgment.nack(...)} 退回重投；重投要显式退回，
+ * 仅不提交 offset 的消息会被同分区的后续提交跳过
  *
  * @author zwei
  */

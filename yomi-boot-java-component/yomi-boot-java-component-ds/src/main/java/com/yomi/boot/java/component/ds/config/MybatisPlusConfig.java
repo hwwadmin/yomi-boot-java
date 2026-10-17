@@ -19,7 +19,7 @@ import java.util.Locale;
  * MyBatis-Plus配置
  * <p>
  * 随 ds 组件强制生效（无开关）：装配分页与防全表更新/删除，并收集宿主提供的 {@link InnerInterceptor}。
- * 若容器已存在 {@link MybatisPlusInterceptor} Bean，则本配置整体让位，分页与防全表写由宿主自行负责。
+ * 若容器已存在 {@link MybatisPlusInterceptor} Bean，本配置不注册自己的链，分页与防全表写由宿主自行负责。
  * <p>
  * 拦截器顺序：分页（改写 SQL）在前，宿主自定义拦截器在后。
  * <p>

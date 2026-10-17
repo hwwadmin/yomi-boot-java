@@ -1,10 +1,10 @@
 package com.yomi.boot.java.component.redis;
 
 /**
- * TTL 入参守卫
- * <p>同一个 0/负数在 Redis 与 Spring Data 的 Duration 语义下有三种相反含义，是静默事故高发点：
- * {@code SET key v PX 0} 写成永久键、{@code PEXPIRE key 0/-1} 直接删键、
- * {@code GETEX key PERSIST} 抹掉原有过期时间——统一挡在组件入口，只接受正数</p>
+ * TTL 入参校验
+ * <p>Redis 对 0/负数 TTL 的语义有三种：
+ * {@code SET key v PX 0} 写成永久键，{@code PEXPIRE key 0/-1} 直接删键，
+ * {@code GETEX key PERSIST} 抹掉原有过期时间；组件入口统一校验，只接受正数</p>
  *
  * @author zwei
  */

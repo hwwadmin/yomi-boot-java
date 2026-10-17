@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * 令牌服务默认实现
  * <p>
- * 单点登录签发复用 redis 组件的 {@link LockUtils}（等锁超时转换为 TOKEN_ISSUE_BUSY），不自行实现锁机制。
+ * 单点登录签发复用 redis 组件的 {@link LockUtils}（等锁超时转换为 TOKEN_ISSUE_BUSY）。
  *
  * @author zwei
  */
@@ -142,7 +142,7 @@ public class TokenService implements ITokenService {
     }
 
     /**
-     * 过期快照清理失败不遮蔽"令牌无效"的判定结果
+     * 清理过期快照，失败只记日志；调用方仍按"令牌无效"抛出
      */
     private void deleteExpiredQuietly(String token) {
         try {
@@ -153,7 +153,7 @@ public class TokenService implements ITokenService {
     }
 
     /**
-     * 滑动续期：续期失败不遮蔽本次校验成功结果。
+     * 滑动续期：续期失败只记日志，本次校验仍按成功返回。
      * <p>续期不超过 {@code issuedAt + max-lifetime}（默认 1 天）；已达上限则跳过写回。
      * 写回使用 {@link TokenStore#renewIfPresent}，会话已失效时不更新存储与内存态</p>
      */
@@ -168,7 +168,7 @@ public class TokenService implements ITokenService {
             }
         }
         if (!newExpireAt.isAfter(previousExpireAt)) {
-            // 已到绝对上限（或本次续期不能延长）：不写回、不改内存态
+            // 已到绝对上限（或本次续期无法延长）：保持原过期时间返回
             return;
         }
         session.setExpireAt(newExpireAt);

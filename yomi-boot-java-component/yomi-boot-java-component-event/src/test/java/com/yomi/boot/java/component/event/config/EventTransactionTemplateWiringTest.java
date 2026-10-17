@@ -29,13 +29,13 @@ import java.sql.Statement;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 事务模板解析契约（IPC E7 复核）：容器里已有 TransactionTemplate（Boot 标准 Bean / 宿主自定义）时组件原样复用，
- * 组件不抢先注册、不覆盖宿主语义；都没有时组件兜底注册默认 REQUIRED 模板；
- * 多事务管理器无 @Primary 一律启动失败并点名候选（与 Boot 同口径，不静默挑一个写错库）
+ * 事务模板解析契约：容器里已有 TransactionTemplate（Boot 标准 Bean / 宿主自定义）时组件原样复用，
+ * 组件只在没有可复用模板时注册默认 REQUIRED 模板；
+ * 多事务管理器无 @Primary 时启动失败并点名候选，不自行挑选
  */
 class EventTransactionTemplateWiringTest {
 
-    /** 默认应用：容器里的 TransactionTemplate 必须是 Boot 标准 Bean（组件只复用，不抢注） */
+    /** 默认应用：容器里的 TransactionTemplate 是 Boot 标准 Bean（组件只复用，不注册自己的模板） */
     @Test
     void defaultAppKeepsBootStandardTemplate() {
         DataSource dataSource = stubDataSource();
@@ -54,7 +54,7 @@ class EventTransactionTemplateWiringTest {
         });
     }
 
-    /** 宿主自定义模板（REQUIRES_NEW 等语义）：组件原样复用，不改写、不另建 */
+    /** 宿主自定义模板（REQUIRES_NEW 等语义）：组件原样复用宿主语义 */
     @Test
     void hostTemplateIsReusedAsIs() {
         consumerRunner(stubDataSource())
@@ -70,7 +70,7 @@ class EventTransactionTemplateWiringTest {
                 });
     }
 
-    /** 多事务管理器 + @Primary（多数据源宿主的正确形态）：组件与 Boot 同口径，用 @Primary 那个 */
+    /** 多事务管理器 + @Primary（多数据源宿主的正确形态）：组件与 Boot 同口径，使用 @Primary 管理器 */
     @Test
     void multipleManagersBindToPrimary() {
         consumerRunner(stubDataSource()).withUserConfiguration(PrimaryManagerCase.class).run(context -> {
@@ -81,7 +81,7 @@ class EventTransactionTemplateWiringTest {
         });
     }
 
-    /** 多事务管理器无 @Primary：启动失败并点名候选，不允许静默挑一个（可能写错库/不进业务事务） */
+    /** 多事务管理器无 @Primary：启动失败并点名候选（自行挑选可能写错库或偏离业务事务） */
     @Test
     void ambiguousManagersFailFastInsteadOfPickingOne() {
         consumerRunner(stubDataSource()).withUserConfiguration(AmbiguousManagerCase.class).run(context -> {
@@ -96,7 +96,7 @@ class EventTransactionTemplateWiringTest {
         });
     }
 
-    /** 没有 Boot 事务自动配置（宿主排除/无模板可复用）：组件兜底注册默认 REQUIRED 模板，保证自身可用 */
+    /** 没有 Boot 事务自动配置（宿主排除/无模板可复用）：组件注册默认 REQUIRED 模板，保证自身可用 */
     @Test
     void componentRegistersFallbackWhenNoTemplateAvailable() {
         DataSource dataSource = stubDataSource();
@@ -172,7 +172,7 @@ class EventTransactionTemplateWiringTest {
         }
     }
 
-    /** 多库宿主但没标 @Primary：歧义必须变成启动失败 */
+    /** 多库宿主但没标 @Primary：歧义按启动失败处理 */
     @Configuration(proxyBeanMethods = false)
     static class AmbiguousManagerCase {
 

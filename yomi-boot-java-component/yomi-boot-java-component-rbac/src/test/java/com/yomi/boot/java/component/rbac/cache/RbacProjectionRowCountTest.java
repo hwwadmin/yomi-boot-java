@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 投影版本完整性：指针 n 必须与实际读到行数一致——
- * 半截读/Hash 被淘汰/坏字段被跳过都要视为"不可读"走回源，而不是当成完整快照（mem 缓存 10 秒 → 假 403）
+ * 投影版本完整性：指针 n 须与实际读到的行数一致——
+ * 半截读/Hash 被淘汰/坏字段被跳过都算不可读，走回源重建；当成完整快照会在 mem 缓存 10 秒内持续生效
  */
 class RbacProjectionRowCountTest {
 

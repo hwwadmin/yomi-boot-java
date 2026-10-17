@@ -22,8 +22,8 @@ import java.lang.reflect.Proxy;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 记录清理任务与 roundrobin 的装配契约：开启清理却没启用 roundrobin 时启动失败（fail-fast），
- * 不再出现"启动日志说已启用、任务根本没注册"（记录表只增不删）的静默失效。
+ * 记录清理任务与 roundrobin 的装配：开启清理却没启用 roundrobin 时启动失败；
+ * 开启清理时日志说"已启用"而任务没注册（记录表只增不删）的情况在启动期就被拦住。
  * <p>依赖全为 stub，离线运行。</p>
  */
 class IdempotencyStaleCleanerWiringTest {
@@ -47,8 +47,8 @@ class IdempotencyStaleCleanerWiringTest {
 
     @Test
     void failsFastWhenRoundRobinFlagIsTruthyButNotTrue() {
-        // 注解条件只认 true/TRUE（Boot 4.1.1 实测：1/yes/on 不匹配）→ 属性写成 1 时 roundrobin 自身也不装配。
-        // 守卫判断的是"注册表 Bean 是否存在"，因此同样认定为不可用，而不是静默启动（引入真实 autoconfig 验证）
+        // 注解条件只认 true/TRUE：属性写成 1/yes/on 时 roundrobin 自身也不装配。
+        // 这里用真实 autoconfig 验证：守卫判断的是"注册表 Bean 是否存在"，注册表不在即认定为不可用
         runner().withConfiguration(AutoConfigurations.of(RoundRobinAutoConfiguration.class))
                 .withPropertyValues("yomi.idempotency.stale-cleaner-enabled=true", "yomi.roundrobin.enabled=1")
                 .run(context -> {

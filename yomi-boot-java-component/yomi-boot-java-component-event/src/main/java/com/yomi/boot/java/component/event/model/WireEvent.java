@@ -19,7 +19,7 @@ public class WireEvent {
     /**
      * 幂等键与 Kafka message key。
      * <p>必须在<b>同一 topic 的所有生产者之间唯一</b>：消费侧幂等键是 {@code service_name + eventId}，
-     * 不同生产者撞 id 的消息会被当作重复消息静默跳过（不执行业务）</p>
+     * 不同生产者撞 id 的消息会被当作重复消息跳过（不执行业务）</p>
      */
     private String eventId;
 

@@ -15,11 +15,11 @@ import java.util.function.Supplier;
  * redis 限流器，通过令牌桶算法实现。
  * <p>
  * Redis 键前缀由构造参数 {@code keyPrefix} 指定（建议在应用配置层拼接应用名、模块名等），
- * 本类仅按限流 id 追加 hash tag 及 tokens / timestamp 后缀；id 中不应包含 "}"，
- * 否则会破坏 Redis Cluster hash tag 的槽位语义。
+ * 本类按限流 id 追加 hash tag 及 tokens / timestamp 后缀；id 含 "}" 会破坏
+ * Redis Cluster hash tag 的槽位语义，构造 id 时需避开该字符
  * <p>
- * 语义说明：{@link #isAllowed} 在 Redis 调用异常时视为已限流（fail-closed，保护后端）；
- * {@link #acquire} 的等待会阻塞当前线程直至获得令牌或超时，Redis 异常则立即抛出不与限流混淆
+ * 语义说明：{@link #isAllowed} 在 Redis 调用异常时视为已限流（保护后端）；
+ * {@link #acquire} 的等待会阻塞当前线程直至获得令牌或超时，Redis 异常直接抛出，与限流拒绝分开
  *
  * @author zwei
  */
@@ -141,8 +141,8 @@ public class RedisRateLimiter {
     }
 
     /**
-     * 是否未被限流，是否允许
-     * Redis 调用异常时返回 false（视为已限流，fail-closed 保护后端）
+     * 是否允许本次请求
+     * Redis 调用异常时返回 false（视为已限流，保护后端）
      *
      * @param key             限流的 key，不能为空
      * @param replenishRate   令牌补充频率，每秒多少个
@@ -179,7 +179,7 @@ public class RedisRateLimiter {
     /**
      * 令牌桶状态 key 的失效时间（秒）
      * <p>
-     * 取两倍填满桶所需时间，避免 key 过多占用空间；下界为 1 秒。
+     * 取两倍填满桶所需时间，控制 key 数量；下界为 1 秒。
      * 该下界是必需的：{@code replenishRate > 2 * burstCapacity} 时两倍填满时间不足 1 秒，
      * TTL 至少为 1 秒，保证 Redis 中的桶状态能正确写回。
      */

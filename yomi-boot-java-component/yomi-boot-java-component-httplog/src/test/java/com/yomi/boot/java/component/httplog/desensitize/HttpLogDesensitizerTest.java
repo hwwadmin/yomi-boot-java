@@ -31,7 +31,7 @@ class HttpLogDesensitizerTest {
 
     @Test
     void maskHeaders_typeBeforeValue_orderLocked() {
-        // 参数顺序锁死：mask(策略名, 值)；若写反，"abc123" 会被当作策略名抛未注册
+        // 参数顺序为 mask(策略名, 值)；写反时 "abc123" 会被当作策略名抛未注册
         HttpLogDesensitizer desensitizer = desensitizer(Map.of("password", "PASSWORD"), List.of());
         Map<String, String> headers = desensitizer.maskHeaders(Map.of("password", "abc123"));
         assertEquals("******", headers.get("password"));

@@ -8,8 +8,8 @@ import lombok.Getter;
  * <p>
  * 响应码分层（与 {@link StatusCode} 码段约定一致）：
  * <ul>
- *     <li>500 基础设施故障：生成/校验/作废过程异常（如 Redis 不可用），不向客户端暴露细节——
- *         用 500 而非业务码，避免前端把系统故障提示成"验证码输入错误"、监控把故障计成攻击；</li>
+ *     <li>500 基础设施故障：生成/校验/作废过程异常（如 Redis 不可用），不向客户端暴露细节；
+ *         归在 500 段：前端据此与"验证码输入错误"区分，监控也与业务失败分开统计；</li>
  *     <li>输错（MISMATCH）与过期（EXPIRED）是正常业务结果，
  *         经 {@link com.yomi.boot.java.component.captcha.core.CaptchaVerifyResult} 返回，不占错误码。</li>
  * </ul>

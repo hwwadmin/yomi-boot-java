@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 主库解析规则：{@code masterDataSource} → {@code dataSource} → 唯一/{@code @Primary} → 启动失败（不猜）。
- * 宿主接管主库（按约定名提供）是受支持形态；多候选且无 @Primary 必须点名候选。
+ * 宿主按约定名提供主库是受支持形态；多候选且无 @Primary 时启动失败并点名候选。
  */
 class DsMasterTest {
 
@@ -25,7 +25,7 @@ class DsMasterTest {
                         DsMaster.resolveDataSource(context.getBeanFactory()).beanName()));
     }
 
-    /** 宿主想接管主库：用同名 Bean 顶替 */
+    /** 宿主提供 masterDataSource 同名 Bean 时就用它 */
     @Test
     void hostBeanWithMasterNameIsAdopted() {
         new ApplicationContextRunner()
@@ -34,7 +34,7 @@ class DsMasterTest {
                         DsMaster.resolveDataSource(context.getBeanFactory()).beanName()));
     }
 
-    /** 没有 masterXxx 命名时退回"唯一候选" */
+    /** 没有 masterXxx 命名时用"唯一候选" */
     @Test
     void fallsBackToSingleCandidate() {
         new ApplicationContextRunner()
@@ -43,7 +43,7 @@ class DsMasterTest {
                         DsMaster.resolveDataSource(context.getBeanFactory()).beanName()));
     }
 
-    /** 多候选且无 @Primary：启动失败并点名候选，不静默挑一个 */
+    /** 多候选且无 @Primary：启动失败并点名候选，不随意挑一个 */
     @Test
     void failsFastWhenAmbiguous() {
         new ApplicationContextRunner()

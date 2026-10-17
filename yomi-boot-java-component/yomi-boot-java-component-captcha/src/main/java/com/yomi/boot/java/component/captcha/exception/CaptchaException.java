@@ -7,9 +7,9 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * 验证码基础设施异常
  * <p>
- * 响应码来自 {@link CaptchaErrorCode#getResponseCode()}（500）：校验/生成过程故障对客户端
- * 是"诚实失败"——不放行、也不伪装成"验证码错误"，业务需要降级放行时显式 catch。
- * 由组件的 {@code CaptchaExceptionAdvice} 统一渲染（非 Servlet 应用落全局异常处理器兜底）。
+ * 响应码来自 {@link CaptchaErrorCode#getResponseCode()}（500）：校验/生成过程故障
+ * 对外表现为 500，与"验证码错误"区分；业务如需放行，自行捕获处理。
+ * 由组件的 {@code CaptchaExceptionAdvice} 统一渲染（非 Servlet 应用由全局异常处理器接管）。
  *
  * @author zwei
  */

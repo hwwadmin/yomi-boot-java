@@ -79,7 +79,7 @@ class RsaUtilsTest {
     }
 
     /**
-     * 签名长度非法属"验签不通过"，不应冒泡为异常
+     * 签名长度非法按"验签不通过"处理，返回 false
      */
     @Test
     void malformedSignatureReturnsFalse() {
@@ -92,7 +92,7 @@ class RsaUtilsTest {
     }
 
     /**
-     * Base64 解码失败包装为 UtilsException（同族收口，与 AesUtils 一致，不逃逸原生 IllegalArgumentException）
+     * Base64 解码失败包装为 UtilsException（与 AesUtils 一致）
      */
     @Test
     void base64DecodeFailuresAreUtilsException() {
@@ -106,7 +106,7 @@ class RsaUtilsTest {
     }
 
     /**
-     * 非 RSA 公钥给明确断言异常，不做裸 ClassCastException
+     * 非 RSA 公钥抛 AssertException，消息含实际算法名
      */
     @Test
     void nonRsaPublicKeyThrowsAssertException() throws Exception {
@@ -118,7 +118,7 @@ class RsaUtilsTest {
 
     /**
      * 对端（OpenSSL/WebCrypto 等）约定 hash 与 MGF1 同为 SHA-256；
-     * 显式传 spec 互解，锁住 RsaUtils 未退回 SunJCE 无参默认（MGF1-SHA1）。
+     * 双方显式传 spec 互解，RsaUtils 的 OAEP 参数与对端一致。
      */
     @Test
     void oaepInteropWithExplicitMgF1Sha256() throws Exception {

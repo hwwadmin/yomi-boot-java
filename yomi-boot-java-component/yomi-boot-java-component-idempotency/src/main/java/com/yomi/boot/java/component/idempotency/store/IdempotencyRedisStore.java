@@ -33,9 +33,9 @@ public class IdempotencyRedisStore {
     private final IdempotencyProperties properties;
 
     /**
-     * 读缓存；Redis 异常时 fail-open 返回 miss，由锁 + DB 兜底
+     * 读缓存；Redis 异常时返回 miss（只记 WARN），由锁 + DB 路径继续
      *
-     * @param type 完整泛型返回类型（{@code Result<OrderVO>} 而非裸 Result），重放不丢里层泛型
+     * @param type 完整泛型返回类型（如 {@code Result<OrderVO>}），重放不丢里层泛型
      */
     public IdempotencyCacheLoad load(IdempotencyKey key, Type type) {
         String redisKey = keys.resultKey(key);
@@ -71,7 +71,7 @@ public class IdempotencyRedisStore {
         stringRedisTemplate.opsForValue().set(redisKey, payload, ttl);
     }
 
-    /** 写缓存失败不抛错，避免掩盖已成功的业务 */
+    /** 写缓存失败只记日志不抛错，业务成功结果不受影响 */
     public void saveQuietly(IdempotencyKey key, Object value) {
         try {
             save(key, value);

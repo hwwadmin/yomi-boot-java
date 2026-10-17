@@ -29,7 +29,7 @@ public class RoundRobinLockClient {
     private final RoundRobinKeys keys;
 
     /**
-     * 抢频率锁，TTL 等于 frequency
+     * 获取频率锁，TTL 等于 frequency
      */
     public boolean tryAcquireFrequency(RoundRobinConfig config) {
         String key = keys.frequencyKey(config.getName());
@@ -78,9 +78,9 @@ public class RoundRobinLockClient {
     /**
      * 释放执行锁。
      * <p>
-     * 这里必须直接 unlock，不能先用 {@code isHeldByCurrentThread()} 判断归属：那次判断本身是一次 Redis
-     * 往返，一旦它失败，unlock 会被整段跳过，而 Redisson 只在 unlock 流程里取消看门狗续期 —— 锁会被持续
-     * 续期，本进程重启前其它实例再也接管不了该任务（原日志却写着"依赖 TTL 过期"，在续期模式下是假的）。
+     * 这里直接调用 unlock，不用 {@code isHeldByCurrentThread()} 预判归属：预判多一次 Redis
+     * 往返，它失败时 unlock 会被整段跳过，而 Redisson 只在 unlock 流程里取消看门狗续期——锁被持续
+     * 续期，本进程重启前其它实例无法接管该任务。
      * unlock 已在 Lua 里校验归属，非持有者只会抛 {@link IllegalMonitorStateException}，不会误删他人的锁。
      *
      * @return {@link UnlockOutcome#NOT_HELD} 是丢锁的确凿信号（本线程字段已不在锁里），由调用方据此上报
@@ -104,7 +104,7 @@ public class RoundRobinLockClient {
     }
 
     /**
-     * 由调度线程检测 worker 是否仍持有执行锁（不可在 worker 之外使用 isHeldByCurrentThread）
+     * 由调度线程检测 worker 是否仍持有执行锁（{@code isHeldByCurrentThread} 只在 worker 线程内有意义）
      */
     public boolean isHeldByWorkerThread(RLock lock, long workerThreadId) {
         return lock != null && lock.isHeldByThread(workerThreadId);

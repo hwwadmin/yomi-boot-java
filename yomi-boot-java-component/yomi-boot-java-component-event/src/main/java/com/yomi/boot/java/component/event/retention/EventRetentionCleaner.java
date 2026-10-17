@@ -15,7 +15,7 @@ import java.util.function.IntSupplier;
  * 保留期清理（默认关闭）：按保留期物理删除历史行，防止表只增不删无限膨胀。
  * <p>发布侧只删 {@code sys_event_outbox} 中 {@code SENT_SUCCESS} 且发送时间超过保留期的行——
  * PENDING/FETCHED/SENT_FAIL 以及 DLQ 仍在引用的行不受影响；
- * 消费侧删 {@code sys_event_inbox} 中创建时间超过保留期的行，动的是"只消费一次"契约的根基，
+ * 消费侧删 {@code sys_event_inbox} 中创建时间超过保留期的行，会缩短"只消费一次"的判重窗口，
  * 需单独开启 {@code inbox-retention-enabled} 并自行保证保留期 ≥ 事件可能被重投的最长时间。</p>
  * 两侧各自实例化：发布侧只传发件箱仓储、消费侧只传收件箱仓储，未传入的一侧不清理。
  *
@@ -76,7 +76,7 @@ public class EventRetentionCleaner {
         }
     }
 
-    /** 分批删除直到删空或达到单轮上限，避免一次清理长时间占用数据库 */
+    /** 分批删除直到删空或达到单轮上限，单轮占用数据库的时间有上限 */
     private static long deleteInBatches(String table, IntSupplier batchDelete, EventProperties.Retention retention) {
         long total = 0;
         while (total < retention.getMaxDeletePerRun()) {

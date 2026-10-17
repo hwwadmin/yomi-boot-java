@@ -11,7 +11,7 @@ import tools.jackson.databind.exc.InvalidFormatException;
  * String/Number 转 Long 反序列化器
  * <p>
  * 与 Long2StringSerializer 配合使用，确保前端以字符串形式传递大数 ID 时
- * 后端可正确反序列化为 Long，避免 JavaScript Number 精度丢失问题。
+ * 后端可正确反序列化为 Long，不受 JavaScript Number 精度限制。
  *
  * @author zwei
  */

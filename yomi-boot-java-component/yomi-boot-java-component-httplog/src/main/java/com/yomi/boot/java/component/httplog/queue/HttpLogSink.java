@@ -6,8 +6,8 @@ import java.time.Duration;
 
 /**
  * 日志生产端：请求线程唯一入口
- * <p>实现内部 = 进程内有界缓冲（+ 外部队列模式下的发送器）；{@link #offer} 绝不阻塞调用线程。
- * 生命周期由组件 SmartLifecycle 驱动（flush → stop），实现类不实现 {@link AutoCloseable}。
+ * <p>实现内部 = 进程内有界缓冲（+ 外部队列模式下的发送器）；{@link #offer} 不阻塞调用线程。
+ * 生命周期由组件 SmartLifecycle 驱动（flush → stop），实现类通过这两个方法参与生命周期。
  *
  * @author zwei
  */

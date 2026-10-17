@@ -17,9 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 批量更新契约：id 不存在的行静默跳过（JDBC 批量受影响行数为 0，不抛错），
- * 与单条 update()/saveOrUpdate() 的"未命中即失败"不同——契约写在 javadoc 里，本类锁住它，
- * 防止把批量路径改成"抛错/补插"时无人察觉。
+ * 批量更新：id 不存在的行按受影响行数为 0 处理，直接跳过、不抛错，
+ * 与单条 update()/saveOrUpdate() 的"未命中即失败"不同。
+ * 本类固定这一行为：批量路径不因未命中而抛错或补插。
  */
 class MyBatisDaoBatchUpdateTest {
 
@@ -66,7 +66,7 @@ class MyBatisDaoBatchUpdateTest {
         assertNotNull(missing.getUpdateTime(), "更新分支必须先执行 entity.update()");
     }
 
-    /** 伪 Mapper：记录调用；updateById 一律返回"受影响行数全 0"（模拟所有 id 都不存在） */
+    /** 伪 Mapper：记录调用；updateById 始终返回"受影响行数全 0"（模拟所有 id 都不存在） */
     @SuppressWarnings("unchecked")
     private static BaseMapper<Demo> mapper(List<String> calls) {
         return (BaseMapper<Demo>) Proxy.newProxyInstance(MyBatisDaoBatchUpdateTest.class.getClassLoader(),

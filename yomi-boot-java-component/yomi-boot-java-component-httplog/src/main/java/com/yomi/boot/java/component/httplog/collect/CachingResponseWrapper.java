@@ -17,8 +17,8 @@ import java.util.Map;
 /**
  * 响应包装：tee 旁路缓存响应体（先写真实响应再写缓存副本，透传恒完整），并记录响应头
  * <p>
- * 刻意不用 Spring 截留式 {@code ContentCachingResponseWrapper}：截留式要求 finally 显式回写，
- * 漏调用会导致客户端收到空响应；tee 从结构上消除该风险。
+ * tee 旁路从写入路径上保证客户端响应的完整性：响应先写客户端、副本随后写入，
+ * 不需要 finally 显式回写。
  *
  * @author zwei
  */
@@ -103,8 +103,8 @@ public class CachingResponseWrapper extends HttpServletResponseWrapper {
 
     /**
      * flush writer 缓冲（若业务通过本包装获取过 writer）
-     * <p>writer 由本包装持有、不是容器创建的 writer，容器不会替其 flush——
-     * 采集侧必须在读取缓存前调用，否则响应体会滞留在缓冲里（客户端收到空响应）。
+     * <p>writer 由本包装持有（容器不会替它 flush）——
+     * 采集侧读取缓存前调用本方法刷出缓冲；未刷出时响应体会滞留在缓冲里（客户端收到空响应）。
      */
     public void flushWriterIfCreated() throws IOException {
         if (writer != null) {
@@ -142,7 +142,7 @@ public class CachingResponseWrapper extends HttpServletResponseWrapper {
         }
     }
 
-    /** 记录到的响应头（副本）；Content-Type 以 getContentType 兜底（框架/容器绕过 setHeader 设置时） */
+    /** 记录到的响应头（副本）；Content-Type 以 getContentType 的取值补齐（框架/容器绕过 setHeader 设置时） */
     public Map<String, String> cachedHeaders() {
         Map<String, String> snapshot = new LinkedHashMap<>(headers);
         String contentType = getResponse().getContentType();
@@ -159,7 +159,7 @@ public class CachingResponseWrapper extends HttpServletResponseWrapper {
 
     /**
      * 响应字符集：优先 Content-Type 显式声明的 charset；JSON 类响应无 charset 时按规范取 UTF-8
-     * <p>容器对不带 charset 的响应报 ISO-8859-1（Tomcat 实测），而 Spring MVC 的 JSON 响应是 UTF-8 字节，
+     * <p>容器对不带 charset 的响应报 ISO-8859-1，而 Spring MVC 的 JSON 响应是 UTF-8 字节，
      * 照容器值解码会把中文变成乱码；其余响应（如 text/html 无 charset）仍沿用容器值</p>
      */
     private Charset resolveCharset() {

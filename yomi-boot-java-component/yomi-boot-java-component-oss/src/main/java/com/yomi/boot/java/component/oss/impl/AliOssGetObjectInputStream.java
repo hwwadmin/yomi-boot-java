@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * 关闭流时一并关闭 {@link GetObjectResult}，避免连接泄漏。
+ * 关闭流时一并关闭 {@link GetObjectResult}，释放底层连接。
  *
  * @author zwei
  */

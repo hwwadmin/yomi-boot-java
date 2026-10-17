@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
  * <p>超时仅表示放弃等待，不保证消息一定未送达。</p>
  * <p>阻塞边界：{@link #timeout} 只约束提交后的确认等待；元数据不可用时 {@code template.send} 自身还会在
  * 客户端最长阻塞 max.block.ms（默认 60 秒）并同步抛错，故最坏阻塞 ≈ max.block.ms + timeout；
- * 需要更硬的边界请调小 producer 的 max.block.ms。</p>
+ * 上限要更紧可调小 producer 的 max.block.ms。</p>
  *
  * @author zwei
  */
@@ -40,7 +40,7 @@ public final class KafkaSyncSender extends KafkaSendBuilderBase<KafkaSyncSender>
     }
 
     /**
-     * 校验通过后提交发送并阻塞等待结果；提交前本实例即作废（超时或失败亦不可再 send）。
+     * 校验通过后提交发送并阻塞等待结果；调用即作废本实例（超时或失败同样作废）。
      */
     public SendResult<String, Object> send() {
         ensureOpen();

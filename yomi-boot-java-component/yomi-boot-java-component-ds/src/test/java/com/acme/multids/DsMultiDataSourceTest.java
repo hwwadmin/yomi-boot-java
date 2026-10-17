@@ -33,13 +33,13 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 多数据源形态（方案里"业务系统自行装配附加库"的契约）：
+ * 多数据源形态（业务系统自行装配附加库的契约）：
  * <p>
- * ① 组件/宿主不写 ref 的 {@code @MapperScan} 落主库（{@code @Primary} 兜底）；
+ * ① 组件/宿主不写 ref 的 {@code @MapperScan} 落主库（主库工厂是 {@code @Primary}）；
  * ② 业务自建附加库按模板（复用容器的链/TypeHandler/方言 + 挂守卫）装配后，显式绑定的 Mapper 落附加库，
  * 两个库的 Mapper 注册互不串；
  * ③ 只写一半 ref（{@code sqlSessionFactoryRef} 或 {@code sqlSessionTemplateRef}）会被启动自检拦下——
- * MapperFactoryBean 的 factory 与 template 两个属性都会被按类型装配，只写一个会被容器里的主库模板劫持路由。
+ * MapperFactoryBean 的 factory 与 template 两个属性都按类型装配，只写一个会路由到容器里的主库模板。
  */
 class DsMultiDataSourceTest {
 
@@ -83,7 +83,7 @@ class DsMultiDataSourceTest {
                 });
     }
 
-    /** 只写 sqlSessionFactoryRef（plan 里的旧写法）：MapperFactoryBean 的 template 属性会被主库模板劫持 → 启动即失败 */
+    /** 只写 sqlSessionFactoryRef：MapperFactoryBean 的 template 属性会按类型绑到主库模板，启动自检直接失败 */
     @Test
     void singleRefBindingIsRejectedAtStartup() {
         new ApplicationContextRunner()

@@ -79,7 +79,7 @@ public class RbacAdminService implements IRbacAdminService {
         try {
             permRepository.save(perm);
         } catch (DuplicateKeyException e) {
-            // 并发登记或历史数据占用（如软删遗留行）：给明确的业务错误而非"服务器繁忙"
+            // 并发登记或历史数据占用（如软删遗留行）：直接抛出编码冲突错误
             throw RbacBiz.of(RbacErrorCode.CODE_CONFLICT);
         }
         return RbacModelConverter.toPermModel(perm);
@@ -287,7 +287,7 @@ public class RbacAdminService implements IRbacAdminService {
         try {
             roleRepository.save(role);
         } catch (DuplicateKeyException e) {
-            // 并发创建，或历史软删行仍占用唯一键（存量库）：明确报编码冲突，而非"服务器繁忙"
+            // 并发创建，或历史软删行仍占用唯一键（存量库）：直接抛出编码冲突错误
             throw RbacBiz.of(RbacErrorCode.CODE_CONFLICT);
         }
         return RbacModelConverter.toRoleModel(role);

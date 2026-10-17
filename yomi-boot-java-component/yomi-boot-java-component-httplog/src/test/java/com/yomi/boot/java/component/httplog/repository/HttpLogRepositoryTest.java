@@ -111,7 +111,7 @@ class HttpLogRepositoryTest {
 
         List<Long> ids = repository.selectExpiredIds("svc", Instant.now(), 100);
         assertEquals(List.of(1L, 2L), ids);
-        // 清理只要一批 id：分页不能带 count，否则每批都多扫一遍整个过期区间（与 event 取批同纪律）
+        // 清理只要一批 id：分页不带 count，count 会使每批多扫一遍整个过期区间
         assertFalse(capturing.page.searchCount(), "保留期清理取 id 不应触发 count 查询");
         assertEquals(100, capturing.page.getSize());
         assertEquals(2, repository.deleteByIds(ids));

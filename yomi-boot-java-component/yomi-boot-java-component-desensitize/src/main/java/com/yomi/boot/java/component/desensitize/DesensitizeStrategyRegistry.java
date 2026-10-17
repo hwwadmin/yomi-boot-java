@@ -8,10 +8,10 @@ import java.util.Set;
 /**
  * 脱敏策略中心：按名称索引策略并执行脱敏
  * <p>
- * 构造入参是容器内全部策略实例（Bean 名称 -> 策略，Bean 名称仅用于报错定位），与具体策略实现解耦：
+ * 构造入参是容器内全部策略实例（Bean 名称 -> 策略，Bean 名称仅用于报错定位）：
  * 内置策略与宿主策略都是 Bean，宿主新增策略只需声明 Bean 即被收集。
- * 策略名必须**非空且全局唯一**（风格不限，自定义名称随意）：null/空白名与重名都是配置错误，
- * 构造期（启动期）直接报错；构造完成后只读。名称未注册时抛 {@link IllegalArgumentException}，不静默返回原值。
+ * 策略名必须非空且全局唯一：null/空白名与重名都是配置错误，构造期（启动期）直接报错；
+ * 构造完成后只读。名称未注册时抛 {@link IllegalArgumentException}，不返回原值。
  *
  * @author zwei
  */
@@ -55,7 +55,7 @@ public class DesensitizeStrategyRegistry {
         return strategies.keySet();
     }
 
-    /** 策略名必须非空：null/空白名注册后也取不到 */
+    /** 策略名必须非空：null/空白名在注册时直接报错 */
     private static void requireValidName(String name, String beanName) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("脱敏策略名不能为空: " + name + "（Bean " + beanName + "）");

@@ -13,11 +13,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * "没有指定名字的 Bean 时才装配"：**只按 Bean 名判断**，不看类型
+ * "没有指定名字的 Bean 时才装配"：只按 Bean 名判断，不看类型
  * <p>
- * 为什么不用 {@code @ConditionalOnMissingBean}：它在 {@code @Bean} 方法上会连方法的返回类型一起判
- * （"没有该名字的 Bean <b>且</b> 没有该类型的 Bean"），于是宿主自建一个**附加库**工厂（类型相同、名字不同）
- * 就会把本组件的主库四件套顶掉——那是静默的装配缺失。附加库是业务系统自行装配的常态，必须让主库装配不受影响。
+ * 与 {@code @ConditionalOnMissingBean} 的区别：后者在 {@code @Bean} 方法上会连返回类型一起判（没有该名字
+ * 的 Bean 且没有该类型的 Bean），宿主自建一个附加库工厂（类型相同、名字不同）就会连带跳过本组件的
+ * 主库四件套；附加库由业务系统自行装配属常态，主库装配须不受其影响。
  *
  * @author zwei
  */
@@ -27,7 +27,7 @@ import java.lang.annotation.Target;
 @Conditional(ConditionalOnMissingBeanNames.OnMissingBeanNamesCondition.class)
 public @interface ConditionalOnMissingBeanNames {
 
-    /** 这些 Bean 名都不存在时匹配（只要有一个存在就整体让位给宿主） */
+    /** 这些 Bean 名都不存在时匹配（有任意一个存在就整体不装配，以宿主的为准） */
     String[] value();
 
     /** 仅按 Bean 名判断"缺失"的条件实现 */

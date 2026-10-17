@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p>
  * 由 {@code CoreAutoConfiguration} 的 {@code @EnableConfigurationProperties} 注册（非组件扫描），
  * 机器号在 {@link com.yomi.boot.java.core.boot.listener.IdWorkerEnvironmentListener} 中尽早绑定并初始化；
- * 环境变量 {@code YOMI_ID_WORKER_ID}、{@code YOMI_ID_DATACENTER_ID} 与 yml 键等价。
+ * 环境变量 {@code YOMI_ID_WORKER_ID}、{@code YOMI_ID_DATACENTER_ID} 与 yml 键同样可用。
  *
  * @author zwei
  */

@@ -10,8 +10,8 @@ import java.util.List;
 /**
  * 发件箱仓储（端口）：sys_event_outbox 的持久化唯一出入口
  * <p>
- * 组件内其余代码（发布/中继/清理）一律经本接口访问，**不得越过仓储直接调用 Mapper**；
- * 默认实现 {@link EventOutboxRepository}，宿主可自行实现本接口并注册 Bean 顶替。
+ * 组件内其余代码（发布/中继/清理）经本接口访问，不直接调用 Mapper；
+ * 默认实现 {@link EventOutboxRepository}，宿主可自行实现本接口并注册自己的 Bean。
  *
  * @author zwei
  */
@@ -29,7 +29,7 @@ public interface IEventOutboxRepository {
     /** 查询长时间停留在 FETCHED 的行（回收候选，单批上限 limit，按 id 升序便于分批翻页） */
     List<EventOutbox> findFetchedTimeout(String serviceName, Instant fetchTimeBefore, int limit);
 
-    /** 按 id 批量重置为 PENDING（内部按固定分片下发，超大 id 列表不会撑成单条巨型 IN） */
+    /** 按 id 批量重置为 PENDING（内部按固定分片下发，单条 IN 的 id 数有上限） */
     void resetFetchedBatch(List<Long> ids);
 
     /** 按主键更新并刷新 update 审计字段 */

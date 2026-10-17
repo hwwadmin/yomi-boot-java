@@ -22,12 +22,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 后台任务对 RoundRobin 的依赖校验：开关开启而 RoundRobin 不可用时不得静默（旧实现只在发布侧校验，
- * 消费侧"仅消费 + retention 开启 + roundrobin 关闭"会一声不响地没有清理任务）。
+ * 后台任务对 RoundRobin 的依赖校验：开关开启而 RoundRobin 不可用时启动失败，
+ * 消费侧"仅消费 + retention 开启 + roundrobin 关闭"不会注册任何清理任务。
  */
 class EventRoundRobinDependencyCheckTest {
 
-    /** 消费侧开了收件箱清理但 RoundRobin 不可用：启动失败（不能静默无任务） */
+    /** 消费侧开了收件箱清理但 RoundRobin 不可用：启动失败并给出配置键 */
     @Test
     void inboxRetentionWithoutRoundRobinFailsFast() {
         EventProperties properties = consumerOnly();
@@ -41,7 +41,7 @@ class EventRoundRobinDependencyCheckTest {
         assertTrue(ex.getMessage().contains("yomi.roundrobin.enabled=true"), ex.getMessage());
     }
 
-    /** 仅消费侧 + retention 开启但没开收件箱清理：不会有任何清理任务，必须留 WARN 而不是无日志 */
+    /** 仅消费侧 + retention 开启但没开收件箱清理：不会有任何清理任务，此时记录 WARN */
     @Test
     void consumerOnlyRetentionWithoutInboxFlagWarns() {
         EventProperties properties = consumerOnly();
@@ -83,7 +83,7 @@ class EventRoundRobinDependencyCheckTest {
         assertTrue(logs.list.isEmpty(), "retention 关闭时不应有任何日志: " + messages(logs));
     }
 
-    /** 中继/清理的依赖：判据是 RoundRobinRegistry 是否注册（不读属性，防 '1'/'yes' 这类"真值但不生效"） */
+    /** 中继/清理的依赖：以 RoundRobinRegistry 是否注册为判据，属性值不参与判断（'1'/'yes' 不代表已注册） */
     @Test
     void relayDependencyNamesRegistryCriterion() {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
@@ -96,7 +96,7 @@ class EventRoundRobinDependencyCheckTest {
         assertDoesNotThrow(() -> EventAutoConfiguration.requireRoundRobin(true, "yomi.event.publisher-enabled=true"));
     }
 
-    /** Bean 条件与校验口径一致：收件箱清理 Bean 确实受 yomi.roundrobin.enabled 门控 */
+    /** Bean 条件与校验口径一致：收件箱清理 Bean 受 yomi.roundrobin.enabled 控制 */
     @Test
     void inboxRetentionCleanerBeanIsGatedByRoundRobin() throws Exception {
         Method method = EventAutoConfiguration.ConsumerConfiguration.class.getMethod("eventInboxRetentionCleaner",

@@ -44,7 +44,7 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
                 .eq(EventOutbox::getStatus, OutboxStatus.PENDING)
                 .isNull(EventOutbox::getDeleteTime)
                 .orderByAsc(EventOutbox::getCreateTime)
-                // 只取一页且不要 count：等价 LIMIT n 的单条查询
+                // 只取一页并关闭 count 查询，落到 SQL 就是 LIMIT n
                 .page(page(1, limit).setSearchCount(false))
                 .getRecords();
     }
@@ -60,7 +60,7 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         List<Long> ids = pending.stream().map(EventOutbox::getId).toList();
         // 与 fetch_time 列（datetime(3)）对齐到毫秒，否则写库值被截断后按归属重查匹配不上
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        // 用 mapper.update(null, wrapper) 而非 lambdaUpdate() 链：后者只返回 boolean，这里要受影响行数判抢占
+        // 用 mapper.update(null, wrapper)：这里需要受影响行数判断本实例是否取到该行，lambdaUpdate() 链只返回 boolean
         int updated = getMapper().update(null, new LambdaUpdateWrapper<EventOutbox>()
                 .set(EventOutbox::getStatus, OutboxStatus.FETCHED)
                 .set(EventOutbox::getFetchTime, now)
@@ -72,8 +72,8 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
             return List.of();
         }
         if (updated < ids.size()) {
-            // 部分行已被其他实例抢占：本实例写入的归属标识就是 fetch_time = now，
-            // 只按 status 重查会把他人已抢占（可能正在投递）的行也算作自己的，导致重复发送
+            // 部分行已被其他实例取走：本实例写入的归属标识就是 fetch_time = now，
+            // 只按 status 重查会把他人已取走（可能正在投递）的行也算作自己的，导致重复发送
             pending = lambdaQuery()
                     .in(EventOutbox::getId, ids)
                     .eq(EventOutbox::getStatus, OutboxStatus.FETCHED)
@@ -92,7 +92,7 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
     /**
      * 查询 FETCHED 超时未投递的行（单批上限 limit，按 id 升序）
      * <p>Kafka 长时间不可用时 FETCHED 行按抓取速率累积，一次全量加载会把几万行读进内存、
-     * 并把等量 id 塞进重置语句，故与取批同纪律：一页 + 不要 count
+     * 并把等量 id 放进重置语句，因此和取批一样只取一页并关闭 count 查询
      */
     public List<EventOutbox> findFetchedTimeout(String serviceName, Instant fetchTimeBefore, int limit) {
         Assert.isTrue(limit > 0, "回收 limit 必须大于 0");
@@ -106,7 +106,7 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
                 .getRecords();
     }
 
-    /** 将 FETCHED 批量重置为 PENDING（投递超时回收）；id 按固定分片下发，单条 IN 列表不会无界增长 */
+    /** 将 FETCHED 批量重置为 PENDING（投递超时回收）；id 按固定分片下发，单条 IN 列表长度有上限 */
     public void resetFetchedBatch(List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             return;

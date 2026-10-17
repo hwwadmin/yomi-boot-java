@@ -20,7 +20,7 @@ import java.util.List;
 @ConditionalOnProperty(value = "yomi.token.enabled", havingValue = "true")
 public class TestTokenFlowService {
 
-    /** 演示用户，避免与 RBAC flow 用户冲突 */
+    /** 演示用户，与 RBAC flow 用户相互隔离 */
     public static final long DEMO_USER_ID = 90_001L;
 
     /** 令牌组件服务 */

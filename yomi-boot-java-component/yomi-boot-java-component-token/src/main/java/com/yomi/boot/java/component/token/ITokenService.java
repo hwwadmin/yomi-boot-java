@@ -11,8 +11,8 @@ import java.util.List;
  * 令牌为不透明键，会话快照存于存储层：
  * <ul>
  *     <li>签发：补齐会话默认字段；单点登录（{@code yomi.token.allow-multi-login=false}）时在用户维度分布式锁内
- *     "删旧 + 建新"，锁复用 redis 组件的 {@code LockUtils}，等锁超时返回 TOKEN_ISSUE_BUSY；</li>
- *     <li>校验：命中快照且未过期才有效，过期顺手清理；可选 {@code yomi.token.renew-on-validate=true} 滑动续期；</li>
+ *     先删旧快照再建新快照，锁复用 redis 组件的 {@code LockUtils}，等锁超时返回 TOKEN_ISSUE_BUSY；</li>
+ *     <li>校验：命中快照且未过期才有效，过期即清理；可选 {@code yomi.token.renew-on-validate=true} 滑动续期；</li>
  *     <li>撤销：删除快照即失效。</li>
  * </ul>
  *

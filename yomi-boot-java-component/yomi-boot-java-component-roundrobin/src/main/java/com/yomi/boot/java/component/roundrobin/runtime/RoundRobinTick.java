@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 单轮抢锁与任务执行
+ * 单轮取锁与任务执行
  *
  * @author zwei
  */
@@ -73,14 +73,14 @@ public class RoundRobinTick {
                 lockWatchFuture = scheduleLockWatch(config, execLock, workerThreadId, runCtx, lockLost, taskRunning);
             } catch (Exception e) {
                 // 调度线程池不可用（如宿主提供的池被关停）：无法建立丢锁检测就不跑任务，
-                // 释放执行锁等下一轮；绝不能把异常抛到 try 之外，否则 execLock 泄漏，
-                // 看门狗模式下会被永久续期、其它实例再也接管不了
+                // 释放执行锁等下一轮；异常抛到 try 之外会让 execLock 泄漏，
+                // 看门狗模式下被永久续期、其它实例无法接管该任务
                 log.warn("RoundRobin[{}] 无法在调度线程池上建立 maxHold/丢锁检测，本轮跳过执行（执行锁已释放）",
                         config.getName(), e);
                 scheduleUnavailable = true;
             }
             if (!scheduleUnavailable) {
-                // 任务异常与 Error 都向上抛出：由 RoundRobinLoop 统计连续失败并退避、兜住 worker 线程
+                // 任务异常与 Error 都向上抛出：由 RoundRobinLoop 统一统计连续失败并退避（worker 线程不退出）
                 task.run(runCtx);
                 return true;
             }
@@ -120,8 +120,8 @@ public class RoundRobinTick {
             // 首次执行（lastNanos=0）没有间隔可算，取 -1 交给 reportWatchLag 跳过
             long gapNanos = lastNanos == 0 ? -1 : nowNanos - lastNanos;
             try {
-                // 顺序不能反：必须先探活、后读任务状态。任务返回后才出现的字段缺失是本轮 unlock 自己删的，
-                // 若先读状态，那一跳（检测的 Redis 往返落在 unlock 之后）仍会误报丢锁
+                // 顺序要求：先探活、后读任务状态。任务返回后才出现的字段缺失是本轮 unlock 自己删的，
+                // 先读状态的话，那一跳（检测的 Redis 往返落在 unlock 之后）仍会误报丢锁
                 boolean held = lockClient.isHeldByWorkerThread(lock, workerThreadId);
                 if (!held && taskRunning.get() && lockLost.compareAndSet(false, true)) {
                     logLockLost(config);
@@ -130,7 +130,7 @@ public class RoundRobinTick {
                 reportWatchHealthy(config);
                 reportWatchLag(config, gapNanos);
             } catch (Exception e) {
-                // 定时任务内捕获异常并打日志，避免后续周期被取消；持续故障只报首条（50ms 周期会把日志刷爆）
+                // 定时任务内捕获异常并打日志，保证后续周期照常执行；持续故障只报首条（50ms 周期会让日志刷爆）
                 if (watchFailing.compareAndSet(false, true)) {
                     log.warn("RoundRobin[{}] 执行锁存活检测失败（持续失败不再逐条打印，恢复时提示）："
                             + "慢 Redis 会让检测与 max-hold 都延迟，届时丢锁发现变晚", config.getName(), e);
@@ -140,8 +140,8 @@ public class RoundRobinTick {
     }
 
     /**
-     * 检测间隔显著超出周期时告警一次：延迟是本方法量出来的——
-     * 它没有异常可捕获（池被慢 Redis 占满时只是"跑晚了"），不量出来就是静默降级
+     * 检测间隔显著超出周期时告警一次：这种延迟没有异常可捕获（池被慢 Redis 占满时只是"跑晚了"），
+     * 由本方法量出来并告警
      */
     void reportWatchLag(RoundRobinConfig config, long gapNanos) {
         if (gapNanos < 0) {

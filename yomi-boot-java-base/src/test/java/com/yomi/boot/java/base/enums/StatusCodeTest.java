@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 /**
- * 响应码语义锁定：码段划分与具体值是框架对外协议，改动必须显式可见
+ * 响应码语义：码段划分与具体值是框架对外协议，逐个断言固定值
  */
 class StatusCodeTest {
 
@@ -24,7 +24,7 @@ class StatusCodeTest {
         assertEquals(404, StatusCode.notFound.getCode());
         assertEquals(405, StatusCode.methodNotAllowed.getCode());
         assertEquals(415, StatusCode.unsupportedMediaType.getCode());
-        // 参数校验用 422（Unprocessable Content），不占用 412（Precondition Failed）
+        // 参数校验用 422（Unprocessable Content），未定义 412（Precondition Failed）
         assertEquals(422, StatusCode.parameterError.getCode());
         assertEquals(500, StatusCode.serverError.getCode());
         assertEquals(501, StatusCode.notImplemented.getCode());
@@ -49,7 +49,7 @@ class StatusCodeTest {
     @Test
     void getEnumUnknownFallsBackToCommonError() {
         assertSame(StatusCode.commonError, StatusCode.getEnum(9999));
-        // 未知码应映射为 commonError
+        // 未知码映射为 commonError
         assertSame(StatusCode.commonError, StatusCode.getEnum(412));
         assertSame(StatusCode.commonError, StatusCode.getEnum(-100));
     }

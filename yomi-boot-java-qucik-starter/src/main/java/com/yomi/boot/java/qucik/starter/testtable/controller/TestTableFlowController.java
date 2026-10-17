@@ -20,15 +20,15 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 测试表流程接口：一次调用自动完成 增 → 查 → 改 → 查 → 删 → 查 六个步骤，逐步断言，
- * 用于验证 MyBatis-Plus 的封装与配置是否正常；任一步骤不符合预期都会抛出断言异常并返回失败响应。
+ * 测试表流程接口：一次调用依次走 增 → 查 → 改 → 查 → 删 → 查 六步，逐步断言，用于验证
+ * MyBatis-Plus 的封装与配置是否正常，任一步骤不符合预期即返回失败响应。
  * <p>
- * 两种实现的独立验证（表结构见 sql/mysql|pgsql/test_table.sql）：
+ * 两种实现各有一条流程（表结构见 sql/mysql|pgsql/test_table.sql）：
  * <ul>
  *     <li>GET /test/ds/test-table/dao：MyBatisDao 封装形式（BaseMapper + Lambda 链式条件）</li>
- *     <li>GET /test/ds/test-table/xml：mapper.xml 形式（SQL 全部手写，不使用任何 MP 封装）</li>
+ *     <li>GET /test/ds/test-table/xml：mapper.xml 形式（SQL 全部手写）</li>
  * </ul>
- * 流程每一步都会输出日志（前缀 {@code [测试表流程][dao|xml]}），流程结束记录已物理删除（中途失败时兜底清理），接口可重复调用
+ * 每步都输出日志（前缀 {@code [测试表流程][dao|xml]}），收尾时统一再删一次记录，接口可重复调用
  *
  * @author zwei
  */
@@ -38,7 +38,7 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class TestTableFlowController {
 
-    /** createTime 与写入时刻的允许偏差：时区或类型映射有误时偏差为小时级，60秒足以识别 */
+    /** createTime 与写入时刻的允许偏差：时区或类型映射有误时偏差会到小时级 */
     private static final Duration TIME_TOLERANCE = Duration.ofSeconds(60);
 
     /** 演示：DAO 持久化流程标识 */
@@ -117,7 +117,7 @@ public class TestTableFlowController {
     }
 
     /**
-     * mapper.xml 形式：SQL 手写，不使用 BaseMapper 与链式条件
+     * mapper.xml 形式：SQL 全部手写
      */
     @GetMapping("/xml")
     public Response<List<String>> xmlFlow() {
@@ -193,8 +193,8 @@ public class TestTableFlowController {
     }
 
     /**
-     * 流程中途失败时兜底清理已插入的数据，保证接口可重复调用；
-     * 成功路径已在步骤5删除，此处为幂等的重复删除
+     * 清理测试数据，保证接口可重复调用；成功路径已在步骤5删除，
+     * 这里再删一次，重复删除不影响结果
      */
     private static void cleanupQuietly(Runnable cleanup) {
         try {

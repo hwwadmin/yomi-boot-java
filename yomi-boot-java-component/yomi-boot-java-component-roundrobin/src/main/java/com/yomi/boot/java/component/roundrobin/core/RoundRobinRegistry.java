@@ -11,8 +11,8 @@ import java.util.function.Consumer;
  * <p>
  * 启动期由各组件在 {@code @Bean} 方法里注册（refresh 阶段，早于 lifecycle 的 {@code start()}）；
  * <b>启动之后</b>注册（ApplicationRunner、懒加载 Bean、动态任务）会经 {@code lateRegistrationHandler}
- * 交给 {@link com.yomi.boot.java.component.roundrobin.spring.RoundRobinLifecycle} 立刻补建调度——
- * 否则任务注册成功但不会进入调度。
+ * 交给 {@link com.yomi.boot.java.component.roundrobin.spring.RoundRobinLifecycle} 立刻补建调度，
+ * 使注册成功即进入调度。
  *
  * @author zwei
  */
@@ -28,7 +28,7 @@ public class RoundRobinRegistry {
     public void register(RoundRobinTaskDefinition definition) {
         String name = definition.getConfig().getName();
         definition.getConfig().validate();
-        // putIfAbsent 原子占位：并发同名注册只有一个成功（原实现是 containsKey + put 的检查-写入竞态）
+        // putIfAbsent 原子占位：并发同名注册只有一个成功
         if (tasks.putIfAbsent(name, definition) != null) {
             throw new IllegalStateException("yomi.roundrobin 任务 name 重复: " + name);
         }

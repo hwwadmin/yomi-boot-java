@@ -30,9 +30,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * 方法参数上的约束校验（{@code @RequestParam @Min}、{@code @Xss}）失败必须报 422 参数错误，
- * 而不是落到兜底的"服务器繁忙"（历史上 Spring 6.1+ 的 {@code HandlerMethodValidationException} 无映射）；
- * 类级（global）校验错误与字段错误一样必须出现在错误文案里。
+ * 方法参数上的约束校验（{@code @RequestParam @Min}、{@code @Xss}）失败报 422 参数错误，
+ * 错误码取自 {@code StatusCode.parameterError}，"服务器繁忙"只用于未分类异常；
+ * 类级（global）校验错误与字段错误一样出现在错误文案里。
  */
 class GlobalExceptionAdviceTest {
 
@@ -56,7 +56,7 @@ class GlobalExceptionAdviceTest {
 
     @Test
     void classLevelValidationErrorIsReported() throws Exception {
-        // 只有类级约束失败（字段级通过）：历史实现只取 getFieldErrors() → debugMessage 为空
+        // 只有类级约束失败（字段级通过）：debugMessage 直接取类级错误的默认消息
         mockMvc.perform(post("/probe/form").param("password", "aaa").param("confirmPassword", "bbb"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(StatusCode.parameterError.getCode()))
@@ -76,7 +76,7 @@ class GlobalExceptionAdviceTest {
         mockMvc.perform(get("/probe/min").param("n", "7"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("n=7"));
-        // 正向用例只用 ASCII 回显：standalone MockMvc 的响应编码是 ISO-8859-1，中文会被写成 '?'（与本用例无关）
+        // 正向用例只用 ASCII 回显：standalone MockMvc 的响应编码是 ISO-8859-1，中文会被写成 '?'
         mockMvc.perform(get("/probe/xss").param("name", "normal-text"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("normal-text"));
@@ -116,7 +116,7 @@ class GlobalExceptionAdviceTest {
         private String confirmPassword;
     }
 
-    /** 类级（对象级）约束：校验失败产生 ObjectError 而非 FieldError */
+    /** 类级（对象级）约束：校验失败产生 ObjectError，字段级约束产生 FieldError */
     @Target(ElementType.TYPE)
     @Retention(RetentionPolicy.RUNTIME)
     @Constraint(validatedBy = PasswordMatchValidator.class)

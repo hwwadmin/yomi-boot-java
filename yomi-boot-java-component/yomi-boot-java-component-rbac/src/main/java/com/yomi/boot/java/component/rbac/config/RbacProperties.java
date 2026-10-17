@@ -58,7 +58,7 @@ public class RbacProperties {
         if (projectionTtl == null || projectionTtl.isZero() || projectionTtl.isNegative()) {
             throw new IllegalStateException("yomi.rbac.projection-ttl 必须大于 0");
         }
-        // 首尾空格型笔误 Spring 照单全收：既不报错也永不命中，放行路径会静默变"全量 403"，只能启动期拦
+        // 首尾空格型笔误 Spring 会照原样注册且永不匹配：放行路径失效，全量请求都会 403，这里在启动期拦截
         for (String skipPath : skipAuthorizePaths) {
             if (skipPath == null || !skipPath.equals(skipPath.trim())) {
                 throw new IllegalStateException("yomi.rbac.skip-authorize-paths 不能为空或含首尾空格: [" + skipPath + "]");

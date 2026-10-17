@@ -90,7 +90,7 @@ public class GlobalExceptionAdvice {
 
     /**
      * 方法参数上的约束校验失败（{@code @RequestParam @Min(5)}、{@code @Xss} 等）：
-     * 处理 {@link HandlerMethodValidationException}（如 {@code @RequestParam @Min}、{@code @Xss}）
+     * 处理 {@link HandlerMethodValidationException}：取默认消息去重后拼接
      */
     @ExceptionHandler(HandlerMethodValidationException.class)
     @ResponseStatus(HttpStatus.OK)
@@ -125,7 +125,7 @@ public class GlobalExceptionAdvice {
         return statusFail(StatusCode.notFound, "接口不存在");
     }
 
-    /** 未分类异常兜底 */
+    /** 未分类异常：返回 unknown 失败信封 */
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.OK)
     public Response<Void> unknownException(Exception ex) {

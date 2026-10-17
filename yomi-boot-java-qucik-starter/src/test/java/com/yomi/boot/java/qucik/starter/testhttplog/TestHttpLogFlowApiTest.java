@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * HTTP 日志流程接口：POST 触发请求 → query 概要取回 id → detail 取全量断言
  * "请求头/请求体/响应头/响应体全采 + 词表脱敏（含宿主自定义策略 EMPLOYEE_NO）"端到端成立；
- * 查询全程走组件服务接口 IHttpLogService（不直连 Mapper）
+ * 查询全程走组件服务接口 IHttpLogService
  * <p>
  * 运行前需手动启动应用（mvn -o spring-boot:run -pl yomi-boot-java-qucik-starter），
  * 并保证 sys_http_log 表已创建（组件启动期自动创建；脚本 sql/mysql|pgsql/sys_http_log.sql）
@@ -98,7 +98,7 @@ class TestHttpLogFlowApiTest {
     }
 
     /**
-     * 异步请求：真 Tomcat + 真 ASYNC 分发——客户端拿到完整响应体，日志记到最终状态/耗时/响应体
+     * 异步请求：Tomcat ASYNC 分发——客户端拿到完整响应体，日志记到最终状态/耗时/响应体
      */
     @Test
     void asyncFlowCapturesCompleteResponseBody() throws Exception {

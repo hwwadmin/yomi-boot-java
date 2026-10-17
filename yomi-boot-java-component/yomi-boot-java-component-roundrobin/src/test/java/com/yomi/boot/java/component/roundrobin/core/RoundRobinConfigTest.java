@@ -37,7 +37,7 @@ class RoundRobinConfigTest {
         assertThrows(IllegalStateException.class, cfg::validate);
     }
 
-    /** 任务级参数不在 yml 里：报错应指向 @RoundRobinTask 属性并带任务名，不能指向不存在的配置键 */
+    /** 任务级参数不在 yml 里：报错指向 @RoundRobinTask 属性并带任务名，yml 配置键不出现在报错里 */
     @Test
     void invalidParameterMessagePointsToAnnotationAttribute() {
         RoundRobinDefaults defaults = RoundRobinDefaults.builder().build();
@@ -52,7 +52,7 @@ class RoundRobinConfigTest {
         assertFalse(message.contains("yomi.roundrobin."), "不应指向不存在的 yml 配置键: " + message);
     }
 
-    /** watchdog=false 是硬租约：maxHold 大于租约意味着锁先过期、其它实例可能并发执行，必须启动期拦住 */
+    /** watchdog=false 是硬租约：maxHold 大于租约意味着锁先过期、其它实例可能并发执行，启动期即报错 */
     @Test
     void watchdogOffRejectsMaxHoldBeyondLease() {
         RoundRobinConfig cfg = config(false, Duration.ofSeconds(30), Duration.ofMinutes(1));
@@ -71,7 +71,7 @@ class RoundRobinConfigTest {
                 "maxHold 等于租约边界值允许（软取消与硬过期同时触发）");
     }
 
-    /** watchdog=true 时 execLockTtl 不参与锁租约：显式配置必须 WARN，避免"配了以为有保护" */
+    /** watchdog=true 时 execLockTtl 不参与锁租约：显式配置会打 WARN，提醒该值不生效 */
     @Test
     void watchdogOnWarnsWhenExecLockTtlExplicitlySet() {
         ListAppender<ILoggingEvent> appender = new ListAppender<>();

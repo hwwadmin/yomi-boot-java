@@ -7,8 +7,8 @@ import org.apache.ibatis.annotations.Param;
 import java.time.Instant;
 
 /**
- * sys_idempotency_record 的 Mapper：**仅供 {@link IdempotencyRecordRepository} 使用**
- * （其余代码一律经仓储端口 {@link IIdempotencyRecordRepository} 访问，不直接调用）
+ * sys_idempotency_record 的 Mapper：仅供 {@link IdempotencyRecordRepository} 使用
+ * （其余代码经仓储端口 {@link IIdempotencyRecordRepository} 访问，不直接调用）
  * <p>增删改查 MP 自带，自定义 SQL 见 {@code mapper/IdempotencyRecordMapper.xml}
  *
  * @author zwei

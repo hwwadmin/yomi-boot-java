@@ -36,10 +36,10 @@ import java.util.function.Supplier;
 
 /**
  * 幂等编排：Redis 热读 → 分布式锁 → 事务占位执行业务 → 写回 Redis
- * <p>Redis 不可用时降级为无锁路径（fail-open）：分布式锁只是"省一次 DB 写入"的优化，
+ * <p>Redis 不可用时走无锁路径：分布式锁只是"省一次 DB 写入"的优化，
  * 互斥由 {@code sys_idempotency_record} 唯一键 + 事务内先插占位承担，性能略降但正确性不变</p>
  * <p>占位 INSERT 用保存点包住：唯一键冲突在 PostgreSQL 上会让事务进入 aborted（25P02），
- * 冲突后必须回滚到保存点才能读回已完成结果、外层事务才能继续</p>
+ * 冲突后先回滚到保存点，才能读回已完成结果、外层事务才能继续</p>
  *
  * @author zwei
  */
@@ -64,7 +64,7 @@ public class IdempotencyGuard {
 
     /** 供 Idempotent 切面调用：按方法返回值类型做缓存与反序列化 */
     public Object executeAround(ProceedingJoinPoint point, IdempotencyKey key) throws Throwable {
-        // 取完整泛型签名（Result<OrderVO> 而非裸 Result），重放才能还原里层类型
+        // 取完整泛型签名（如 Result<OrderVO>），重放才能还原里层类型
         Type returnType = ((MethodSignature) point.getSignature()).getMethod().getGenericReturnType();
         if (returnType == void.class) {
             executeVoid(key, () -> proceedVoid(point));
@@ -125,7 +125,7 @@ public class IdempotencyGuard {
 
         IdempotencyCacheLoad cached = redisStore.load(key, returnType);
         if (cached.hit()) {
-            // 带指纹时缓存键已并入指纹摘要：命中即等价于"指纹一致"，异体请求会 miss 并走库内那道校验
+            // 带指纹时缓存键已并入指纹摘要：命中即表示指纹一致，异体请求会 miss 并走库内那道校验
             return cached.value();
         }
 
@@ -134,13 +134,13 @@ public class IdempotencyGuard {
         try {
             lock = acquireLock(lockKey);
         } catch (LockBusyException busy) {
-            // 抢锁失败：读缓存或 DB 已完成结果；仍在处理中则抛 PROCESSING
+            // 未拿到锁：读缓存或 DB 已完成结果；仍在处理中则抛 PROCESSING
             return resolveCachedOrDbResult(key, returnType);
         } catch (Exception e) {
             if (!ExUtils.isCausedBy(e, RedisException.class)) {
                 throw e;
             }
-            // Redis 不可用：降级为无锁 + DB 唯一键兜底继续服务，而不是让所有幂等接口 500
+            // Redis 不可用：走无锁路径，由 DB 唯一键保证互斥，幂等接口继续服务
             log.warn("[幂等]Redis 不可用，降级为无锁 + DB 唯一键兜底 namespace={} key={}",
                     key.namespace(), key.idempotencyKey(), e);
             return executeWithoutLock(key, returnType, fn);
@@ -153,9 +153,9 @@ public class IdempotencyGuard {
     }
 
     /**
-     * 抢锁：持锁时长不受限（Redisson 看门狗续期）；lease&gt;0 时按固定租期。
+     * 获取分布式锁：持锁时长不受限（Redisson 看门狗续期）；lease&gt;0 时按固定租期。
      * <p>仅负责获取分布式锁，便于区分 Redis 故障与锁内业务异常。
-     * 等待锁时被中断则视为未抢到锁，并恢复线程中断标志</p>
+     * 等待锁时被中断则视为未拿到锁，并恢复线程中断标志</p>
      */
     Lock acquireLock(String lockKey) {
         Lock lock = LockUtils.ofReentrant(lockKey);
@@ -213,7 +213,7 @@ public class IdempotencyGuard {
         return loadCompletedResultFromDb(key, returnType, false);
     }
 
-    /** 结果写缓存；回滚时不写，保证"缓存命中"等价于"库中已有已完成记录" */
+    /** 结果写缓存；回滚时不写，缓存命中即代表库中已有已完成记录 */
     private void cacheResult(IdempotencyKey key, Object result) {
         runAfterCommit(() -> redisStore.saveQuietly(key, result));
     }
@@ -231,7 +231,7 @@ public class IdempotencyGuard {
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            /** 事务成功提交后再执行副作用，避免回滚后仍释放锁/写缓存 */
+            /** 事务成功提交后再执行副作用，回滚时不动锁与缓存 */
             @Override
             public void afterCommit() {
                 action.run();
@@ -240,11 +240,11 @@ public class IdempotencyGuard {
     }
 
     /**
-     * 事务内：INSERT 抢占位 → 执行业务 → 更新为已完成
-     * 唯一键冲突则只读库中已完成结果（无锁降级路径下即靠它承担互斥）
+     * 事务内：INSERT 占位 → 执行业务 → 更新为已完成
+     * 唯一键冲突则只读库中已完成结果（无锁路径下即靠它承担互斥）
      * <p>
      * INSERT 用保存点包住：PostgreSQL 里唯一键冲突会把整个事务打成 aborted（后续语句 25P02），
-     * 不先回滚到保存点，冲突后的读回与整个事务都会硬失败；MySQL 无此限制，保存点两边通用。
+     * 不先回滚到保存点，冲突后的读回与整个事务都会失败；MySQL 无此限制，保存点两边通用。
      * 保存点只包住 INSERT，回滚它不影响调用方在本事务里的其它写入。
      */
     private Object runBusinessOnce(IdempotencyKey key, Type returnType, Supplier<Object> fn, TransactionStatus status) {
@@ -280,7 +280,7 @@ public class IdempotencyGuard {
     /**
      * 从 DB 加载已完成结果。
      *
-     * @param duplicateKeyContext true：唯一键冲突但无记录（异常态）；false：抢锁等待等场景，无记录视为处理中
+     * @param duplicateKeyContext true：唯一键冲突但无记录（异常态）；false：等锁未果等场景，无记录视为处理中
      */
     private Object loadCompletedResultFromDb(IdempotencyKey key, Type returnType, boolean duplicateKeyContext) {
         IdempotencyRecord existing = repository.findByNamespaceAndKey(key.namespace(), key.idempotencyKey());

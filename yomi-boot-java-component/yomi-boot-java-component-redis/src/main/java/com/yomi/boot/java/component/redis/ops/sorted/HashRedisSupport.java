@@ -72,7 +72,7 @@ public class HashRedisSupport {
      * hash字段不存在时返回空集合
      */
     public <T> List<T> getList(final String key, final String hKey, final Class<T> clazz) {
-        // 只是个提供了list的反序列化方法，如果不是list数据不要用这个方法
+        // 提供 list 的反序列化，仅适用于 list 数据
         Object value = get(key, hKey);
         if (Objects.isNull(value)) return Lists.of();
         return JsonUtils.jsonStr2List(JsonUtils.toJson(value), clazz);

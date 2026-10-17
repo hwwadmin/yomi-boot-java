@@ -119,7 +119,7 @@ public class DefaultHttpLogStore implements HttpLogStore {
     /** 采集记录转持久化实体 */
     private static HttpLogEntity toEntity(HttpLogRecord record) {
         HttpLogEntity entity = new HttpLogEntity();
-        // 注意：BaseEntity 的 setId 返回 BaseEntity，链式调用会断链，逐项设置
+        // BaseEntity 的 setId 返回 BaseEntity，链式调用会断链，逐项设置
         entity.setId(record.getId());
         entity.setServiceName(record.getServiceName());
         entity.setTraceId(record.getTraceId());

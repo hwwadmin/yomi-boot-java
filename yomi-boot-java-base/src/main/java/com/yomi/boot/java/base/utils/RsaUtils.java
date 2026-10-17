@@ -57,7 +57,7 @@ public abstract class RsaUtils {
     }
 
     /**
-     * 生成指定模长的 RSA 密钥对，{@code keySize} 不得小于 {@link #MIN_KEY_SIZE}。
+     * 生成指定模长的 RSA 密钥对，{@code keySize} 取 {@link #MIN_KEY_SIZE} 及以上。
      */
     public static KeyPair generateKeyPair(int keySize) {
         Assert.isTrue(keySize >= MIN_KEY_SIZE, "RSA key size must be >= {}", MIN_KEY_SIZE);
@@ -105,7 +105,7 @@ public abstract class RsaUtils {
     }
 
     /**
-     * 私钥 DER 编码（PKCS#8）；勿明文持久化或打日志。
+     * 私钥 DER 编码（PKCS#8）；按敏感数据处理，不做明文持久化与日志输出。
      */
     public static byte[] encodePrivateKey(PrivateKey privateKey) {
         Assert.nonNull(privateKey, "private key must not be null");
@@ -266,7 +266,7 @@ public abstract class RsaUtils {
         }
     }
 
-    /** OAEP 用显式参数初始化（无参时 SunJCE 的 MGF1 默认 SHA-1，跨端不兼容）；PKCS1 无参数 */
+    /** OAEP 显式指定 MGF1 摘要（SunJCE 默认 SHA-1，与对端不兼容）；PKCS1 无参数 */
     private static void initCipher(Cipher cipher, int opmode, Key key, RsaPadding padding)
             throws GeneralSecurityException {
         AlgorithmParameterSpec spec = padding.getParameterSpec();

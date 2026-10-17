@@ -24,7 +24,7 @@ public class EventOutboxQuery extends PageRequest {
     /** 状态过滤（PENDING/FETCHED/SENT_SUCCESS/SENT_FAIL） */
     private OutboxStatus status;
 
-    /** Topic 精确过滤 */
+    /** Topic 等值过滤 */
     private String topic;
 
     /** 创建时间起（含，ISO-8601） */

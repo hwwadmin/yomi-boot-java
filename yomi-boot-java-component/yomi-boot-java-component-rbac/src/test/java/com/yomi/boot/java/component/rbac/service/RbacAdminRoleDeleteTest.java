@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 角色删除统一用物理删除：连带解除绑定、编码可复用；
- * 唯一键冲突（并发或历史软删遗留行占用）必须报 COD 冲突而非"服务器繁忙"兜底
+ * 唯一键冲突（并发或历史软删遗留行占用）映射为明确的编码冲突错误码
  */
 class RbacAdminRoleDeleteTest {
 

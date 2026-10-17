@@ -35,7 +35,7 @@ class DesensitizeStrategyRegistryTest {
 
     @Test
     void constructor_blankOrNullStrategyName_failFast() {
-        // 空名/null 注册后也取不到：直接拒绝
+        // 空名/null 在注册时直接拒绝
         for (String name : new String[]{"", "  ", "\t"}) {
             IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                     () -> registry(Map.of("weirdStrategy", fixedName(name))), "name=" + name);
@@ -92,7 +92,7 @@ class DesensitizeStrategyRegistryTest {
 
     @Test
     void mask_nullOrEmptyValue_notDelegatedToStrategy() {
-        // 中心入口兜底：宿主策略只实现接口、自身不判空时报错也不该被触发
+        // 中心入口先判空：宿主策略只实现接口、自身不判空时不会被调用
         DesensitizeStrategy strict = new DesensitizeStrategy() {
             @Override
             public String name() {
@@ -108,7 +108,7 @@ class DesensitizeStrategyRegistryTest {
         assertNull(registry.mask("STRICT", null));
         assertEquals("", registry.mask("STRICT", ""));
         assertEquals("1***", registry.mask("STRICT", "13812345678"));
-        // 名称校验仍优先于值兜底：未注册名不因值为 null 而放行
+        // 名称校验优先于值判空：未注册名在值为 null 时同样报错
         assertThrows(IllegalArgumentException.class, () -> registry.mask("NOPE", null));
     }
 

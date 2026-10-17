@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 方言标识解析：MySQL→{@code mysql}、PostgreSQL→{@code pgsql}（与 {@code sql/mysql|pgsql} 目录同名）；
- * 库连上但方言不认识必须启动即失败（父类此时会静默返回 null，那样方言语句不会注册）；
+ * 库连上但方言不认识时启动即失败（父类对不认识的方言返回 null，方言语句就不会注册）；
  * 解析结果会在启动日志里展示（数据源类型）。
  */
 class DsDatabaseIdProviderTest {

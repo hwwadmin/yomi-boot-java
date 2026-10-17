@@ -50,7 +50,7 @@ final class KafkaProducerRecords {
     /**
      * 同步等待发送完成；超时或失败抛 {@link IllegalStateException}，消息中带 topic。
      * <p>元数据等待发生在 {@code template.send} 内部（最长客户端 max.block.ms），先于 {@code get(timeout)}；
-     * 该阶段超时会同步抛错，并被归为"发送失败"而不是"发送超时"。</p>
+     * 该阶段超时会同步抛错，走"发送失败"分支。</p>
      */
     static SendResult<String, Object> awaitSend(
             KafkaTemplate<String, Object> template,

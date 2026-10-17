@@ -23,11 +23,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * HTTP 请求日志采集过滤器：双 tee 包装采集请求/响应（透传恒完整），组装后非阻塞投递；采集异常绝不外溢。
+ * HTTP 请求日志采集过滤器：双 tee 包装采集请求/响应（透传恒完整），组装后非阻塞投递；采集异常不影响业务响应。
  * <p>async 请求在 ASYNC 分发结束时才采集（响应已写完、状态与耗时都是最终值）：首次分发只包装请求/响应并把
  * 起始时间、追踪号与包装器存进请求属性，ASYNC 分发复用同一对包装器——async 线程经包装 writer 写出的内容
- * 因此会随该分发结束时的 flush 一起落到真实响应，不会滞留在包装缓冲里。ERROR 分发（无 ASYNC 分发的异步
- * 异常路径也走它）不参与采集，与 FORWARD/INCLUDE 一样靠"已过滤"属性避免重复。
+ * 会随该分发结束时的 flush 一起落到真实响应，包装缓冲里不残留。ERROR 分发（无 ASYNC 分发的异步
+ * 异常路径也走它）不参与采集，与 FORWARD/INCLUDE 一样靠"已过滤"属性跳过重复采集。
  *
  * @author zwei
  */
@@ -95,7 +95,7 @@ public class HttpLogFilter extends OncePerRequestFilter {
         CollectContext context = (CollectContext) request.getAttribute(CONTEXT_ATTRIBUTE);
         if (context == null) {
             if (isAsyncDispatch(request)) {
-                // 首次分发未参与采集（路径被排除等）：ASYNC 分发不补采，避免只记到后半条
+                // 首次分发未参与采集（路径被排除等）时，ASYNC 分发一并跳过，不产生只有后半段的日志
                 chain.doFilter(request, response);
                 return;
             }
@@ -125,8 +125,8 @@ public class HttpLogFilter extends OncePerRequestFilter {
     }
 
     /**
-     * 业务经由包装 writer 写入的数据停留在其自身缓冲中，容器不会 flush 它——
-     * 必须在读取缓存前 flush；失败只计数，绝不掩盖业务异常（finally 中再抛会替换原始异常）
+     * 业务经由包装 writer 写入的数据停留在其自身缓冲中，容器不会 flush 它，读取缓存前先 flush；
+     * flush 失败只计数，正在传播的业务异常保持原样
      */
     private void flushWriterQuietly(CachingResponseWrapper response) {
         try {
@@ -136,7 +136,7 @@ public class HttpLogFilter extends OncePerRequestFilter {
         }
     }
 
-    /** 组装并投递；一切异常吞掉并计数，绝不影响业务响应 */
+    /** 组装并投递；异常吞掉并计数，业务响应不受影响 */
     private void collect(CollectContext context) {
         try {
             int durationMs = (int) Math.min(Integer.MAX_VALUE, (System.nanoTime() - context.startNanos) / 1_000_000);
@@ -191,7 +191,7 @@ public class HttpLogFilter extends OncePerRequestFilter {
 
     /**
      * 采集上下文：一次请求一对包装器，async 请求跨分发沿用（请求体缓存、响应体缓存与 async 线程持有的
-     * writer 都保持同一实例，flush 才能落到它身上）
+     * writer 都保持同一实例，flush 作用于同一个响应包装）
      */
     private static final class CollectContext {
 

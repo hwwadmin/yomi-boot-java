@@ -131,7 +131,7 @@ class RedissonConfigMappingTest {
         return new Node(host, port);
     }
 
-    /** 可编排的连接信息替身：默认全部为空（等价于接口的 default 返回 null） */
+    /** 可编排的连接信息替身：默认全部为空（接口 default 方法返回 null） */
     static class RedissonConfigTestDetails implements DataRedisConnectionDetails {
 
         Node standalone;

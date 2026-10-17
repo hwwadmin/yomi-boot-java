@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 /**
  * 令牌鉴权失败响应
  * <p>
- * 必须显式早于全局异常处理器生效：全局处理器对 {@link Exception} 有兜底处理，
+ * 本处理器的顺序早于全局异常处理器：全局处理器会对 {@link Exception} 统一处理，
  * 未指定顺序时 {@link TokenAuthException} 可能被渲染为"服务器繁忙"。
  *
  * @author zwei

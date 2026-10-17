@@ -21,7 +21,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 仓储参数健壮性（null/空集合不应 NPE）与批量查角色的一次性（不被角色数/关系行数放大）
+ * 仓储参数健壮性（null/空集合不抛 NPE）与批量查角色的一次性（查询次数与角色数/关系行数无关）
  */
 class RbacRelationRepositoryTest {
 
@@ -52,8 +52,8 @@ class RbacRelationRepositoryTest {
     }
 
     /**
-     * 角色必须一次批量取回：按角色逐个 selectById 时，查询数 = 涉及角色数 + 引用已软删角色的关系行数
-     * （软删角色查不到、缓存不住，关系行有多少就查多少次）
+     * 角色必须一次批量取回：一趟 selectByIds 覆盖全部角色，
+     * 查询次数与角色数、引用已软删角色的关系行数均无关
      */
     @Test
     void listRolesByUserIdsQueriesRolesOnceRegardlessOfRelationRows() {
@@ -93,7 +93,7 @@ class RbacRelationRepositoryTest {
         assertEquals(0, mappers.inserts);
     }
 
-    /** 代理 Mapper：只记录调用次数与批量条数，不触达数据库 */
+    /** 代理 Mapper：只记录调用次数，不触达数据库 */
     static class RecordingMappers {
 
         int selectCalls;

@@ -56,7 +56,7 @@ public class TokenAutoConfiguration {
         return keys;
     }
 
-    /** 进程内会话薄缓存（TTL=0 时为空转态，读写作空操作） */
+    /** 进程内会话缓存（TTL=0 时关闭，读写均为空操作） */
     @Bean
     @ConditionalOnMissingBean
     public TokenSessionCache tokenSessionCache(TokenProperties properties) {
@@ -65,9 +65,9 @@ public class TokenAutoConfiguration {
 
     /**
      * 失效通知通道：删除/替换在 Redis 生效后发布通知，同时作为订阅者接收其它实例的通知。
-     * <p>订阅注册在 {@link #tokenStore} 里做——那里已被"未自定义 TokenStore + Redis 已配置"把守：
-     * 宿主自带 TokenStore 时整条订阅链不参与（否则会给不使用的宿主白接一条 Redis 订阅，甚至拖垮启动）。</p>
-     * <p>发布失败只记 WARN——撤销本身已生效，其它实例靠条目 TTL 兜底</p>
+     * <p>订阅注册放在 {@link #tokenStore} 里做，只在未自定义 TokenStore 且 Redis 已配置时执行：
+     * 宿主提供 TokenStore 时以宿主实现为准，不注册失效通知订阅。</p>
+     * <p>发布失败只记 WARN：撤销已生效，其它实例按条目 TTL 到期后失效</p>
      */
     @Bean
     @ConditionalOnMissingBean
@@ -79,10 +79,10 @@ public class TokenAutoConfiguration {
     /**
      * 默认令牌存储（Redis）。
      * <p>
-     * 缺 Redis 判定复用 redis 组件的 {@link RedisConfiguredCondition#isConfigured}：<b>不能只看
-     * {@code StringRedisTemplate} 是否存在</b>——Boot 默认也会注册指向 localhost 的模板，
-     * 那样会"装配成功但每请求 500"（旧缺陷：{@code allow-multi-login=true} 时没有任何检查兜住）。
-     * 宿主自定义 {@link TokenStore} Bean 时不走本检查（按 {@code @ConditionalOnMissingBean} 让位）
+     * Redis 可用性判定复用 redis 组件的 {@link RedisConfiguredCondition#isConfigured}：
+     * 只看 {@code StringRedisTemplate} 是否存在并不够——Boot 默认也会注册指向 localhost 的模板，
+     * 只按模板判断会装配成功但每个请求报 500。
+     * 宿主自定义 {@link TokenStore} Bean 时以宿主实现为准（{@code @ConditionalOnMissingBean}）
      * </p>
      */
     @Bean
@@ -102,10 +102,10 @@ public class TokenAutoConfiguration {
     }
 
     /**
-     * 把失效通知订阅注册到现成的 {@code RedisMessageListenerContainer}（Boot 默认就注册一个，不另建容器：
-     * 早先按类型自建会被 Boot 那个顶掉，条件报告实测"谁都没订阅"）。
-     * <p>容器有多个（宿主自建 + Boot 默认）时不明选，退化为"只发不收"；容器在建连失败时会让上下文启动失败，
-     * 这正是 token 组件想要的 fail-fast——启用 token 却连不上 Redis，起不来比"起来了但每个请求 500"好</p>
+     * 把失效通知订阅注册到现成的 {@code RedisMessageListenerContainer}（Boot 默认会注册一个，不另建容器）。
+     * 容器有多个（宿主自建 + Boot 默认）时不做猜测，该实例只发不收。
+     * <p>容器建连失败会让上下文启动失败，这是启用 token 却连不上 Redis 时期望的行为：
+     * 启动失败比启动成功但每个请求报 500 更易发现</p>
      */
     private void registerInvalidationListener(TokenInvalidationChannel channel,
                                               ObjectProvider<RedisMessageListenerContainer> listenerContainers) {

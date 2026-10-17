@@ -40,7 +40,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @ConditionalOnProperty(value = "yomi.ratelimit")
 public class RequestLimitAop {
 
-    /** 注解 key 表达式是编译期常量，按表达式缓存解析结果，避免每次请求重建 AST */
+    /** 按 key 表达式缓存解析结果，重复请求复用已解析的 AST */
     private static final Map<String, Expression> EXPRESSION_CACHE = new ConcurrentHashMap<>();
 
     /** SpEL 解析限流键表达式 */
@@ -60,8 +60,8 @@ public class RequestLimitAop {
             throw new IllegalArgumentException("@RequestLimit 注解只能用于方法上");
 
         Object[] args = point.getArgs();
-        // 按“最具体方法”（实现类方法）解析注解与参数名：宿主配 spring.aop.proxy-target-class=false 时
-        // signature 拿到的是接口方法，注解只写在实现类方法上时直接取会为空
+        // 按实现类方法解析注解与参数名：proxy-target-class=false 时 signature 拿到的是接口方法，
+        // 注解与参数名都取自实现类方法
         Method method = AopUtils.getMostSpecificMethod(signature.getMethod(), point.getTarget().getClass());
         RequestLimit redisLimit = AnnotatedElementUtils.findMergedAnnotation(method, RequestLimit.class);
         // generate key
@@ -80,7 +80,7 @@ public class RequestLimitAop {
             key = redisLimit.key();
         }
         if (StringUtils.isBlank(key)) {
-            // 空限流键会让所有请求挤进同一个桶，直接失败更安全
+            // 空限流键会让所有请求共用一个桶，直接抛出异常
             throw BizException.exception("限流 key 不能为空，请检查 @RequestLimit key 表达式: " + redisLimit.key());
         }
         int replenishRate = redisLimit.replenishRate();
@@ -104,7 +104,7 @@ public class RequestLimitAop {
             // 框架业务异常透传，保留原始错误码与消息
             throw e;
         } catch (Error e) {
-            // 系统级 Error 原样抛出，不能包装成业务异常掩盖故障
+            // 系统级 Error 原样抛出，保留原始故障信息
             throw e;
         } catch (Throwable e) {
             throw BizException.exception(e, "请求限流处理失败");

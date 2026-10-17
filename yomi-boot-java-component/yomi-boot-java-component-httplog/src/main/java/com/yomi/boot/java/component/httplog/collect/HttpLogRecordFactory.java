@@ -80,7 +80,7 @@ public class HttpLogRecordFactory {
                 || (gateStatus && status >= collect.getStatusThreshold());
     }
 
-    /** 组装记录（本方法内异常由调用方兜底，绝不影响响应） */
+    /** 组装记录（本方法内的异常由调用方处理，业务响应不受影响） */
     public HttpLogRecord build(CachingRequestWrapper request, CachingResponseWrapper response,
                                String path, String traceId, Instant requestTime,
                                int durationMs, int status, boolean bodySkipped) {
@@ -96,7 +96,7 @@ public class HttpLogRecordFactory {
                 .queryString(truncate(desensitizeQuery(request.getQueryString()), MAX_QUERY))
                 .status(status)
                 .clientIp(truncate(resolveClientIp(request, collect.getTrustedProxies()), MAX_CLIENT_IP))
-                // ASYNC 分发即异步请求：采集已改到该分发结束，此刻 isAsyncStarted() 已为 false
+                // ASYNC 分发即异步请求：采集发生在该分发结束，此刻 isAsyncStarted() 已为 false
                 .asyncStarted(DispatcherType.ASYNC.equals(request.getDispatcherType()))
                 .build();
 
@@ -126,7 +126,7 @@ public class HttpLogRecordFactory {
         return record;
     }
 
-    /** 列宽兜底截断：任何来源（异常 method、enricher 超长填充）都不得超出 sys_http_log 列宽，否则整批插入失败丢弃 */
+    /** 列宽截断：任何来源（异常 method、enricher 超长填充）都截到 sys_http_log 列宽内，超宽会使整批插入失败丢弃 */
     private static void applyColumnLimits(HttpLogRecord record) {
         record.setTraceId(truncate(record.getTraceId(), MAX_TRACE_ID));
         record.setMethod(truncate(record.getMethod(), MAX_METHOD));

@@ -92,7 +92,7 @@ class TokenIntegrationTest {
         context.setServletContext(new MockServletContext());
         Map<String, Object> tokenProps = new HashMap<>();
         // tokenStore 装配按 RedisConfiguredCondition 判断"是否配了 Redis 连接目标"，
-        // 必须在环境里显式给出（IntegrationConfig 自建连接工厂不算），否则开闸后启动即失败
+        // 该属性要在环境里显式给出（IntegrationConfig 自建连接工厂不算），缺了启动即失败
         tokenProps.put("spring.data.redis.host", RedisTestSettings.host());
         tokenProps.put("spring.data.redis.port", String.valueOf(RedisTestSettings.port()));
         tokenProps.put("yomi.token.enabled", "true");
@@ -195,7 +195,7 @@ class TokenIntegrationTest {
         assertEquals(TokenErrorCode.INVALID,
                 assertThrows(TokenAuthException.class, () -> service.validate("unknown-token")).getErrorCode());
 
-        // 快照仍在 Redis（TTL 尚未到期）但 expireAt 已过，须由校验兜底拒绝并清理
+        // 快照仍在 Redis（TTL 尚未到期）但 expireAt 已过，由校验拒绝并清理
         TokenSession shortLived = sessionOf(1003L, Duration.ofSeconds(1));
         String token = service.issue(shortLived);
         sleepMillis(1200);
@@ -246,9 +246,9 @@ class TokenIntegrationTest {
     }
 
     /**
-     * 并发签发 × 按用户撤销：不变量"快照仍存活 ⇒ 必在用户索引里"必须始终成立。
-     * <p>旧实现（Java 侧先读索引、删快照，再 DEL 索引）在两步之间遇到签发，会把新令牌留成
-     * 撤销不掉、列表也看不到的漏网会话；本条在真 Redis 上反复交错以守住该不变量。</p>
+     * 并发签发 × 按用户撤销：不变量"快照仍存活 ⇒ 必在用户索引里"始终成立。
+     * <p>索引与快照由同一条 Lua 删除，并发签发与撤销交错时不会留下
+     * "快照在、索引不在"的会话；本条在真 Redis 上反复交错以守住该不变量。</p>
      */
     @Test
     void concurrentIssueAndRevokeNeverLeavesIndexlessSession() throws Exception {
@@ -316,7 +316,7 @@ class TokenIntegrationTest {
         assertThrows(BizException.class, () -> tokenService.listByUserId(null));
     }
 
-    // ==================== 滑动续期：绝对上限与"不复活"守卫 ====================
+    // ==================== 滑动续期：绝对上限与原子守卫 ====================
 
     @Test
     void renewIfPresentDoesNotResurrectRevokedSession() {
@@ -437,7 +437,7 @@ class TokenIntegrationTest {
     // ==================== 测试辅助 ====================
 
     /**
-     * 多端并发登录配置的服务实例：服务层用例走无锁路径，避免与单点登录锁耦合
+     * 多端并发登录配置的服务实例：服务层用例走无锁路径，与单点登录锁无关
      */
     private static ITokenService multiLoginService() {
         TokenProperties properties = new TokenProperties();
@@ -584,8 +584,8 @@ class TokenIntegrationTest {
     }
 
     /**
-     * 模拟框架全局异常处理器的 Exception 兜底：若令牌鉴权异常未被组件处理器优先接管，
-     * 401 断言将失败（该兜底会渲染成"服务器繁忙"），由此隐式验证处理器优先级
+     * 模拟框架全局异常处理器对 Exception 的统一处理：令牌鉴权异常未被组件处理器优先接管时，
+     * 会渲染成"服务器繁忙"导致 401 断言失败，由此隐式验证处理器优先级
      */
     @RestControllerAdvice
     @Order(Ordered.LOWEST_PRECEDENCE)

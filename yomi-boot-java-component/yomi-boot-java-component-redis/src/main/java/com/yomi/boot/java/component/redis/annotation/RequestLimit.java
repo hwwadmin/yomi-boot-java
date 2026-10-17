@@ -5,7 +5,7 @@ import java.lang.annotation.*;
 /**
  * 请求限流注解
  * <p>
- * 注解须写在<b>实现类方法</b>上（切面基于 {@code @annotation} 切点，注解只写在接口方法上时切点不匹配、限流不生效）
+ * 注解写在<b>实现类方法</b>上：切面按 {@code @annotation} 切点匹配实现类方法
  *
  * @author zwei
  */
@@ -16,8 +16,8 @@ import java.lang.annotation.*;
 public @interface RequestLimit {
 
     /**
-     * key must not empty
-     * 支持 spring spel, 当包含 # 符号，才解析 spel
+     * key，必填
+     * 包含 # 时按 SpEL 解析，否则作为字面量
      */
     String key();
 

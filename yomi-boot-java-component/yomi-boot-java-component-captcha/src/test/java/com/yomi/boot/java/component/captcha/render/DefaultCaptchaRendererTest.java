@@ -71,7 +71,7 @@ class DefaultCaptchaRendererTest {
     @Test
     void pngEncodingIgnoresImageIOCacheDirectory(@TempDir Path tempDir) throws Exception {
         // 把 ImageIO 的缓存目录指向一个随即删除的目录：走文件缓存的实现会因"目录不存在"直接失败
-        // （即线上 java.io.tmpdir 不可写/不存在时每次 generate 都 500 的根因）
+        // （对应线上 java.io.tmpdir 不可写/不存在时 generate 返回 500 的场景）
         File cacheDir = tempDir.resolve("imageio-cache").toFile();
         assertTrue(cacheDir.mkdir(), "创建缓存目录失败: " + cacheDir);
         File previousDirectory = ImageIO.getCacheDirectory();

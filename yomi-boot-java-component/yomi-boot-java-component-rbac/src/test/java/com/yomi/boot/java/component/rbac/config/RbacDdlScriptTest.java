@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 两套方言 DDL 的守卫：脚本在 classpath（随 jar 打包，见根 pom 的 sql resources），
- * 两个方言都必须声明组件全部表（含内置超管种子），且 pgsql 脚本不得残留 MySQL 专属写法。
+ * 两个方言都必须声明组件全部表（含内置超管种子），pgsql 脚本不含 MySQL 专属写法。
  */
 class RbacDdlScriptTest {
 

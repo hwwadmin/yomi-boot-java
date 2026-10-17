@@ -22,24 +22,24 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 启动期自检：容器里**每一个** {@code SqlSessionFactory} 都必须带分页 + 防全表写插件
+ * 启动期自检：容器里每个 {@code SqlSessionFactory} 都必须带分页 + 防全表写插件
  * <p>
- * 分页随 ds 组件强制生效（无开关）：组件里按 MP {@code Page} 取批的语句靠拦截器加 LIMIT，缺拦截器会静默退化成
- * 无上限全量取数——所以缺失**一律阻止启动**，宿主自管链、业务自建的附加库工厂都不例外。
- * {@link DsAutoConfiguration} 通过 {@code @AutoConfigureBefore} 优先注册本组件的拦截器链，本类兜底发现
- * 装配顺序竞争或自定义链导致的缺页（MP 的默认链抢占也会被点名）。
+ * 分页随 ds 组件强制生效（无开关）：组件里按 MP {@code Page} 取批的语句靠拦截器加 LIMIT，缺拦截器会退化成
+ * 无上限全量取数——所以缺失即阻止启动，宿主自管链、业务自建的附加库工厂都不例外。
+ * {@link DsAutoConfiguration} 通过 {@code @AutoConfigureBefore} 优先注册本组件的拦截器链，本类用于发现
+ * 装配顺序竞争或自定义链导致的缺页（MP 默认链先注册的情况也会被点名）。
  * <p>
  * 主库工厂另外校验 {@code InstantJdbcTypeHandler} 与 {@code databaseId} 是否就位（主库由本组件装配，
- * 缺了就是装配 bug）；业务自建的附加库工厂缺这两项只 WARN（那是业务工厂的装配口径，给出模板指引）。
+ * 缺了就是装配 bug）；业务自建的附加库工厂缺这两项只 WARN，并给出模板指引。
  * 跨库守卫（{@link DsCrossDbGuard}）缺失同样只 WARN：它是诊断能力，不会改变 SQL 语义；
- * 另外拦下"只写一半 ref"的附加库绑定（详见 {@link #checkMapperRefs}）。
+ * 另外校验"只写一半 ref"的附加库绑定（详见 {@link #checkMapperRefs}）。
  *
  * @author zwei
  */
 @Slf4j
 public class MybatisPlusChainChecker implements SmartInitializingSingleton {
 
-    /** MP 默认拦截器链的 Bean 名（即其 {@code @Bean} 方法名）；命中说明本组件在装配竞争里让位了 */
+    /** MP 默认拦截器链的 Bean 名（即其 {@code @Bean} 方法名）；命中说明 MP 的默认链先注册 */
     static final String MP_DEFAULT_BEAN_NAME = "defaultMybatisPlusInterceptor";
 
     /** 用于取回拦截器链与工厂/判断 Bean 名 */
@@ -66,8 +66,8 @@ public class MybatisPlusChainChecker implements SmartInitializingSingleton {
 
     /**
      * 只写一半 ref 的附加库绑定：{@link MapperFactoryBean} 的 {@code sqlSessionFactory} 与
-     * {@code sqlSessionTemplate} 两个属性都会被按类型自动装配，缺的那半会拿到容器里的**主库** Bean，
-     * 把该 Mapper 静默劫持到主库（已显式写的那半反过来被覆盖）。
+     * {@code sqlSessionTemplate} 两个属性都会被按类型自动装配，缺的那半会拿到容器里的主库 Bean，
+     * 该 Mapper 实际落到主库执行（已显式写的那半也一起被覆盖）。
      */
     private void checkMapperRefs(ConfigurableListableBeanFactory beanFactory, List<String> problems) {
         for (String beanName : beanFactory.getBeanDefinitionNames()) {
@@ -79,7 +79,7 @@ public class MybatisPlusChainChecker implements SmartInitializingSingleton {
             boolean factoryRef = values.contains("sqlSessionFactory");
             boolean templateRef = values.contains("sqlSessionTemplate");
             if (factoryRef == templateRef || refersToMaster(values, factoryRef)) {
-                // 都写 = 显式绑定；都不写 = 走主库（@Primary 兜底）；指向主库时写一半无害（容器里的模板就是主库的）
+                // 都写 = 显式绑定；都不写 = 按 @Primary 走主库；指向主库时写一半无害（容器里的模板就是主库的）
                 continue;
             }
             problems.add("Mapper 绑定 [" + beanName + "] 只写了 "
@@ -101,7 +101,7 @@ public class MybatisPlusChainChecker implements SmartInitializingSingleton {
         return masterBeanName.equals(reference.getBeanName());
     }
 
-    /** 容器里的链 Bean 必须带分页：本组件接管过装配顺序，这里兜底竞争与宿主自定义链 */
+    /** 容器里的链 Bean 必须带分页：本组件接管过装配顺序，这里检查装配竞争与宿主自定义链 */
     private void checkChainBean() {
         Map<String, MybatisPlusInterceptor> chains = context.getBeansOfType(MybatisPlusInterceptor.class);
         if (chains.isEmpty()) {
@@ -124,7 +124,7 @@ public class MybatisPlusChainChecker implements SmartInitializingSingleton {
                     + "① 不要自己定义 MybatisPlusInterceptor，让本组件接管（已声明 @AutoConfigureBefore 抢占）"
                     + "② 自行管理：定义自己的 MybatisPlusInterceptor Bean 并自行补上分页与防全表写。当前链: " + describe(chains));
         }
-        // 宿主自管链同样强制：分页是硬依赖（按 Page 取批的语句靠它加 LIMIT），不再只告警
+        // 宿主自管链同样强制：分页是硬依赖（按 Page 取批的语句靠它加 LIMIT），缺失即失败
         throw new IllegalStateException("MyBatis-Plus 拦截器链里没有分页插件（宿主自定义了 MybatisPlusInterceptor）："
                 + "分页随 ds 组件强制生效（组件里按 Page 取批的语句依赖它加 LIMIT，缺了会无上限全量取数）。出路："
                 + "① 不要自己定义 MybatisPlusInterceptor，让本组件接管（含分页 + 防全表写）"
@@ -159,7 +159,7 @@ public class MybatisPlusChainChecker implements SmartInitializingSingleton {
                     + "（PG 驱动不接受 setObject(Instant)）");
         }
         if (factory.getConfiguration().getDatabaseId() == null) {
-            // 连不上库是受支持形态（此时方言语句不注册属预期）；连上却不认识方言时 DsDatabaseIdProvider 已 fail-fast
+            // 连不上库是受支持形态（此时方言语句不注册属预期）；连上却不认识方言时 DsDatabaseIdProvider 会启动失败
             log.warn("[ds] 工厂 {} 未解析出数据库方言（databaseId）：XML 里的 databaseId 方言语句不会注册。"
                     + "库连不上时属预期（启动期不探库）；若库正常，请检查 DsDatabaseIdProvider 是否装配", beanName);
         }
@@ -170,7 +170,7 @@ public class MybatisPlusChainChecker implements SmartInitializingSingleton {
         }
     }
 
-    /** 主库工厂缺项 → 记问题（fail-fast）；附加库工厂缺项 → 只 WARN */
+    /** 主库工厂缺项 → 记问题并启动失败；附加库工厂缺项 → 只 WARN */
     private static void report(String beanName, boolean masterFactory, List<String> problems, String detail) {
         if (masterFactory) {
             problems.add("主库工厂 " + beanName + " " + detail + "（主库由 component-ds 装配，缺了就是装配 bug）");

@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 服务层契约：一次性消费、大小写不敏感、过期、诚实失败（基础设施异常不伪装成输错）
+ * 服务层契约：一次性消费、大小写不敏感、过期、基础设施异常按 500 抛出
  */
 class CaptchaServiceTest {
 

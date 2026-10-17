@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * rbac 装配契约：六个仓储 Bean 与 Mapper 都由装配类注册（Mapper 由装配类的 {@code @MapperScan} 扫，
- * 宿主无需扫描 {@code com.yomi}，也不必为组件 Mapper 配置 @MapperScan）；
+ * 宿主只需按常规扫描自己的包）；
  * Mapper 缺失时给出带建表脚本与自动扫描说明的启动失败
  */
 class RbacAutoConfigurationTest {
@@ -80,7 +80,7 @@ class RbacAutoConfigurationTest {
         assertTrue(error.getMessage().contains("自动配置扫描"), error.getMessage());
     }
 
-    /** 放行路径带首尾空格：Spring 的 excludePathPatterns 不报错也永不命中（静默全量 403），装配期必须拦下 */
+    /** 放行路径带首尾空格：Spring 的 excludePathPatterns 不报错也永不命中（全量 403），装配期报错拦下 */
     @Test
     void whitespaceSkipAuthorizePathFailsFastAtStartup() {
         runner().withBean(SqlSessionFactory.class, RbacAutoConfigurationTest::sqlSessionFactoryStub)

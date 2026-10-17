@@ -78,7 +78,7 @@ public class TokenKeys {
     }
 
     /**
-     * 拼旧快照键时使用的固定前缀（Lua 按成员散列批量 DEL）
+     * 拼快照键用的固定前缀（Lua 按成员散列批量 DEL）
      */
     public String sessionKeyPrefix(Long userId) {
         return userHashTag(userId) + SESSION_SUFFIX;

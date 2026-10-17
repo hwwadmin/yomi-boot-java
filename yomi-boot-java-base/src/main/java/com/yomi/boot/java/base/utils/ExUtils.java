@@ -20,7 +20,7 @@ public class ExUtils {
     private static final String DEFAULT_EXCEPTION_MSG = "Operation failed";
 
     /**
-     * 堆栈字符串默认最大长度（与原 Hutool ExceptionUtil 一致）
+     * 堆栈字符串默认最大长度
      */
     private static final int DEFAULT_STACKTRACE_LIMIT = 3000;
 

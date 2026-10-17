@@ -38,8 +38,8 @@ class RoundRobinSleepTest {
     }
 
     /**
-     * 线程中断标志置位时，休眠应正常结束且不应忙等
-     * （实测：400ms 休眠消耗 390ms CPU，对照 0ms）
+     * 线程中断标志置位时，休眠按时长正常结束，CPU 占用保持在低位
+     * （400ms 休眠的 CPU 消耗断言低于 100ms；中断标志原样还原给调用方）
      */
     @Test
     void doesNotSpinWhenInterruptFlagIsSet() {

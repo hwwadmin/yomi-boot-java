@@ -22,8 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 任务异常触发连续失败计数与指数退避；任务/框架层 Error 一视同仁（不得吞成"本轮成功"）；
- * 循环自身出错必须亮着退出（日志与正常停机可区分）
+ * 任务异常触发连续失败计数与指数退避；任务/框架层 Error 一视同仁（都计入连续失败）；
+ * 循环自身出错则记 ERROR 退出（日志与正常停机可区分）
  */
 class RoundRobinLoopTest {
 
@@ -67,8 +67,8 @@ class RoundRobinLoopTest {
     }
 
     /**
-     * 任务恒抛 Error（如 NoClassDefFoundError）必须与 Exception 同等计入连续失败并退避：
-     * 旧行为把它吞成"本轮成功"，于是按正常频率无限重试、监控上看不出异常
+     * 任务恒抛 Error（如 NoClassDefFoundError）与 Exception 同等计入连续失败并退避：
+     * 按退避节奏重试，连续失败计数与日志持续增长
      */
     @Test
     void taskErrorsAreCountedAndBackedOff() throws Exception {
@@ -137,8 +137,8 @@ class RoundRobinLoopTest {
     }
 
     /**
-     * 循环自身的节奏代码出错（这里用缺 jitter 配置触发 NPE 代跑"框架层错误逃出单轮容错"这条路径）：
-     * worker 线程结束，但不能与正常停机同形——必须留 ERROR 与"异常退出"标记
+     * 循环自身的节奏代码出错（这里用缺 jitter 配置触发 NPE，走"框架层错误逃出单轮容错"这条路径）：
+     * worker 线程结束，日志留 ERROR 与"异常退出"标记，与正常停机区分
      */
     @Test
     void abnormalExitIsLoggedWhenErrorEscapesRoundTolerance() throws Exception {

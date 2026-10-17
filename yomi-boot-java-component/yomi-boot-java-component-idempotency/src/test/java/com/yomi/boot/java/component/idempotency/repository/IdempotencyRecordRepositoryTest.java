@@ -21,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 幂等记录仓储的语义回归锁：原 {@code IdempotencyRecordMapper.xml} 的 markCompleted 已改由
- * LambdaUpdateWrapper 表达，这里锁住"处理中 → 已完成 + 结果快照 + 行数==1 才通过"的语义。
+ * 幂等记录仓储的语义：markCompleted 用 LambdaUpdateWrapper 表达，
+ * 行为固定为"处理中 → 已完成 + 结果快照 + 行数==1 才通过"。
  */
 class IdempotencyRecordRepositoryTest {
 
@@ -63,7 +63,7 @@ class IdempotencyRecordRepositoryTest {
         assertThrows(AssertException.class, () -> repository.markCompleted(9L, "java.lang.String", "\"ok\""));
     }
 
-    /** 业务返回空结果时必须显式写 NULL（不能因空值而漏掉 SET，否则残留上一轮结果） */
+    /** 业务返回空结果时显式写 NULL（SET 语句照常带上该列，不会残留上一轮结果） */
     @Test
     void markCompletedWritesExplicitNullResult() {
         Stub stub = new Stub();
@@ -77,7 +77,7 @@ class IdempotencyRecordRepositoryTest {
 
     // ===== 夹具 =====
 
-    /** SQL 片段比较前压掉空白并统一小写，避免断言绑在 MP 的排版/大小写细节上 */
+    /** SQL 片段比较前压掉空白并统一小写，断言不依赖 MP 的排版/大小写细节 */
     private static String compact(String sql) {
         return sql == null ? "" : sql.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }

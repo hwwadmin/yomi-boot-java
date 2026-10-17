@@ -64,7 +64,7 @@ public interface IRbacAdminService {
     void setRoleStatus(long id, long actorId, int status);
 
     /**
-     * 物理删除角色（编码可复用）；连带解除该角色的权限组与用户绑定；
+     * 物理删除角色：编码可复用，并连带解除该角色的权限组与用户绑定；
      * 内置角色不可删除
      */
     void deleteRole(long id, long actorId);
@@ -89,7 +89,7 @@ public interface IRbacAdminService {
     /** 当前持有启用超管角色的用户 ID 列表 */
     List<Long> listUserIdsWithEnabledSuperAdmin();
 
-    /** 将内置超管角色标记为不可变（运维用，防误删/误禁） */
+    /** 将内置超管角色标记为不可变（运维用） */
     void lockSuperAdminRole();
 
 }

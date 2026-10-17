@@ -28,8 +28,8 @@ import java.util.Random;
 /**
  * 默认渲染器：背景渐变 → 干扰线 → 逐字绘制 → 噪点 → 自定义滤镜 → 波纹
  * <p>
- * 同文本 + 同种子输出字节一致；字符总宽或字形框高超出画布时按字体度量等比缩小字号而非裁切——
- * 裁切会让图上内容与答案不一致，是最难排查的静默故障。
+ * 同文本 + 同种子输出字节一致；字符总宽或字形框高超出画布时按字体度量等比缩小字号，
+ * 裁切会让图上内容与答案不一致，用户无法照图输入、问题也难排查。
  *
  * @author zwei
  */
@@ -81,7 +81,7 @@ public class DefaultCaptchaRenderer implements CaptchaRenderer {
                 ? new WaveFilter(filter.getWave().getAmplitude(), filter.getWave().getWavelength())
                 : null;
         this.overlayFilters = List.copyOf(overlayFilters);
-        // 预热：把字体与绘图类初始化成本（首张约 90ms）移出用户请求路径
+        // 预热：把字体与绘图类的初始化成本移出用户请求路径
         render("A1B2", 0L);
         log.info("[Captcha] 渲染器已就绪: 字体={}, 画布={}x{}, 字号={}, 干扰线={}, 噪点={}, 波纹={}, 自定义滤镜={}",
                 baseFont.getFamily(), properties.getImage().getWidth(), properties.getImage().getHeight(),
@@ -139,8 +139,8 @@ public class DefaultCaptchaRenderer implements CaptchaRenderer {
         if (totalWidth > canvas.getWidth() - 2 * MARGIN) {
             scale = (double) (canvas.getWidth() - 2 * MARGIN) / totalWidth;
         }
-        // 纵向同样按字体度量贴合：字形框（ascent+descent）加基线抖动与字号抖动后仍须落在画布内，
-        // 否则带降部（g/q/y）的字符会被画到画布外（字体框远高于字号本身：Roboto ≈ 1.17em）
+        // 纵向同样按字体度量贴合：按字形框（ascent+descent）加基线抖动与字号抖动计算可用高度，
+        // 字形框远高于字号本身（Roboto ≈ 1.17em），照字号估算会把带降部（g/q/y）的字符画出画布
         double glyphHeight = metrics.getAscent() + metrics.getDescent();
         double heightBudget = canvas.getHeight() - 2 * image.getBaselineJitter();
         scale = Math.min(scale, heightBudget / (glyphHeight * (1 + FONT_SIZE_JITTER_RATIO)));
@@ -152,7 +152,7 @@ public class DefaultCaptchaRenderer implements CaptchaRenderer {
             glyphHeight = metrics.getAscent() + metrics.getDescent();
         }
         int x = Math.max(MARGIN, (canvas.getWidth() - totalWidth) / 2);
-        // 基线按 ascent/descent 居中，而不是按字号估算（字号 ≈ 1.17×字形框，估算会把字压到画布下缘）
+        // 基线按 ascent/descent 居中（字号 ≈ 1.17×字形框，按字号估算会把字压到画布下缘）
         int baseline = (int) Math.round((canvas.getHeight() - glyphHeight) / 2 + metrics.getAscent());
         int sizeJitter = Math.max(1, (int) (fontSize * FONT_SIZE_JITTER_RATIO));
         for (int i = 0; i < text.length(); i++) {
@@ -221,7 +221,7 @@ public class DefaultCaptchaRenderer implements CaptchaRenderer {
         }
     }
 
-    /** PNG 编码：显式走内存缓存流，ImageIO 默认的文件缓存要求 java.io.tmpdir 可写，容器只读根文件系统下会整块失败 */
+    /** PNG 编码：显式走内存缓存流，ImageIO 默认的文件缓存要求 java.io.tmpdir 可写，容器只读根文件系统下无法使用 */
     private static byte[] toPng(BufferedImage image) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream();
              ImageOutputStream imageOut = new MemoryCacheImageOutputStream(out)) {

@@ -22,8 +22,8 @@ public class IdempotencyKeys {
 
     /**
      * 成功结果缓存键
-     * <p>带请求指纹时把指纹摘要并入键：否则"同键不同体"在缓存 TTL 内会命中上次结果，
-     * 绕过库里那道指纹校验（缓存是快路径，最先被读到）</p>
+     * <p>带请求指纹时把指纹摘要并入键：缓存是快路径、最先被读到，键里不带指纹时"同键不同体"
+     * 在缓存 TTL 内会命中上次结果，绕过库里的指纹校验</p>
      */
     public String resultKey(IdempotencyKey key) {
         String base = prefix + ":result:" + key.namespace() + ":" + key.idempotencyKey();

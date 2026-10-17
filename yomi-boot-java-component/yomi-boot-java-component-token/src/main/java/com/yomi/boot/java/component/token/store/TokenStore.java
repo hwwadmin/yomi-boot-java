@@ -40,9 +40,9 @@ public interface TokenStore {
     void replaceAllForUser(String token, TokenSession session);
 
     /**
-     * 滑动续期：仅当会话仍存在时才写回快照（原子守卫，防止把刚被注销/踢出的会话写回复活）。
+     * 滑动续期：仅当会话仍存在时才写回快照（原子守卫：已注销/踢出的会话保持删除状态）。
      *
-     * @return true=已写回；false=会话已不存在，未做任何写入（调用方不应视为续期成功）
+     * @return true=已写回；false=会话已不存在，未做任何写入（调用方按续期失败处理）
      */
     boolean renewIfPresent(String token, TokenSession session);
 

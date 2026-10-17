@@ -28,7 +28,7 @@ class StrUtilsTest {
 
     @Test
     void joinRejectsNullDelimiterWithAssert() {
-        // 回归锁：null 分隔符原先在 String.join 处直接 NPE，现已统一为 AssertException
+        // null 分隔符抛 AssertException
         assertThrows(AssertException.class, () -> StrUtils.join(List.of("a", "b"), null));
     }
 

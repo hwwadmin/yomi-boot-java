@@ -17,11 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 机器号监听器：{@code yomi.id.*} 绑定值显式传入 IdUtils；
- * worker-id 缺失必须直接启动失败，不得推迟到首次生成 ID
+ * worker-id 缺失时启动失败，校验发生在首次生成 ID 之前
  */
 class IdWorkerEnvironmentListenerTest {
 
-    /** 雪花单例是 JVM 级状态，逐个用例重置，避免重复初始化参数不一致 */
+    /** 雪花单例是 JVM 级状态，逐个用例重置，保证各用例的初始化参数独立 */
     @BeforeEach
     void resetSnowflake() throws Exception {
         Field instanceField = IdUtils.class.getDeclaredField("instance");

@@ -10,8 +10,8 @@ import java.util.List;
 /**
  * 日志仓储（端口）：sys_http_log 的持久化唯一出入口
  * <p>
- * 查询服务/落库 store/保留期清理一律经本接口访问，**不得越过仓储直接调用 Mapper**；
- * 默认实现 {@link HttpLogRepository}，宿主可自行实现本接口并注册 Bean 顶替。
+ * 查询服务/落库 store/保留期清理统一经由本接口访问，直连 Mapper 的只有仓储实现；
+ * 默认实现 {@link HttpLogRepository}，宿主自行实现本接口并注册 Bean 后以宿主的实现为准。
  *
  * @author zwei
  */
@@ -33,7 +33,7 @@ public interface IHttpLogRepository {
     /** 单条插入（完整性冲突逐条隔离场景） */
     void insert(HttpLogEntity entity);
 
-    /** 过期行 id 取样（保留期清理第一阶段；不用 DELETE ... LIMIT 方言） */
+    /** 过期行 id 取样（保留期清理第一阶段；删除按 id 逐批执行，SQL 保持跨库通用） */
     List<Long> selectExpiredIds(String serviceName, Instant before, int limit);
 
     /** 按 id 删除（保留期清理第二阶段） */

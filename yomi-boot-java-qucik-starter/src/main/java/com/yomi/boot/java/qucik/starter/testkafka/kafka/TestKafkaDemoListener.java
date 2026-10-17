@@ -9,9 +9,9 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 /**
- * Kafka 演示消费（与 event 发件箱无关）。
- * <p>全局 {@code ack-mode: manual}：消费完必须显式 {@code acknowledge()}，否则位点永不提交、
- * 每次重启从头重放（对照 event 演示的 {@link com.yomi.boot.java.qucik.starter.testevent.kafka.TestEventDemoKafkaListener}）</p>
+ * Kafka 演示消费（独立于 event 组件的发件箱）。
+ * <p>全局 {@code ack-mode: manual}：位点由消费端显式 {@code acknowledge()} 提交，未 ack 的消息
+ * 在每次重启后从头重放（对照 event 演示的 {@link com.yomi.boot.java.qucik.starter.testevent.kafka.TestEventDemoKafkaListener}）</p>
  */
 @Slf4j
 @Component

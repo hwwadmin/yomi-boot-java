@@ -97,8 +97,8 @@ public class EventAutoConfiguration {
                                          ObjectProvider<KafkaTemplate<String, Object>> kafkaTemplateProvider,
                                          ObjectProvider<RoundRobinRegistry> roundRobinRegistryProvider) {
         properties.validate();
-        // 轮询调度是否真的可用：以容器里有没有 RoundRobinRegistry 为准，
-        // 不读 yomi.roundrobin.enabled（该键只认字面量 true，'1'/'yes' 会让属性判定通过而任务静默不注册）
+        // 轮询调度是否可用：以容器里有没有 RoundRobinRegistry 为准，
+        // 不看 yomi.roundrobin.enabled（该键只认字面量 true，'1'/'yes' 时属性判定通过但任务不会注册）
         boolean roundRobinReady = roundRobinRegistryProvider.getIfAvailable() != null;
         if (properties.isPublisherEnabled()) {
             requireRoundRobin(roundRobinReady, "yomi.event.publisher-enabled=true");
@@ -114,7 +114,7 @@ public class EventAutoConfiguration {
         return new EventBootstrap();
     }
 
-    /** 依赖轮询调度的开关：RoundRobinRegistry 不在容器里即启动失败（不读属性，防"真值但非 true"静默） */
+    /** 依赖轮询调度的开关：RoundRobinRegistry 不在容器里即启动失败（按容器内的 Bean 判定，不看属性字面量） */
     static void requireRoundRobin(boolean roundRobinReady, String switchedOn) {
         if (roundRobinReady) {
             return;
@@ -125,8 +125,8 @@ public class EventAutoConfiguration {
     }
 
     /**
-     * 保留期清理的依赖校验：发布侧已被 {@link #requireRoundRobin} 挡住，
-     * 消费侧是"开关开启但任务被 roundrobin 条件静默过滤"的剩余缺口，这里把它变响亮
+     * 保留期清理的依赖校验：发布侧由 {@link #requireRoundRobin} 覆盖，
+     * 消费侧在这里单独校验：开关开启但 RoundRobin 不可用时启动失败，报错点明需要的配置
      */
     static void requireRoundRobinForRetention(EventProperties properties, boolean roundRobinReady) {
         EventProperties.Retention retention = properties.getRetention();
@@ -147,11 +147,11 @@ public class EventAutoConfiguration {
     }
 
     /**
-     * 兜底事务模板：容器里已有（Boot 标准 Bean 或宿主自定义）即按 {@code @ConditionalOnMissingBean} 原样复用，
+     * 事务模板：容器里已有（Boot 标准 Bean 或宿主自定义）即按 {@code @ConditionalOnMissingBean} 原样复用，
      * 都没有才注册默认 REQUIRED 模板。消费侧 inbox 插入与业务写入必须同事务，所以只认应用的事务管理器：
-     * 多个管理器无 {@code @Primary} 时启动失败点名候选，不会静默挑一个。
-     * <p>类上的 {@code @AutoConfigureAfter(Boot TransactionAutoConfiguration)} 不可删：不加时按类名字母序
-     * 组件会先于 Boot 注册，抢占容器级 {@code transactionTemplate} Bean 名。
+     * 多个管理器无 {@code @Primary} 时启动失败，报错点名候选。
+     * <p>类上的 {@code @AutoConfigureAfter(Boot TransactionAutoConfiguration)} 保证注册顺序：缺它时按类名字母序，
+     * 组件会先于 Boot 注册，占用容器级 {@code transactionTemplate} 这个 Bean 名。
      */
     @Bean
     @ConditionalOnMissingBean(TransactionTemplate.class)
@@ -272,7 +272,7 @@ public class EventAutoConfiguration {
         /**
          * 收件箱保留期清理（默认关闭，需额外开启 inbox-retention-enabled）。
          * <p>收件箱行是"只消费一次"的依据：保留期必须 ≥ 事件可能被重投的最长时间（Kafka topic retention），
-         * 否则超期重投的事件会被当作新消息再消费一次</p>
+         * 保留期短于这个窗口时，超期重投的事件会被当作新消息再消费一次</p>
          */
         @Bean
         @ConditionalOnClass(RoundRobinTask.class)
@@ -343,8 +343,8 @@ public class EventAutoConfiguration {
     }
 
     /**
-     * 发布侧 KafkaTemplate 启动期强校验（原实现只查"存在"，配了 bean 名不校验、多候选时还会抛容器原始歧义异常）；
-     * 校验放到启动期，避免"第一条消息发送才失败"：
+     * 发布侧 KafkaTemplate 启动期校验：第一条消息发送前就确定用哪个模板，
+     * 配错或候选不唯一时启动失败，报错给出候选列表与对应配置键：
      * <ul>
      *     <li>配了 {@code yomi.event.kafka-template-bean-name} → 该名称必须存在且是 KafkaTemplate；</li>
      *     <li>未配 → 必须能唯一确定（唯一候选或 @Primary），多候选无 @Primary 直接启动失败</li>

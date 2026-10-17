@@ -14,8 +14,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 错误转发（{@link DispatcherType#ERROR}，如 404/500 转发到 {@code /error}）必须放行：
- * 否则真实状态会被改写成"缺少访问令牌"，客户端把"接口不存在/服务出错"误判为"没登录"
+ * 错误转发（{@link DispatcherType#ERROR}，如 404/500 转发到 {@code /error}）直接放行：
+ * 放行后真实状态得以保留，客户端不会把"接口不存在/服务出错"误判为"没登录"
  */
 class TokenInterceptorDispatchTest {
 

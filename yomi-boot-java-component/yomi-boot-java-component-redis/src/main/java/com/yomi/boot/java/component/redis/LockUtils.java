@@ -123,7 +123,7 @@ public abstract class LockUtils {
             action.accept(lock);
             locked = true;
         } catch (final Exception e) {
-            if (ExUtils.isCausedBySystem(e)) throw e; // 锁忙等业务化异常原样抛
+            if (ExUtils.isCausedBySystem(e)) throw e; // 锁忙等业务异常原样抛出
             throw UtilsException.exception(e, exceptionMsg);
         }
         try {
@@ -133,8 +133,8 @@ public abstract class LockUtils {
                 try {
                     lock.unlock();
                 } catch (Exception e) {
-                    // 锁可能已过期易主或 Redis 不可达；锁终会自动过期，
-                    // 释放失败只记日志，不能遮蔽业务异常
+                    // 锁可能已过期或被其他实例持有，Redis 也可能不可达；锁到期自动释放，
+                    // 释放失败只记日志，业务异常照常抛出
                     log.warn("分布式锁释放失败，可能已过期或易主", e);
                 }
             }

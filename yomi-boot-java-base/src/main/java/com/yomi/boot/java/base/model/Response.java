@@ -41,7 +41,7 @@ public class Response<T> implements Serializable {
     protected T data;
 
     /**
-     * 调试用响应消息，这个消息只用于调试前端不要直接展示
+     * 调试用响应消息，只用于调试排查，前端不直接展示
      */
     protected String debugMessage;
 

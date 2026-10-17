@@ -30,8 +30,8 @@ import java.util.Map;
 /**
  * redis 模式传输：L1 有界缓冲 → 发送线程批量写入 Redis → 消费线程批量读取 → 回调
  * <p>structure=list（默认）：RPUSH 批量写 / LPOP count 批量读（Redis ≥ 6.2），pop 即删不重复；
- * structure=stream：XADD + 消费组 XREADGROUP；无论成败都按批 XACK（失败按丢弃计数，不允许无限重投）；
- * 崩溃遗留的 PEL 由同名 consumer（默认主机名，可配）重启后补投，不认领其他实例的 PEL。
+ * structure=stream：XADD + 消费组 XREADGROUP；无论成败都按批 XACK（失败按丢弃计数）；
+ * 崩溃遗留的 PEL 由同名 consumer（默认主机名，可配）重启后补投，每个 consumer 只处理自己的 PEL。
  * <p>发送前完成 body 补脱敏：进入介质的即为脱敏后数据。
  *
  * @author zwei
@@ -73,7 +73,7 @@ public class RedisHttpLogTransport extends AbstractBufferedTransport implements 
         this.consumerName = resolveConsumerName(properties.getRedis());
     }
 
-    /** 启动 BRPOP 消费线程 */
+    /** 启动发送线程与消费线程 */
     @Override
     public void start(HttpLogBatchHandler handler) {
         if (!running.compareAndSet(false, true)) {
@@ -101,7 +101,7 @@ public class RedisHttpLogTransport extends AbstractBufferedTransport implements 
         stopThread(consumerThread, timeout);
     }
 
-    /** List 结构读写 */
+    /** 批量写入介质：stream 用 XADD，list 用 RPUSH 批量写 */
     @Override
     protected void writeBatch(List<HttpLogRecord> batch) {
         if (properties.getRedis().getStructure() == HttpLogProperties.RedisStructure.STREAM) {
@@ -147,7 +147,7 @@ public class RedisHttpLogTransport extends AbstractBufferedTransport implements 
 
     /**
      * stream 结构消费：组就绪后先补自身 PEL 遗留（崩溃恢复），再读新消息；
-     * 失败批按"允许丢"契约丢弃并计数（不无限重投）；组丢失（NOGROUP）时自动重建
+     * 失败批按"允许丢"契约丢弃并计数；组丢失（NOGROUP）时自动重建
      */
     private void consumeStream(HttpLogBatchHandler handler) {
         HttpLogProperties.Redis redis = properties.getRedis();
@@ -208,7 +208,7 @@ public class RedisHttpLogTransport extends AbstractBufferedTransport implements 
         redisTemplate.opsForStream().acknowledge(queueKey, group, ids);
     }
 
-    /** 建组（幂等）；key 尚不存在等失败返回 false 由调用方退避重试，绝不抛出终止消费线程 */
+    /** 建组（幂等）；key 尚不存在等失败返回 false 由调用方退避重试，异常不外抛、消费线程继续运行 */
     private boolean ensureGroupSafely() {
         try {
             redisTemplate.opsForStream().createGroup(queueKey, ReadOffset.latest(), group);
@@ -219,7 +219,7 @@ public class RedisHttpLogTransport extends AbstractBufferedTransport implements 
                 groupWarned = false;
                 return true;
             }
-            // 连续失败只告警一次（低频服务夜间无流量时避免每 500ms 刷 WARN），恢复后重置
+            // 连续失败只告警一次（低频服务夜间无流量，逐次告警会持续刷 WARN），恢复后重置
             if (!groupWarned) {
                 groupWarned = true;
                 log.warn("[httplog]stream 消费组建组失败（key 可能尚不存在），转入退避重试、恢复后自动建组: {}",
@@ -257,7 +257,7 @@ public class RedisHttpLogTransport extends AbstractBufferedTransport implements 
         return false;
     }
 
-    /** 执行业务逻辑 */
+    /** 回调处理一批并统计失败 */
     private void handle(HttpLogBatchHandler handler, List<HttpLogRecord> batch, String stage) {
         if (batch.isEmpty()) {
             return;

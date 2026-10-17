@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 链自检形态：
- * ① 容器里的链 Bean 缺分页**一律 fail-fast**（MP 默认链抢占、宿主自管链缺分页、一个链都没有）；
- * ② **每一个** {@code SqlSessionFactory}（含业务自建的附加库工厂）的链里都必须有分页 + 防全表写，缺失拦启动；
+ * ① 容器里的链 Bean 缺分页时拦启动（MP 默认链、宿主自管链、一个链都没有都算）；
+ * ② 每个 {@code SqlSessionFactory}（含业务自建的附加库工厂）的链里都要有分页 + 防全表写，缺失拦启动；
  * ③ 主库工厂缺 Instant 处理器/方言标识同样拦启动（主库由本组件装配）；附加库工厂缺这两项只 WARN；
  * ④ 未挂跨库守卫只 WARN（诊断能力，不改变 SQL 语义）。
  */
@@ -89,7 +89,7 @@ class MybatisPlusChainCheckerTest {
         assertDoesNotThrow(checker::afterSingletonsInstantiated);
     }
 
-    /** 业务自建的附加库工厂缺分页：拦启动并点名（分页缺失是静默的全量取数） */
+    /** 业务自建的附加库工厂缺分页：启动即拦下并点名（缺分页的分页查询会退化成全量取数） */
     @Test
     void failsFastWhenAdditionalLibraryFactoryMissesPagination() {
         MybatisPlusChainChecker checker = new MybatisPlusChainChecker(

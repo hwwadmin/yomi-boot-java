@@ -161,7 +161,7 @@ public abstract class AesUtils {
     }
 
     /**
-     * 使用指定 IV 加密（测试或与对端固定 IV 对齐时使用；GCM 下同一密钥禁止 IV 复用）。
+     * 使用指定 IV 加密（测试或与对端固定 IV 对齐时使用；GCM 下同一密钥每次加密换用新 IV）。
      */
     static byte[] encrypt(byte[] plain, byte[] key, AesMode mode, byte[] iv) {
         Assert.nonNull(plain, "plain must not be null");

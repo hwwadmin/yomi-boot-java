@@ -32,7 +32,7 @@ public class StreamRedisSupport {
     public static final int DEFAULT_CLAIM_BATCH = 100;
 
     /**
-     * 毒消息阈值：单条消息累计投递次数达到该值仍未 ACK，则跳过重投并告警
+     * 重投次数阈值：单条消息累计投递次数达到该值仍未 ACK，则跳过重投并告警
      * （不 ACK 不删，仍在 PEL，需人工处理）
      */
     public static final int DEFAULT_MAX_DELIVERY_ATTEMPTS = 10;
@@ -150,7 +150,7 @@ public class StreamRedisSupport {
      * 认领 PEL 中超过 {@code minIdle} 未确认的消息并重新投递（补投入口，供调用方定时触发，如 roundrobin 任务）。
      * <p>处理成功自动 ACK；失败不 ACK（留 PEL 等下一轮）。单轮只扫描 PEL 头部
      * {@link #DEFAULT_CLAIM_BATCH} 条，累计投递次数达到 {@link #DEFAULT_MAX_DELIVERY_ATTEMPTS}
-     * 的毒消息跳过重投并告警（见 {@link RedeliverResult}）</p>
+     * 的消息跳过重投并告警（见 {@link RedeliverResult}）</p>
      */
     public RedeliverResult claimAndRedeliver(String streamKey, String group, String consumerName, Duration minIdle,
                                              StreamMessageHandler handler) {
@@ -169,14 +169,14 @@ public class StreamRedisSupport {
 
     /**
      * 同 {@link #claimAndRedeliver(String, String, String, Duration, int, StreamMessageHandler)}，
-     * 并可指定毒消息阈值。
+     * 并可指定重投次数阈值。
      * <p>
      * 认领范围是 PEL 头部前 {@code maxCount} 条（XPENDING 按消息 ID 升序）：累计投递次数已达
      * {@code maxDeliveryAttempts} 的消息本轮跳过并打 WARN（传 {@link Integer#MAX_VALUE} 表示一直重投）；
-     * 头部堆积的毒消息超过 {@code maxCount} 时后面的积压本轮轮不到，需人工处理
+     * 头部堆积的跳过消息超过 {@code maxCount} 时，后面的积压留待人工处理
      * （XPENDING 查看，XCLAIM 重投或 XACK 丢弃）</p>
      *
-     * @param maxDeliveryAttempts 毒消息阈值（含本轮之前已在 PEL 的投递次数），必须大于 0
+     * @param maxDeliveryAttempts 重投次数阈值（含本轮之前已在 PEL 的投递次数），必须大于 0
      */
     public RedeliverResult claimAndRedeliver(String streamKey, String group, String consumerName, Duration minIdle,
                                              int maxCount, int maxDeliveryAttempts, StreamMessageHandler handler) {
@@ -255,7 +255,7 @@ public class StreamRedisSupport {
 
     /**
      * 处理单条消息并决定 ACK：正常返回立即 XACK；异常只记 ERROR、不 ACK（留 PEL 等重投）。
-     * <p>业务异常在本方法内捕获并记录日志，不向上抛出，避免取消 Stream 订阅。
+     * <p>业务异常在本方法内捕获并记录日志，不向上抛出，Stream 订阅保持有效。
      * {@link Error} 仍向上抛出，便于发现致命故障</p>
      *
      * @return true=已 ACK

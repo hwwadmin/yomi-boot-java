@@ -9,28 +9,28 @@ import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 令牌会话的进程内薄缓存（逐条 TTL + 固定容量，只缓存会话 JSON）
+ * 令牌会话的进程内缓存（逐条 TTL + 固定容量，只缓存会话 JSON）
  * <p>
- * 条目 TTL = {@code min(配置 TTL, 令牌剩余有效期)}——本地条目绝不会比令牌活得久。
- * 刻意保持薄：<b>没有</b>跨实例失效广播、<b>没有</b>失效墓碑。窗口很小（默认 5 秒），陈旧值不会造成错误
- * 判定——{@code TokenService.validate} 命中后会重新校验 {@code isValid}/{@code isExpired}；
- * 撤销在删除路径上同步清本实例条目，其它实例最迟条目 TTL 内生效。
+ * 条目 TTL = {@code min(配置 TTL, 令牌剩余有效期)}，本地条目不会比令牌活得久。
+ * 跨实例失效由 {@link TokenInvalidationChannel} 广播完成：撤销时先清本实例条目再发通知，
+ * 通知最多一次、丢失时其它实例最迟到条目 TTL 生效；{@code TokenService.validate} 命中后
+ * 会重新校验 {@code isValid}/{@code isExpired}，判定结果仍然准确。
  * <p>
- * 缓存 JSON 而非 {@link com.yomi.boot.java.component.token.session.TokenSession} 对象：
+ * 缓存内容为会话 JSON 字符串，不使用 {@link com.yomi.boot.java.component.token.session.TokenSession} 对象：
  * 该对象可变（{@code @Data} + 可变 {@code context}），直接缓存会让调用方改到缓存里的同一实例，
- * 所以命中重新解析，保持"每次 load 都是新实例"的原语义。miss 不进缓存（不给伪造 token 留负缓存面）
+ * 因此命中后重新解析，每次 load 都返回新实例。miss 不写缓存，伪造 token 不会留下缓存条目
  *
  * @author zwei
  */
 public class TokenSessionCache {
 
-    /** 容量上限：防伪造 token 撑爆进程内存 */
+    /** 容量上限，限制大量伪造 token 造成的内存占用 */
     private static final int MAX_ENTRIES = 10_000;
 
     /** 配置的 TTL 上限（{@code yomi.token.local-cache-ttl}） */
     private final Duration configuredTtl;
 
-    /** 是否启用；TTL 为 0 时空转 */
+    /** 是否启用；TTL 为 0 时关闭 */
     private final boolean enabled;
 
     /** 键=令牌散列（sha256） → 值=会话 JSON + 该条目的 TTL */

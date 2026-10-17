@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * 保留期清理：按 {@code create_time} 两阶段物理删除（仓储内先分页取 id 再按 id 删），
- * 避免 {@code DELETE ... LIMIT} 方言，运行时 SQL 跨库
+ * 取 id 与删除分两步执行，SQL 在各数据库通用
  *
  * @author zwei
  */

@@ -27,7 +27,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * RBAC 六表全量 Redis 投影 + 进程内 mem
  * <p>
- * 指针 miss 或读失败时回源 DB，并在抢锁成功后写回 Redis（lazy warm）。
+ * 指针 miss 或读失败时回源 DB，取得刷新锁后写回 Redis（lazy warm）。
  *
  * @author zwei
  */
@@ -57,7 +57,7 @@ public class RbacProjectionStore {
     /** 保护 mem 读写的互斥锁 */
     private final ReentrantLock memLock = new ReentrantLock();
 
-    /** 读鉴权快照：mem → Redis → DB（miss 时懒加载并尽量写回 Redis） */
+    /** 读鉴权快照：mem → Redis → DB（miss 时懒加载，取到锁后写回 Redis） */
     public RbacSnapshot loadSnapshot() {
         MemEntry entry = mem.get();
         long now = System.currentTimeMillis();
@@ -151,9 +151,9 @@ public class RbacProjectionStore {
     }
 
     /**
-     * 回源 DB；抢锁成功则写回 Redis（与 {@link #refresh()} 同锁）。
-     * <p>锁忙或 Redis 中途失败时落回"仅 DB 回源"：读路径的可用性不依赖 Redis，
-     * 异常不允许穿透成 403</p>
+     * 回源 DB；取到刷新锁则写回 Redis（与 {@link #refresh()} 同锁）。
+     * <p>锁忙或 Redis 中途失败时只做 DB 回源：读路径的可用性不依赖 Redis，
+     * 异常不会穿透成 403</p>
      */
     private RbacSnapshot warmProjectionOnMiss(String reason) {
         log.info("[RBAC] {}，回源并尝试写回 Redis", reason);

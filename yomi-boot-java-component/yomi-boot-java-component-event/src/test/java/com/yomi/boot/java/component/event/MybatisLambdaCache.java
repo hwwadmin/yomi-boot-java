@@ -6,7 +6,7 @@ import org.apache.ibatis.builder.MapperBuilderAssistant;
 
 /**
  * 离线单测的 MyBatis-Plus 适配：仓储用 LambdaWrapper 构造 SQL 时列名靠 MP 的实体信息缓存解析，
- * 生产里该缓存由 Mapper 初始化填充；未启动 MyBatis 的单测需先手工注册实体，否则抛
+ * 生产里该缓存由 Mapper 初始化填充；未启动 MyBatis 的单测需先手工注册实体，未注册时抛
  * {@code can not find lambda cache for this entity}。
  *
  * @author zwei

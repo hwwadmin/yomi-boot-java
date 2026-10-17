@@ -67,7 +67,7 @@ public class HttpLogRepository implements IHttpLogRepository {
         mapper.insert(entity);
     }
 
-    /** 查询超过保留期的 id 列表（只要一批 id：关掉 count，否则每批都多扫一遍整个过期区间） */
+    /** 查询超过保留期的 id 列表（只要一批 id：关掉 count，count 会使每批多扫一遍整个过期区间） */
     @Override
     public List<Long> selectExpiredIds(String serviceName, Instant before, int limit) {
         Page<HttpLogEntity> page = new Page<>(1, Math.min(Math.max(limit, 1), PageRequest.MAX_PAGE_SIZE));
@@ -88,7 +88,7 @@ public class HttpLogRepository implements IHttpLogRepository {
 
     /** 概要列 + 条件组装（列名等持久化细节收在仓储内） */
     private LambdaQueryWrapper<HttpLogEntity> summaryWrapper(HttpLogQuery condition, String serviceFilter) {
-        // 条件为 false 时 value 参数仍会被求值，空值处理必须先于构造调用（防 NPE）
+        // 条件为 false 时 value 参数仍会被求值，空值在构造条件前先取出（防 NPE）
         String traceId = StringUtils.trimToNull(condition.getTraceId());
         String method = StringUtils.isNotBlank(condition.getMethod())
                 ? condition.getMethod().trim().toUpperCase(Locale.ROOT) : null;

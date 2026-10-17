@@ -52,7 +52,7 @@ class BuiltinDesensitizeStrategyRulesTest {
     @Test
     void mask_shortValue_masksEntirely() {
         withService(service -> {
-            // 长度不足以保留前后位数时整体遮蔽，避免泄露
+            // 长度不足以保留前后位数时整体遮蔽
             assertEquals("*******", mask(service, DesensitizeType.MOBILE, "1381234"));
             assertEquals("**", mask(service, DesensitizeType.MOBILE, "ab"));
             assertEquals("******", mask(service, DesensitizeType.BANK_CARD, "622202"));
@@ -97,7 +97,7 @@ class BuiltinDesensitizeStrategyRulesTest {
     @Test
     void mask_surrogatePairNotSplit() {
         withService(service -> {
-            // 𠮷（U+20BB7）为代理对，按 code point 计数与切分，不应被截断
+            // 𠮷（U+20BB7）为代理对，按 code point 计数与切分，不会被截断
             String name = "\uD842\uDFB7野家";
             assertEquals("\uD842\uDFB7*家", mask(service, DesensitizeType.NAME, name));
             assertEquals("***", mask(service, DesensitizeType.ALL, name));

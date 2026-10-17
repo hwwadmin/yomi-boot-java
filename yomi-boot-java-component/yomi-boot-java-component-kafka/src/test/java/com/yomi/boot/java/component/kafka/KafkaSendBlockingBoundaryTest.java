@@ -18,12 +18,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 真客户端（broker 指向死端口）锁定 send 的阻塞边界：
+ * 真客户端（broker 指向死端口）验证 send 的阻塞边界：
  * 元数据等待发生在 {@code get(timeout)} 之前，timeout 不是硬上界；同步 API 归"发送失败"、异步 API 同步抛错。
  */
 class KafkaSendBlockingBoundaryTest {
 
-    /** 客户端元数据等待上限，用作"实际阻塞不少于其一半"的下界 */
+    /** 客户端元数据等待上限；断言取它的一半作为实际耗时的下界 */
     private static final int MAX_BLOCK_MS = 600;
 
     private DefaultKafkaProducerFactory<String, Object> producerFactory;

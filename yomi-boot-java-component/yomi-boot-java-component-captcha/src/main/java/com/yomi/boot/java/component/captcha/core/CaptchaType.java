@@ -19,8 +19,8 @@ public enum CaptchaType {
     /**
      * 宽松解析（接口入参、yml 均写 text/arithmetic，大小写不限）
      * <p>
-     * MVC 的 {@code @RequestParam} 枚举转换是大小写敏感的（{@code ?type=text} 会被拒），
-     * 业务接口收字符串后走这里，取值口径与 {@code yomi.captcha.default-type} 保持一致。
+     * 业务接口通常收到字符串（如 {@code ?type=text}），在这里统一解析成枚举，
+     * 大小写不限，取值口径与 {@code yomi.captcha.default-type} 保持一致。
      */
     public static CaptchaType parse(String value, CaptchaType fallback) {
         if (StringUtils.isBlank(value)) {

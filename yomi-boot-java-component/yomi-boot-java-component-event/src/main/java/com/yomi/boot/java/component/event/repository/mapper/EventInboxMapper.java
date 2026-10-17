@@ -7,8 +7,8 @@ import org.apache.ibatis.annotations.Param;
 import java.time.Instant;
 
 /**
- * sys_event_inbox 的 Mapper：**仅供 {@link EventInboxRepository} 使用**
- * （其余代码一律经仓储端口 {@link IEventInboxRepository} 访问，不直接调用）
+ * sys_event_inbox 的 Mapper：仅供 {@link EventInboxRepository} 使用
+ * （其余代码经仓储端口 {@link IEventInboxRepository} 访问，不直接调用）
  * <p>CRUD 由 MyBatis-Plus 提供，保留期清理见 {@code mapper/EventInboxMapper.xml}
  *
  * @author zwei

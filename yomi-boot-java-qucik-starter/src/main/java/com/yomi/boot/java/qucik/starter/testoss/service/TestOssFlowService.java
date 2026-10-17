@@ -32,7 +32,7 @@ public class TestOssFlowService {
     /** 默认测试桶，须事先在对象存储侧创建 */
     public static final String DEFAULT_TEST_BUCKET = "yomi-test";
 
-    /** Redis 键片段：TEST_PREFIX */
+    /** 演示对象键前缀 */
     private static final String TEST_PREFIX = "test-oss/";
     /** 演示：上传对象选项 */
     private static final PutObjectOptions TEST_PUT_OPTIONS =
@@ -44,7 +44,7 @@ public class TestOssFlowService {
     private final OssStorage ossStorage;
 
     /**
-     * 执行上传 → 存在 → 元数据 → 下载 → 公开 URL（可跳过）→ 预签名 → 流程通过（不删除对象，避免依赖 DeleteObject 权限）。
+     * 执行上传 → 存在 → 元数据 → 下载 → 公开 URL（可跳过）→ 预签名 → 流程通过（对象保留，无需 DeleteObject 权限）。
      */
     public List<String> runFlow(String bucket) {
         Assert.isTrue(StringUtils.isNotBlank(bucket), "bucket 不能为空");

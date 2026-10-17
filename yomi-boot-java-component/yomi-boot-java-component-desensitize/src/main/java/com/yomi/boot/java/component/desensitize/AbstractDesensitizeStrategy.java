@@ -5,7 +5,7 @@ import java.util.Objects;
 /**
  * 脱敏策略基类：统一 null/空串约定，并提供按 code point 的保留与遮蔽能力
  * <p>
- * 通用约定：掩码字符固定 {@code *}；长度不足以保留前后位数时整体遮蔽（避免泄露）；
+ * 通用约定：掩码字符固定 {@code *}；长度不足以保留前后位数时整体遮蔽；
  * 按 code point 切分，不会切断代理对（emoji、生僻字）。
  *
  * @author zwei

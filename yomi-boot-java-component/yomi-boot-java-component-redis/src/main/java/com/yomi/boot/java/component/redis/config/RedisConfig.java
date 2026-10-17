@@ -17,8 +17,8 @@ import java.time.Duration;
  * <p>
  * 激活条件与组件其余成员一致（{@link RedisConfiguredCondition}）：配置了 {@code spring.data.redis.*}
  * 连接目标（host / url / sentinel / cluster / masterreplica 任一）才装配。仅宿主自建
- * {@link RedisConnectionFactory} 而不配连接目标属性时组件保持不激活——这正是不能按
- * {@code @ConditionalOnBean(RedisConnectionFactory.class)} 激活的原因（Boot 默认 localhost 工厂会误触发）
+ * {@link RedisConnectionFactory} 而不配连接目标属性时组件保持不激活；{@code @ConditionalOnBean}
+ * 会把这场景误判为已配置，Boot 默认的 localhost 工厂让该条件恒为真
  *
  * @author zwei
  */
@@ -28,7 +28,7 @@ public class RedisConfig {
 
     /**
      * Jackson 序列化的通用模板（{@code StringRedisTemplate} 由 Boot 自动配置提供；
-     * 本 Bean 命名为 commonRedisTemplate，避免与 Boot 的 redisTemplate 重名冲突）
+     * 本 Bean 命名为 commonRedisTemplate，与 Boot 的 redisTemplate 区分开）
      */
     @Bean
     @ConditionalOnMissingBean
@@ -37,7 +37,7 @@ public class RedisConfig {
     }
 
     /**
-     * Lettuce 命令超时兜底
+     * Lettuce 命令超时默认值
      * Lettuce 默认命令超时 60 秒，Redis 抖动时请求线程会长时间阻塞甚至拖垮线程池；
      * 下游未通过 spring.data.redis.timeout（或 redis url 内置 timeout）配置超时时，收敛为 5 秒
      */

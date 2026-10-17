@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 final class IdempotentSpelSupport {
 
-    /** 表达式字符串 → 已解析 AST，避免热路径重复 parse */
+    /** 表达式字符串 → 已解析 AST（缓存后热路径直接复用） */
     private static final Map<String, Expression> EXPRESSION_CACHE = new ConcurrentHashMap<>();
     /** SpEL 表达式解析器 */
     private static final ExpressionParser PARSER = new SpelExpressionParser();

@@ -88,7 +88,7 @@ public class RoundRobinLifecycle implements SmartLifecycle {
 
     /**
      * 启动完成后注册的任务：立刻补建调度（与 {@link RoundRobinRegistry} 的回调约定）
-     * <p>同步方法与 start/stop 共用生命周期锁：注册方会阻塞到启动/停止收尾，避免"注册成功却没调度"</p>
+     * <p>同步方法与 start/stop 共用生命周期锁：注册方会阻塞到启动/停止收尾，注册成功即完成调度补建</p>
      */
     synchronized void startLateTask(RoundRobinTaskDefinition definition) {
         if (!running) {

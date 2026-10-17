@@ -23,14 +23,14 @@ public final class RoundRobinWorker {
         this.shutdownAwait = shutdownAwait;
     }
 
-    /** 请求停止并等待线程结束 */
+    /** 本 worker 停止时等待线程结束的超时 */
     public Duration shutdownAwait() {
         return shutdownAwait;
     }
 
     /**
      * 等待工作线程结束，超时后不中断线程。
-     * <p>超时说明任务没响应取消标志（协作式停机）——必须留一条 WARN：停机后它仍在运行，
+     * <p>超时说明任务没响应取消标志（协作式停机）：这里留一条 WARN——停机后它仍在运行，
      * 同 JVM 重启（stop→start）时旧线程与新 worker 可能并发执行同一任务</p>
      */
     public void awaitStop(Duration timeout) throws InterruptedException {

@@ -32,7 +32,7 @@ import java.nio.charset.StandardCharsets;
 @RequiredArgsConstructor
 public class TestExcelFlowController {
 
-    /** 单页行数上限：演示桩同样服务端强制，避免超大步长把应用拖挂 */
+    /** 单页行数上限：演示桩同样服务端强制，超大步长会把应用拖挂 */
     private static final int MAX_PAGE_SIZE = 1000;
 
     /** 总页数上限（总导出量上限 = 1000 × 100 = 10 万行） */
@@ -51,7 +51,7 @@ public class TestExcelFlowController {
     public void export(@RequestParam(defaultValue = "1000") int pageSize,
                        @RequestParam(defaultValue = "5") int pageCount,
                        HttpServletResponse response) throws IOException {
-        // 本路径免认证：上限必须服务端强制（否则 pageSize 给超大值会在 mockPage 里 OOM）
+        // 本路径免认证，上限由服务端强制；pageSize 给超大值会在 mockPage 里 OOM
         if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw new IllegalArgumentException("pageSize 取值 1~" + MAX_PAGE_SIZE + "（当前 " + pageSize + "）");
         }

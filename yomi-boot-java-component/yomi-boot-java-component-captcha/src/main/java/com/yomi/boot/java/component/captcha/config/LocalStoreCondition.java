@@ -31,7 +31,7 @@ public class LocalStoreCondition extends SpringBootCondition {
             return ConditionOutcome.noMatch(ConditionMessage.forCondition("CaptchaLocalStore")
                     .because("yomi.captcha.store=redis"));
         }
-        // AUTO：配了 Redis 用 redis，否则兜底本地
+        // AUTO：配了 Redis 用 redis，否则用本地存储
         if (delegate.getMatchOutcome(context, metadata).isMatch()) {
             return ConditionOutcome.noMatch(ConditionMessage.forCondition("CaptchaLocalStore")
                     .because("已配置 spring.data.redis.* 连接目标，store=auto 时优先 Redis"));

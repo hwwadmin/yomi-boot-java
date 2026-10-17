@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 有界缓冲传输骨架：入队丢弃策略、攒批循环、flush 与停机 join 统一在此实现
  * <p>子类只负责介质差异：{@link #writeBatch} 把一批记录写出去，以及 start/stop 的线程与容器编排。
- * 指标标签由子类在 {@link #startLoopThread} 传入（"memory" 与推送型介质的失败/丢弃标签不同，属既有观测口径）。
+ * 指标标签由子类在 {@link #startLoopThread} 传入（不同介质的失败/丢弃标签不同）。
  *
  * @author zwei
  */
@@ -102,7 +102,7 @@ public abstract class AbstractBufferedTransport {
 
     /**
      * 发送循环：首条阻塞等待，随后 drainTo 攒批 → 补脱敏 → {@link #writeBatch}
-     * <p>批次处理失败即丢弃计数（重试在介质侧/store 内），绝不让毒批阻塞循环
+     * <p>批次处理失败即丢弃计数（重试在介质侧/store 内），循环继续处理后续批次
      */
     private void sendLoop(String failStage, String dropStage, String loopStage) {
         HttpLogProperties.Buffer bufferConfig = properties.getBuffer();

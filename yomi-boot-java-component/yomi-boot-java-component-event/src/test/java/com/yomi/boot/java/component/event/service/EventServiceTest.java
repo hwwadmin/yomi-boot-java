@@ -342,7 +342,7 @@ class EventServiceTest {
                                 txNotes.add(TransactionSynchronizationManager.isActualTransactionActive()
                                         ? "dlq:inTx" : "dlq:noTx");
                                 if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                                    // 证明该写入确实挂在事务上：回滚时回调会被触发
+                                    // 记录该写入挂在事务上：回滚时回调会被触发
                                     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                                         @Override
                                         public void afterCompletion(int status) {

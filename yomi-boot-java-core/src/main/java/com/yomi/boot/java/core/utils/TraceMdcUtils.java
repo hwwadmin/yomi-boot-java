@@ -17,7 +17,7 @@ import java.util.function.Supplier;
  * 链路 MDC 工具：读取当前 traceId/spanId，并支持手动跨线程传播。
  * <p>
  * {@code spring.task.execution.propagate-context} 只覆盖 Spring {@code @Async} 等自动线程池；
- * 自定义 {@code Thread}/{@code Executor} 请用本类显式传播。任务结束后会还原上下文，避免污染线程池。
+ * 自定义 {@code Thread}/{@code Executor} 用本类显式传播，任务结束后会还原调用前的上下文。
  *
  * <pre>{@code
  * executor.execute(TraceMdcUtils.wrap(() -> {

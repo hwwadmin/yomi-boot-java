@@ -28,7 +28,7 @@ public class SpecialOpsRedisSupport {
     /** SCAN 每次建议遍历的槽位数，平衡遍历轮次与单次返回量 */
     private static final long DEFAULT_SCAN_COUNT = 1000L;
 
-    /** 按模式删除时单批 UNLINK 的 key 数量，避免一次性加载过多 key */
+    /** 按模式删除时单批 UNLINK 的 key 数量，控制单次内存占用 */
     private static final int DEFAULT_DELETE_BATCH_SIZE = 500;
 
     /** 自增并设置过期时间（原子执行），ARGV: 步长、过期毫秒数 */
@@ -53,7 +53,7 @@ public class SpecialOpsRedisSupport {
     }
 
     /**
-     * 按模式分批 SCAN 并删除，避免将全部匹配 key 载入内存。
+     * 按模式分批 SCAN 并删除，匹配的 key 分批处理、不整体载入内存。
      *
      * @param pattern 键匹配模式
      * @return 实际删除的键数量
@@ -87,7 +87,7 @@ public class SpecialOpsRedisSupport {
         if (CollectionUtils.isEmpty(keys)) {
             return 0;
         }
-        // UNLINK 异步释放内存，避免大批 key 删除时阻塞 Redis 主线程
+        // UNLINK 异步释放内存，大批 key 删除不会阻塞 Redis 主线程
         Long ret = redisTemplate.unlink(keys);
         return ret != null ? ret : 0;
     }
@@ -107,9 +107,9 @@ public class SpecialOpsRedisSupport {
     }
 
     /**
-     * 获取符合条件的key
-     * redis keys 方法数据量大的时候 会阻塞redis线程
-     * 使用 scan 替代
+     * 获取符合条件的 key
+     * 通过 SCAN 分批遍历，数据量大时
+     * 不会阻塞 Redis 线程
      *
      * @param pattern 表达式
      */
@@ -117,7 +117,7 @@ public class SpecialOpsRedisSupport {
         return keys(pattern, DEFAULT_SCAN_COUNT);
     }
 
-    /** 按模式 SCAN 收集键名（不阻塞 Redis，替代 KEYS） */
+    /** 按模式 SCAN 收集键名（数据量大时不阻塞 Redis） */
     public List<String> keys(String pattern, long count) {
         List<String> keys = new ArrayList<>();
         this.scan(pattern, count, item -> {
@@ -130,7 +130,7 @@ public class SpecialOpsRedisSupport {
 
     /**
      * scan 实现（键以字符串消费）
-     * 与字节型重载方法名区分，避免泛型擦除后的签名冲突
+     * 与字节型重载方法名区分，两个重载在泛型擦除后签名不同
      */
     public void scanKeys(String pattern, Consumer<String> consumer) {
         scan(pattern, item -> consumer.accept(new String(item, StandardCharsets.UTF_8)));
@@ -151,7 +151,7 @@ public class SpecialOpsRedisSupport {
         this.redisTemplate.execute((RedisConnection connection) -> {
             try (Cursor<byte[]> cursor = connection.keyCommands().scan(
                     ScanOptions.scanOptions().count(count).match(pattern).build())) {
-                // 异常（含 consumer 业务异常）原样穿透，不包装以免误标为 Redis 故障
+                // 异常（含 consumer 业务异常）原样抛出，保留原始类型
                 cursor.forEachRemaining(consumer);
             }
             return null;

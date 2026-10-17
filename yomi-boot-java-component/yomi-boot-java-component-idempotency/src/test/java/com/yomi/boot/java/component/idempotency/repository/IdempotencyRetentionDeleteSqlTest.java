@@ -82,7 +82,7 @@ class IdempotencyRetentionDeleteSqlTest {
         return configuration.getMappedStatement(statementId).getBoundSql(new HashMap<>(params)).getSql();
     }
 
-    /** SQL 比较前把连续空白压成单空格，避免断言绑在 XML 缩进上 */
+    /** SQL 比较前把连续空白压成单空格，断言不依赖 XML 缩进 */
     private static String norm(String sql) {
         return sql.replaceAll("\\s+", " ").trim();
     }

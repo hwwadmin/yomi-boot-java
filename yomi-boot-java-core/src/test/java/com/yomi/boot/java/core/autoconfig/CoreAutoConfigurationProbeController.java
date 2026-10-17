@@ -14,7 +14,7 @@ import java.util.Map;
 @RestController
 class CoreAutoConfigurationProbeController {
 
-    /** Long 必须是 JSON 字符串（JsonConfig 的转换器生效），数字说明被默认 Jackson 转换器顶掉 */
+    /** Long 输出为 JSON 字符串（由 JsonConfig 的转换器处理） */
     @GetMapping(value = "/probe/json", produces = MediaType.APPLICATION_JSON_VALUE)
     Map<String, Object> json() {
         return Map.of("id", 1234567890123456789L);

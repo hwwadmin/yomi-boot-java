@@ -12,9 +12,9 @@ import com.yomi.boot.java.component.captcha.exception.CaptchaException;
  * 契约：
  * <ul>
  *     <li>生成：随机句柄 + 图片（不含答案），答案存于存储层并带有效期；</li>
- *     <li>校验：<b>一次性消费</b>——无论输对输错，挑战即刻失效（防爆破、防重放）；</li>
- *     <li>诚实失败：存储/渲染等基础设施异常抛 {@link CaptchaException}（500），
- *     不静默放行、也不伪装成"输错"；需要降级放行的调用方显式 catch。</li>
+ *     <li>校验：一次性消费，答案对错都让挑战立即失效（防爆破、防重放）；</li>
+ *     <li>基础设施异常（存储/渲染等）抛 {@link CaptchaException}（500），
+ *     与"输错"结果区分；调用方如需放行，自行捕获处理。</li>
  * </ul>
  *
  * @author zwei

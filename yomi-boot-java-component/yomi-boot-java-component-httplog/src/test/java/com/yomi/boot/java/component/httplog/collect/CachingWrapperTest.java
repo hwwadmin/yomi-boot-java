@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 双 tee 包装测试：透传恒完整 + 旁路缓存 + 超限截断只影响日志副本
+ * 请求/响应包装测试：透传内容始终完整，缓存与超限截断只影响日志副本
  *
  * @author zwei
  */
@@ -60,7 +60,7 @@ class CachingWrapperTest {
         wrapper.getWriter().write("{\"ok\":true}");
         wrapper.getWriter().flush();
 
-        // 客户端内容完整（tee：先写真实响应再写缓存）
+        // 客户端内容完整（先写真实响应再写缓存）
         assertEquals("{\"ok\":true}", response.getContentAsString());
         assertEquals("{\"ok\":true}", wrapper.cachedBody());
         assertFalse(wrapper.isTruncated());
@@ -162,7 +162,7 @@ class CachingWrapperTest {
         MockHttpServletResponse response = tomcatLikeResponse("text/html");
         CachingResponseWrapper wrapper = new CachingResponseWrapper(response, 1024);
 
-        // 非 JSON、容器按 ISO-8859-1 写：按 Latin-1 解码才对（不得一律当 UTF-8）
+        // 非 JSON、容器按 ISO-8859-1 写：沿用容器字符集解码
         wrapper.getOutputStream().write("café".getBytes(StandardCharsets.ISO_8859_1));
         wrapper.getOutputStream().flush();
 
@@ -170,8 +170,8 @@ class CachingWrapperTest {
     }
 
     /**
-     * 复现真实容器行为（Tomcat 11 实测）：Content-Type 不带 charset，但 {@code getCharacterEncoding()} 报 ISO-8859-1。
-     * <p>Spring 的 {@code MockHttpServletResponse} 默认报 UTF-8，与真实容器不同，故这里显式覆写。</p>
+     * 模拟真实容器行为（Tomcat 11）：Content-Type 不带 charset，但 {@code getCharacterEncoding()} 报 ISO-8859-1。
+     * <p>Spring 的 {@code MockHttpServletResponse} 默认报 UTF-8，这里显式覆写为容器行为。</p>
      */
     private static MockHttpServletResponse tomcatLikeResponse(String contentType) {
         return new MockHttpServletResponse() {

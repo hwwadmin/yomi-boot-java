@@ -46,7 +46,7 @@ class RbacProjectionStoreTest {
                 "回源结果应进入内存缓存（memTtl 内有效）：故障期只有周期性首个请求付出回源代价");
     }
 
-    /** Redis 活着但版本被删了一半（刷新删旧版本/内存淘汰）：行数不符必须回源 DB，而不是返回半截快照 */
+    /** Redis 活着但版本被删了一半（刷新删旧版本/内存淘汰）：行数不符按不可读处理，回源 DB 重建 */
     @Test
     void truncatedVersionFallsBackToDb() {
         CountingSnapshotRepository repository = new CountingSnapshotRepository();
@@ -67,7 +67,7 @@ class RbacProjectionStoreTest {
                 repository);
     }
 
-    /** 任何命令都抛连接异常的模板：等价于 Redis 进程不可用 */
+    /** 模拟 Redis 进程不可用的模板：任何命令都抛连接异常 */
     private static StringRedisTemplate downRedisTemplate() {
         RedisConnectionFactory downFactory = (RedisConnectionFactory) Proxy.newProxyInstance(
                 RbacProjectionStoreTest.class.getClassLoader(), new Class<?>[]{RedisConnectionFactory.class},
@@ -113,14 +113,14 @@ class RbacProjectionStoreTest {
         return template;
     }
 
-    /** 构造测试用 EventProperties */
+    /** 构造测试用 RbacProperties */
     private static RbacProperties properties() {
         RbacProperties properties = new RbacProperties();
         properties.setMemTtl(Duration.ofSeconds(10));
         return properties;
     }
 
-    /** 覆盖式快照仓储：统计回源次数，返回一条权限数据 */
+    /** 快照仓储测试桩：统计回源次数，返回一条权限数据 */
     static class CountingSnapshotRepository extends RbacSnapshotRepository {
 
         final AtomicInteger loads = new AtomicInteger();

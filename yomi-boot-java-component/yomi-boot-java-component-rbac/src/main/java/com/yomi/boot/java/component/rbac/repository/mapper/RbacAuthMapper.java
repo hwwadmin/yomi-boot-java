@@ -7,7 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 /**
- * 鉴权 SQL（启用链）：**仅供 {@link RbacAuthRepository} 使用**（其余代码一律经仓储端口 {@link IRbacAuthRepository} 访问，不直接调用）
+ * 鉴权 SQL（启用链）：由 {@link RbacAuthRepository} 使用；其余代码经仓储端口 {@link IRbacAuthRepository} 访问
  *
  * @author zwei
  */

@@ -8,10 +8,10 @@ import java.sql.SQLException;
 /**
  * 唯一键冲突识别（组件共用单一实现：event 的"重复消息"、idempotency 的"同键占位冲突"都判定在这里）。
  * <p>
- * 识别顺序：Spring 的 {@link DuplicateKeyException}（框架已把各驱动翻译成统一抽象）→ 驱动原始错误码兜底
- * （MyBatis 场景常见的是原始 {@link SQLException} 挂在 cause 链上）。
- * <b>刻意不认 SQLState 23000</b>：它同时覆盖外键、非空等完整性约束，把它当"重复键"会把真实的约束错误
- * 静默吞掉（例如 outbox 的 FK 失败会被当成"重复投递"跳过）
+ * 识别顺序：Spring 的 {@link DuplicateKeyException}（框架已把各驱动翻译成统一抽象）→ 驱动原始错误码，
+ * MyBatis 场景下常见的是原始 {@link SQLException} 挂在 cause 链上。
+ * SQLState 23000 不参与判定：它同时覆盖外键、非空等完整性约束，按它判定会把真实的约束错误
+ * 当成"重复投递"跳过，例如 outbox 的 FK 失败
  *
  * @author zwei
  */

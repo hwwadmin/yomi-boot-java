@@ -32,8 +32,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 收件箱守卫语义：
  * <ul>
- *   <li>锁语义：Redis/Redisson 故障（锁不可用）→ 降级为无锁 + inbox 唯一键兜底（WARN），不把消息全卡在 RETRY；</li>
- *   <li>抢锁失败（其他实例在消费）→ 已入 inbox 则 SUCCESS、否则 RETRY（行为不变）；</li>
+ *   <li>锁语义：Redis/Redisson 故障（锁不可用）→ 走无锁路径 + inbox 唯一键保证互斥（WARN），消息照常消费；</li>
+ *   <li>锁被其他实例占用 → 已入 inbox 则 SUCCESS，未入则 RETRY；</li>
  *   <li>无锁路径下重复投递仍只消费一次（inbox 行已存在或唯一键冲突都按重复跳过）；</li>
  *   <li>普通路径（onMessageNormal）不写 inbox：解析失败 DROP、业务异常仅日志仍 SUCCESS
  *       （失败不重投，仅用于可丢弃或可补偿场景），带 eventId 必有 WARN。</li>
@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class EventInboxGuardTest {
 
-    /** Redis 故障：降级为无锁路径后业务照常执行并写入 inbox */
+    /** Redis 故障：走无锁路径后业务照常执行并写入 inbox */
     @Test
     void lockUnavailableDegradesToLockFreeAndStillConsumes() {
         FakeInbox inbox = new FakeInbox();
@@ -63,7 +63,7 @@ class EventInboxGuardTest {
                 "降级必须留下 WARN: " + messages(logs));
     }
 
-    /** 降级路径 + 重复投递：inbox 已有行 → 只跳过，不执行第二遍业务 */
+    /** 无锁路径 + 重复投递：inbox 已有行 → 只跳过，不执行第二遍业务 */
     @Test
     void lockUnavailableWithExistingInboxRowSkipsHandler() {
         FakeInbox inbox = new FakeInbox();
@@ -78,7 +78,7 @@ class EventInboxGuardTest {
         assertEquals(List.of(), inbox.inserts);
     }
 
-    /** 降级路径 + 并发插入撞唯一键：按重复消息处理（异常不得逃逸成 RETRY），且必须回滚到保存点 */
+    /** 无锁路径 + 并发插入撞唯一键：按重复消息处理（异常不变成 RETRY），并回滚到保存点 */
     @Test
     void lockUnavailableWithUniqueKeyConflictTreatedAsDuplicate() {
         FakeInbox inbox = new FakeInbox();
@@ -99,7 +99,7 @@ class EventInboxGuardTest {
         assertEquals(0, txManager.rollbacks.get(), "不应走整体回滚");
     }
 
-    /** 抢锁失败 + 未入 inbox：说明其他实例正在处理 → RETRY */
+    /** 锁被占用 + 未入 inbox：说明其他实例正在处理 → RETRY */
     @Test
     void lockBusyWithoutInboxRowReturnsRetry() {
         FakeInbox inbox = new FakeInbox();
@@ -112,7 +112,7 @@ class EventInboxGuardTest {
         assertEquals(List.of(), handled);
     }
 
-    /** 抢锁失败 + 已入 inbox：重复消息 → SUCCESS（与降级路径口径一致） */
+    /** 锁被占用 + 已入 inbox：重复消息 → SUCCESS（与无锁路径口径一致） */
     @Test
     void lockBusyWithInboxRowReturnsSuccess() {
         FakeInbox inbox = new FakeInbox();
@@ -161,7 +161,7 @@ class EventInboxGuardTest {
                 && e.getFormattedMessage().contains("普通消费业务异常")), "失败必须留 ERROR: " + messages(logs));
     }
 
-    /** 带 eventId 的普通消费必须 WARN 点名 onMessage（幂等路径的运行时护栏） */
+    /** 带 eventId 的普通消费会 WARN 点名 onMessage（幂等路径的运行时提示） */
     @Test
     void normalPathWarnsOnEventId() {
         EventInboxGuard guard = normalGuard();

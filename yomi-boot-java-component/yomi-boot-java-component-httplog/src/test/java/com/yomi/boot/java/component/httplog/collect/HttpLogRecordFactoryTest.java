@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 记录组装测试：列宽兜底截断（异常 method / enricher 超长）与二进制内容跳过
+ * 记录组装测试：列宽截断（异常 method / enricher 超长）与二进制内容跳过
  *
  * @author zwei
  */

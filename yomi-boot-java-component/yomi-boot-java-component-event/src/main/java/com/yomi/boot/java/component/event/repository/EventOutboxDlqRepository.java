@@ -48,13 +48,13 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
     }
 
     /**
-     * 抢占 DLQ 投递中状态；成功则其他 worker/扫描轮次在 lease 结束前不会再捞到该行
+     * 占用 DLQ 的投递租约（写入 {@code retry_after_time}）；成功则其他 worker 与扫描轮次在租约结束前取不到该行
      */
     public boolean tryClaimInFlight(Long dlqId, Duration lease) {
         Assert.nonNull(dlqId, "dlqId 不能为空");
         Instant now = Instant.now();
         Instant claimUntil = now.plus(lease);
-        // 用 mapper.update(null, wrapper) 而非 lambdaUpdate() 链：后者只返回 boolean，这里要行数判抢占成功
+        // 用 mapper.update(null, wrapper)：这里需要受影响行数判断是否占用成功，lambdaUpdate() 链只返回 boolean
         int rows = getMapper().update(null, new LambdaUpdateWrapper<EventOutboxDlq>()
                 .set(EventOutboxDlq::getRetryAfterTime, claimUntil)
                 .set(EventOutboxDlq::getUpdateTime, now)
@@ -84,13 +84,13 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
 
     /**
      * 查询可重试的 DLQ 行（未达最大重试次数且已到重试窗口）
-     * <p>拆成两条各自走索引的查询（未排期 + 已到期）后按"就绪时间"归并：
+     * <p>由"未排期"与"已到期"两条各自走索引的查询合并，再按"就绪时间"排序：
      * {@code COALESCE(retry_after_time, create_time)} 这类排序表达式用不上索引，大表下每轮都要全表排序</p>
      */
     public List<EventOutboxDlq> fetchRetryable(String serviceName, int maxRetry, int limit, Instant now) {
         Assert.isTrue(limit > 0, "dlq limit 必须大于 0");
         if (maxRetry <= 0) {
-            // 原 XML 的 `1 = 0` 分支：未达重试上限的条件恒不成立，直接不触库
+            // maxRetry <= 0 时"未达重试上限"的条件恒不成立，直接不触库
             return List.of();
         }
         List<EventOutboxDlq> rows = new ArrayList<>(selectUnscheduled(serviceName, maxRetry, limit));
@@ -127,7 +127,7 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
                 .getRecords();
     }
 
-    /** 就绪时间：已排期取 retry_after_time，未排期取 create_time（与原 ORDER BY COALESCE 同义） */
+    /** 就绪时间：已排期取 retry_after_time，未排期取 create_time（对应 ORDER BY COALESCE 的语义） */
     private static Instant readyTime(EventOutboxDlq row) {
         if (row.getRetryAfterTime() != null) {
             return row.getRetryAfterTime();

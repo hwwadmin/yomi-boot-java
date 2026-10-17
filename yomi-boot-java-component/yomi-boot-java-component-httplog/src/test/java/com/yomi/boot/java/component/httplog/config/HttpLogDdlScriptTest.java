@@ -12,8 +12,8 @@ import java.util.Locale;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 两套方言 DDL 的守卫：脚本在 classpath（随 jar 打包，见根 pom 的 sql resources），
- * 两个方言都必须声明组件全部表，且 pgsql 脚本不得残留 MySQL 专属写法。
+ * 两套方言 DDL 校验：脚本在 classpath（随 jar 打包，见根 pom 的 sql resources），
+ * 两个方言都声明组件全部表，pgsql 脚本不含 MySQL 专属写法。
  */
 class HttpLogDdlScriptTest {
 
@@ -40,7 +40,7 @@ class HttpLogDdlScriptTest {
         }
     }
 
-    /** 读 classpath 脚本并剔除 -- 行注释、转小写（守卫只看真正的 SQL 语句） */
+    /** 读 classpath 脚本并剔除 -- 行注释、转小写（只保留真正的 SQL 语句） */
     private static String body(String path) throws IOException {
         ClassPathResource resource = new ClassPathResource(path);
         assertTrue(resource.exists(), "classpath 必须包含 " + path + "（jar 打包配置见根 pom resources）");

@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * 组件生命周期：启动消费循环（批量落库），停机先排空缓冲再停消费；
- * phase 低于 Web 容器生命周期（Boot：graceful-shutdown=MAX-1024、server-stop=MAX-2048）——
+ * phase 取 MAX-4096（低于 Boot 的 graceful-shutdown 与 server-stop）——
  * 启动早于容器开始收请求，停机晚于容器停止收请求，在途请求的日志一并排空，且仍早于数据源等 Bean 销毁。
  *
  * @author zwei
@@ -54,7 +54,7 @@ public class HttpLogLifecycle implements SmartLifecycle {
         log.info("[httplog]消费已启动: mode={}", properties.getMode());
     }
 
-    /** SmartLifecycle 停止：先停消费再停传输 */
+    /** SmartLifecycle 停止：排空缓冲后停止消费与发送线程 */
     @Override
     public void stop() {
         if (!running) {

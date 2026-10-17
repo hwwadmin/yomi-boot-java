@@ -12,9 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * S3 实现的上传入参契约：长度未知（{@code contentLength < 0}）必须快速失败并给出明确错误码——
- * 不能把 -1 交给 AWS SDK（其 {@code RequestBody} 构造期就抛 IllegalArgumentException，
- * 还会被包装成"上传失败"，调用方看不出是参数问题还是网络问题）。
+ * S3 实现的上传入参契约：长度未知（{@code contentLength < 0}）在上传前直接失败并给出明确错误码——
+ * -1 交给 AWS SDK 时，其 {@code RequestBody} 构造期会抛 IllegalArgumentException，
+ * 并被包装成"上传失败"，调用方无法区分参数问题与网络问题。
  */
 class S3OssStorageTest {
 

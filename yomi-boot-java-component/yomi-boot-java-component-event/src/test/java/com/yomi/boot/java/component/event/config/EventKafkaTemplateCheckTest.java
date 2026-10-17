@@ -16,8 +16,8 @@ import java.util.function.Supplier;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * event 发布侧的 KafkaTemplate 启动期强校验：把"第一条消息发送才失败"提前到启动期，
- * 并把容器原始歧义异常换成可行动的报错（旧实现只查"存在"，配了 bean 名也不校验）
+ * event 发布侧的 KafkaTemplate 启动期校验：启动时即确认模板可用，
+ * 配置有歧义时在报错里给出候选与配置键
  */
 class EventKafkaTemplateCheckTest {
 

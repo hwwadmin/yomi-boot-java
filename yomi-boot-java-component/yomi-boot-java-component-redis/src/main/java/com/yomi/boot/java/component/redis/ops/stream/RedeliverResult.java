@@ -8,7 +8,7 @@ package com.yomi.boot.java.component.redis.ops.stream;
  * @param claimed 本轮认领（XCLAIM）并尝试处理的条数，等于 acked + failed
  * @param acked   处理成功且已 ACK（XACK）的条数
  * @param failed  处理失败或 ACK 失败的条数（不 ACK 留 PEL）
- * @param skipped 累计投递次数达到阈值、本轮跳过重投的毒消息条数（不 ACK 不删，仍在 PEL，需人工处理）
+ * @param skipped 累计投递次数达到阈值、本轮跳过重投的消息条数（不 ACK 不删，仍在 PEL，需人工处理）
  */
 public record RedeliverResult(int claimed, int acked, int failed, int skipped) {
 }

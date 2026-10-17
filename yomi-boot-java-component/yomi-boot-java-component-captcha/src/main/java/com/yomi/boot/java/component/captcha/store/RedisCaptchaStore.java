@@ -9,7 +9,7 @@ import java.time.Duration;
  * Redis 存储（多实例）
  * <p>
  * 键 {@code prefix:captchaId} → 答案，TTL 为挑战有效期；校验用 GETDEL 一次取值，
- * 天然防止并发重放。
+ * 并发请求中只有一个能取到答案。
  *
  * @author zwei
  */

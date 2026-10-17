@@ -43,7 +43,7 @@ class TestExcelFlowTest {
                 new TestExcelFlowController(flowService);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        // 超大 pageSize 必须在 mockPage 之前拦下（否则 new ArrayList<>(20 亿) 直接 OOM）
+        // pageSize 校验先于 mockPage：超大值在这里拦下（20 亿条展开会 OOM）
         IllegalArgumentException size = assertThrows(IllegalArgumentException.class,
                 () -> controller.export(2_000_000_000, 5, response));
         assertTrue(size.getMessage().contains("pageSize"), size.getMessage());

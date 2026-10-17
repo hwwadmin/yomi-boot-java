@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 注册表：同名注册原子拒绝、启动后注册必须触发补建回调（历史缺陷：静默不执行）。
+ * 注册表：同名注册原子拒绝、启动后注册触发补建回调。
  */
 class RoundRobinRegistryTest {
 

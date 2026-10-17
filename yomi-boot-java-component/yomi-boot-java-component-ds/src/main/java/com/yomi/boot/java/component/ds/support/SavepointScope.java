@@ -9,7 +9,7 @@ import org.springframework.transaction.TransactionStatus;
  * 让 PostgreSQL 事务从 aborted 状态（后续语句报 25P02 "current transaction is aborted"）恢复可用，
  * 再继续读回已完成结果或抛出异常。</p>
  * <p>
- * PG 里事务内任一语句报错都会把整个事务打成 aborted，即便异常被捕获，后续语句（含外层事务的提交）都不再可用；
+ * PG 里事务内任一语句报错都会把整个事务打成 aborted，即便异常被捕获，后续语句（含外层事务的提交）都不可用；
  * MySQL 无此限制，本类两边通用（每个作用域多 2 条 SAVEPOINT / RELEASE SAVEPOINT 语句）。
  * 事务管理器不支持保存点（如部分云托管事务管理器）时 {@link #open} 返回空作用域，各方法退化为 no-op。
  * </p>
@@ -41,7 +41,7 @@ public final class SavepointScope {
         this.savepoint = savepoint;
     }
 
-    /** 建立保存点；事务管理器不支持保存点时返回空作用域（各方法 no-op，行为回到"不回滚保存点"） */
+    /** 建立保存点；事务管理器不支持保存点时返回空作用域（各方法 no-op，不回滚保存点） */
     public static SavepointScope open(TransactionStatus status) {
         try {
             return new SavepointScope(status, status.createSavepoint());
@@ -51,7 +51,7 @@ public final class SavepointScope {
         }
     }
 
-    /** 回滚到保存点（PG 下让事务恢复可用）；失败仅记日志，交由外层事务整体回滚，不掩盖原始异常 */
+    /** 回滚到保存点（PG 下让事务恢复可用）；失败仅记日志，交由外层事务整体回滚，原始异常照常抛出 */
     public void rollbackTo() {
         if (savepoint == null) {
             return;
@@ -63,7 +63,7 @@ public final class SavepointScope {
         }
     }
 
-    /** 释放保存点（避免长事务内保存点堆积）；失败仅记日志，保存点随事务结束释放 */
+    /** 释放保存点（长事务内保存点不堆积）；失败仅记日志，保存点随事务结束释放 */
     public void release() {
         if (savepoint == null) {
             return;

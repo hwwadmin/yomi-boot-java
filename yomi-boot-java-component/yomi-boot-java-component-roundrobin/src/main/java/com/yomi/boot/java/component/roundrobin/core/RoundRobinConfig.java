@@ -27,7 +27,7 @@ public class RoundRobinConfig {
     /**
      * <b>最小轮询间隔</b>（不是固定周期），兼作频率锁 TTL。
      * <p>成功执行后的真实周期 ≈ 任务耗时 + [frequency+randomDelayMin, frequency+randomDelayMax]
-     * （默认 = 任务耗时 + [f+100ms, 2f+100ms)）：估算延迟/吞吐要按频率下限算，别把 frequency 当周期</p>
+     * （默认 = 任务耗时 + [f+100ms, 2f+100ms)）：估算延迟/吞吐按频率下限算，frequency 不是周期</p>
      */
     private final Duration frequency;
 
@@ -37,13 +37,13 @@ public class RoundRobinConfig {
     /** 成功后 jitter 上限（与 frequency 组合使用） */
     private final Duration randomDelayMax;
 
-    /** 抢锁失败时休眠 */
+    /** 未获得锁时的休眠间隔 */
     private final Duration wakeUpInterval;
     /**
      * 执行锁租约。实际语义取决于 {@link #execWatchdog}：
      * <ul>
      *     <li>watchdog=true（默认）：<b>不参与锁租约</b>（租约由 Redisson 看门狗续期、无上限），仅作为 maxHold 的下限参照；</li>
-     *     <li>watchdog=false：硬租约——任务必须在该时长内完成，否则锁过期、其它实例可能并发执行同一任务</li>
+     *     <li>watchdog=false：硬租约——任务要在该时长内完成，超时则锁过期、其它实例可能并发执行同一任务</li>
      * </ul>
      */
     private final Duration execLockTtl;
@@ -114,7 +114,7 @@ public class RoundRobinConfig {
                 + ", shutdownAwait=" + shutdownAwait;
     }
 
-    /** 启动日志用的任务简介，未填写时给占位符（提醒补全，而非打印空白） */
+    /** 启动日志用的任务简介，未填写时打印占位符"未填写" */
     public String descriptionOrDefault() {
         return description == null || description.isBlank() ? "未填写" : description.trim();
     }
@@ -165,7 +165,7 @@ public class RoundRobinConfig {
 
     /**
      * 构造校验失败异常。任务级参数不在 yml 里（{@code RoundRobinProperties} 只有 enabled 与 store-prefix），
-     * 所以报错用 {@code @RoundRobinTask} 的同名属性名并带上任务名，避免使用者去 yml 找不存在的键
+     * 所以报错用 {@code @RoundRobinTask} 的同名属性名并带上任务名，便于定位对应的任务参数
      */
     private IllegalStateException fail(String detail) {
         return new IllegalStateException(detail + "（任务: " + name + "；对应 @RoundRobinTask 属性或注册方传入的间隔）");

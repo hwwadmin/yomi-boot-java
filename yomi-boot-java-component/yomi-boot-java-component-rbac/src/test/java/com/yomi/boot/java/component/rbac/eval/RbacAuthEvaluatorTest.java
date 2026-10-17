@@ -47,7 +47,7 @@ class RbacAuthEvaluatorTest {
         return RbacSnapshot.empty();
     }
 
-    // ==================== API 路径通配：精确优先 + Ant 兜底 ====================
+    // ==================== API 路径通配：精确优先，其次 Ant 匹配 ====================
 
     @Test
     void doubleStarMatchesAcrossSegments() {

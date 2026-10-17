@@ -33,16 +33,16 @@ import org.springframework.core.env.Environment;
 /**
  * 主库（master）装配：数据源 + 工厂 + 模板 + 事务管理器，四件套全部 {@code @Primary}
  * <p>
- * 于是"所有不指定名称的按类型注入"自然落在主库：组件与业务的 {@code @MapperScan}（不写
+ * 所有不指定名称的按类型注入都落在主库：组件与业务的 {@code @MapperScan}（不写
  * {@code sqlSessionFactoryRef}）、{@code @Transactional}（不写 {@code transactionManager}）、
  * {@code TransactionTemplate}、{@code JdbcTemplate} 都无需配置。附加库由业务系统自行定义与装配，
  * 用 {@code @MapperScan(basePackages = ..., sqlSessionFactoryRef = ..., sqlSessionTemplateRef = ...)}
  * 显式绑定（两个 ref 都要写，见 {@code MybatisPlusChainChecker} 的自检）。
  * <p>
- * 让位规则：配了 {@code spring.datasource.url} 才声明主数据源；四件套都是"宿主提供了同名 Bean（{@code masterXxx}）就让位"
- * （只按 Bean 名判断，附加库的同类型 Bean 不影响主库装配）。
- * 单独成类（而不是内嵌在 {@link DsAutoConfiguration} 里）：宿主的 {@code @ComponentScan} 会扫到
- * 自动配置类本身，内嵌类会与"成员类处理"通道重复注册同一个 Bean 名。
+ * 装配条件：配了 {@code spring.datasource.url} 才声明主数据源；宿主提供了同名 Bean（{@code masterXxx}）
+ * 时以宿主的为准（只按 Bean 名判断，附加库的同类型 Bean 不影响主库装配）。
+ * 独立成类：内嵌在 {@link DsAutoConfiguration} 里时，宿主的 {@code @ComponentScan} 会扫到自动配置类本身，
+ * 内嵌类会与"成员类处理"通道重复注册同一个 Bean 名。
  *
  * @author zwei
  */
@@ -53,11 +53,11 @@ import org.springframework.core.env.Environment;
 public class MasterDataSourceConfiguration {
 
     /**
-     * 主数据源：Boot 标准键 {@code spring.datasource.*}；**连接池类型可换**——
-     * {@code spring.datasource.type} 指定实现（缺省 Hikari），池参数按类型推导前缀绑定
-     * （{@code HikariDataSource}→{@code spring.datasource.hikari.*}、{@code DruidDataSource}→{@code spring.datasource.druid.*}、
-     * 规则见 {@link #poolPropertiesPrefix}）；需要更特殊的构造（自定义池、JNDI、逻辑数据源）就自己声明同名
-     * {@code masterDataSource} Bean，本组件让位（解析顺序见 {@link DsMaster}）
+     * 主数据源：Boot 标准键 {@code spring.datasource.*}；连接池类型可换——
+     * {@code spring.datasource.type} 指定实现（缺省 Hikari），池参数按类型推导前缀绑定，规则见
+     * {@link #poolPropertiesPrefix}（{@code HikariDataSource}→{@code spring.datasource.hikari.*}、
+     * {@code DruidDataSource}→{@code spring.datasource.druid.*}）；自定义池、JNDI、逻辑数据源等
+     * 特殊构造自己声明同名 {@code masterDataSource} Bean，本组件以宿主的为准（解析顺序见 {@link DsMaster}）
      */
     @Bean
     @Primary
@@ -68,7 +68,7 @@ public class MasterDataSourceConfiguration {
         String prefix = poolPropertiesPrefix(dataSource.getClass());
         Binder.get(environment).bind(prefix, Bindable.ofInstance(dataSource));
         if (dataSource instanceof HikariDataSource hikari && hikari.getPoolName() == null) {
-            // Hikari 未显式配置 pool-name 时用库名做池名（日志与监控里"哪个池是主库"一眼可辨）
+            // Hikari 未显式配置 pool-name 时用库名做池名（日志与监控里可区分主库）
             hikari.setPoolName(DsMaster.LIBRARY_NAME);
         }
         log.info("[ds] 主数据源连接池: {}（池参数前缀 {}）", dataSource.getClass().getName(), prefix);
@@ -90,7 +90,7 @@ public class MasterDataSourceConfiguration {
         return "spring.datasource." + Character.toLowerCase(name.charAt(0)) + name.substring(1);
     }
 
-    /** 主数据源公告：只在这里打一次（事务管理器同样解析主数据源，不再重复公告） */
+    /** 主数据源公告：只在这里打一次（事务管理器同样解析主数据源，不重复公告） */
     private static void announceMasterDataSource(DsMaster.Resolved<DataSource> resolved) {
         if (DsMaster.DATASOURCE_BEAN.equals(resolved.beanName())) {
             log.info("[ds] 主数据源 = {}（component-ds 装配）", DsMaster.DATASOURCE_BEAN);

@@ -28,9 +28,9 @@ import java.lang.reflect.Proxy;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 事务模板解析契约（IPC I4 复核）：容器里有 TransactionTemplate（Boot 标准 Bean / 宿主自定义）时组件原样复用
- * 且不再注册任何模板 Bean；没有模板可复用时按事务管理器自建私有默认 REQUIRED 模板（不注册、不抢注）；
- * 多候选模板或管理器无 @Primary 时启动失败并点名本组件与候选（与 Boot 同口径，不静默挑一个写错库）。
+ * 事务模板解析：容器里有 TransactionTemplate（Boot 标准 Bean / 宿主自定义）时组件直接复用，
+ * 也不注册模板 Bean；没有模板可复用时按事务管理器自建私有默认 REQUIRED 模板（不注册为 Bean）；
+ * 多候选模板或管理器无 @Primary 时启动失败并点名本组件与候选（与 Boot 同口径，不随意挑一个）。
  */
 class IdempotencyTransactionTemplateWiringTest {
 
@@ -75,7 +75,7 @@ class IdempotencyTransactionTemplateWiringTest {
         });
     }
 
-    /** 多候选模板且无 @Primary：启动失败点名 idempotencyGuard 与候选 Bean 名，不允许静默挑一个 */
+    /** 多候选模板且无 @Primary：启动失败点名 idempotencyGuard 与候选 Bean 名，不随意挑一个 */
     @Test
     void ambiguousTemplatesFailFastInsteadOfPickingOne() {
         runner(SingleManagerCase.class, AmbiguousTemplateCase.class).run(context -> {
@@ -91,7 +91,7 @@ class IdempotencyTransactionTemplateWiringTest {
         });
     }
 
-    /** 多事务管理器且无 @Primary：启动失败点名候选，不允许静默挑一个（可能写错库/不进业务事务） */
+    /** 多事务管理器且无 @Primary：启动失败点名候选，不随意挑一个（可能写错库/不进业务事务） */
     @Test
     void ambiguousManagersFailFastInsteadOfPickingOne() {
         runner(AmbiguousManagerCase.class).run(context -> {
@@ -108,7 +108,7 @@ class IdempotencyTransactionTemplateWiringTest {
         });
     }
 
-    /** 无模板可复用（宿主排除 Boot 事务自动配置）：组件按事务管理器自建私有模板，不注册为 Bean（不抢注） */
+    /** 无模板可复用（宿主排除 Boot 事务自动配置）：组件按事务管理器自建私有模板，不注册为 Bean */
     @Test
     void noTemplateAvailableFallsBackToPrivateTemplate() {
         new ApplicationContextRunner()

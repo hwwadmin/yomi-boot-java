@@ -12,12 +12,12 @@ import java.nio.charset.StandardCharsets;
  * 令牌失效通知（Redis pub/sub）
  * <p>
  * 一条消息 = 一个令牌散列，接收侧只做"清掉该散列的进程内条目"。删除/替换在 Redis 生效后先清本实例条目、
- * 再发一条通知；<b>扇出由 Redis 完成</b>——没有消费组、没有 ACK/PEL、没有历史与裁剪，也没有组名与停机清理。
+ * 再发一条通知。扇出由 Redis 完成，不使用消费组、ACK/PEL、历史与裁剪。
  * <p>
- * 投递语义是"至多一次"：订阅连接断开期间的通知会丢，靠本地条目 TTL 兜底（且 {@code validate} 命中后
- * 仍会重校验有效期）——本场景需要的正是这个语义。发布失败只记 WARN，不影响撤销本身。
- * 顺序铁律：<b>先删 Redis，后发通知</b>——反过来会把"读到旧值 → 撤销 → 旧值才写进缓存"的竞态窗口
- * 从瞬间放大到每次撤销
+ * 投递语义为"至多一次"：订阅连接断开期间的通知会丢失，此时由本地条目按 TTL 过期后回源 Redis；
+ * {@code validate} 命中缓存后也会重校验有效期。发布失败只记 WARN，不影响撤销本身。
+ * 顺序固定为先删 Redis、后发通知：反过来会让"读到旧值 → 撤销 → 旧值才写进缓存"的竞态窗口
+ * 从瞬时放大到每次撤销
  *
  * @author zwei
  */
@@ -42,12 +42,12 @@ public class TokenInvalidationChannel implements MessageListener {
         return channel;
     }
 
-    /** 是否启用：进程内缓存关闭时整层空转 */
+    /** 是否启用（由进程内缓存的启用状态决定） */
     public boolean isEnabled() {
         return sessionCache.isEnabled();
     }
 
-    /** 广播一条失效（一个令牌散列）；失败只记日志——撤销本身已生效，其它实例靠条目 TTL 兜底 */
+    /** 广播一条失效（一个令牌散列）；失败只记日志，撤销本身已生效，其它实例按条目 TTL 到期后失效 */
     public void publish(String tokenHash) {
         if (!isEnabled() || StringUtils.isBlank(tokenHash)) {
             return;
@@ -72,7 +72,7 @@ public class TokenInvalidationChannel implements MessageListener {
         try {
             sessionCache.invalidate(tokenHash.trim());
         } catch (Exception e) {
-            // pub/sub 没有 PEL：异常吞掉即可，条目 TTL 兜底
+            // pub/sub 没有 PEL，异常忽略即可；条目按 TTL 自然过期
             log.warn("[token] 失效通知处理失败（已忽略）: channel={}", channel, e);
         }
     }

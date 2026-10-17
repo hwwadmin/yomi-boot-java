@@ -8,7 +8,7 @@ import org.apache.commons.lang3.StringUtils;
  * 令牌鉴权失败异常
  * <p>
  * 响应码来自 {@link TokenErrorCode#getResponseCode()}（鉴权失败类为 401），
- * 由组件的 {@code TokenExceptionAdvice} 统一渲染，不应经全局异常处理器兜底。
+ * 由组件的 {@code TokenExceptionAdvice} 统一渲染，不经全局异常处理器。
  *
  * @author zwei
  */

@@ -14,9 +14,9 @@ import org.springframework.core.env.ConfigurableEnvironment;
  * 在yml、系统属性、环境变量合并完成后，读取配置并初始化雪花机器号，
  * 保证任何业务代码生成ID之前机器号已就绪。
  * <p>
- * 配置键 {@code yomi.id.worker-id}（datacenter 同理），三种来源等价：
- * yml配置、-D系统属性、环境变量YOMI_ID_WORKER_ID。
- * {@code worker-id} 必须配置且无自动推导，缺失即启动失败。
+ * 配置键 {@code yomi.id.worker-id}（datacenter 同理）可从三种来源读取：
+ * yml 配置、-D 系统属性、环境变量 YOMI_ID_WORKER_ID。
+ * {@code worker-id} 没有默认值，必须配置，缺失即启动失败。
  *
  * @author zwei
  */

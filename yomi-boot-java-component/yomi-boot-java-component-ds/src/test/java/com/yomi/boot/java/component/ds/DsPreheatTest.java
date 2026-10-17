@@ -14,9 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 预热探活契约：走 JDBC 标准 {@code isValid}（零方言），不再执行 "SELECT 1"——
- * Oracle 与达梦 Oracle 兼容模式不接受无 FROM 的 SELECT，旧实现会让每个池都报 ERROR 且预热形同虚设。
- * 另外预热失败/连接不可用都不阻断启动。
+ * 预热探活：走 JDBC 标准 {@code isValid}（零方言），Oracle 与达梦的 Oracle 兼容模式不接受无 FROM 的 SELECT；
+ * isValid 在这两类库上都能正常探活。
+ * 预热失败或连接不可用都不阻断启动。
  */
 class DsPreheatTest {
 

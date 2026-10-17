@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * rbac 拦截器对错误转发（{@link DispatcherType#ERROR}）的放行：
- * 否则 404/500 转发到 {@code /error} 时会被改写成 FORBIDDEN（未登录）或"无访问权限"（/error 没登记权限）
+ * 404/500 转发到 {@code /error} 时保留原始状态，不被改写成 FORBIDDEN（未登录）或"无访问权限"（/error 没登记权限）
  */
 class RbacInterceptorDispatchTest {
 

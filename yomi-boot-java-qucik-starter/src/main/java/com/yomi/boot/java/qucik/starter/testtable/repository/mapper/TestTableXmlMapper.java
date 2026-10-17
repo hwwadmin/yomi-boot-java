@@ -5,7 +5,7 @@ import org.apache.ibatis.annotations.Param;
 
 /**
  * 测试表 mapper.xml 形式 mapper：全部 SQL 手写在 resources/mapper/TestTableXmlMapper.xml，
- * 不继承 BaseMapper，也不使用 MyBatis-Plus 的任何封装
+ * 方法签名与 XML 中的语句一一对应
  *
  * @author zwei
  */
