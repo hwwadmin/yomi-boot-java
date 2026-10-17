@@ -3,7 +3,6 @@ package com.yomi.boot.java.component.token.store;
 import com.yomi.boot.java.base.exception.UtilsException;
 import com.yomi.boot.java.base.utils.Assert;
 import com.yomi.boot.java.base.utils.JsonUtils;
-import com.yomi.boot.java.component.token.config.TokenProperties;
 import com.yomi.boot.java.component.token.session.TokenSession;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -17,6 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -33,8 +33,8 @@ import java.util.Set;
  * <p>
  * 读取路径挂一层进程内薄缓存（{@code yomi.token.local-cache-ttl}，默认 5 秒，0 关闭）：命中即跳过两次 GET，
  * 条目 TTL 取 {@code min(配置, 令牌剩余有效期)}——本地条目绝不比令牌活得久。
- * 删除/替换/续期路径同步清掉对应条目，保证本实例撤销立即生效；其它实例最迟缓存 TTL 内生效
- * （没有跨实例失效通道，这是刻意的简化，见 {@link TokenSessionCache}）
+ * 删除/替换/续期路径同步清掉对应条目（本实例撤销立即生效），删除/替换还会经 {@link TokenInvalidationChannel}
+ * 广播失效通知让其它实例即时生效；通知丢失时其它实例最迟在条目 TTL 内生效
  *
  * @author zwei
  */
@@ -131,13 +131,19 @@ public class RedisTokenStore implements TokenStore {
     /** 进程内会话薄缓存（TTL 由 {@code yomi.token.local-cache-ttl} 决定，0 关闭时空转） */
     private final TokenSessionCache sessionCache;
 
-    public RedisTokenStore(StringRedisTemplate redisTemplate, TokenKeys keys, TokenProperties properties) {
+    /** 失效通知通道（发布删除/替换产生的失效；订阅侧由装配类注册到监听容器） */
+    private final TokenInvalidationChannel invalidationChannel;
+
+    public RedisTokenStore(StringRedisTemplate redisTemplate, TokenKeys keys,
+                           TokenSessionCache sessionCache, TokenInvalidationChannel invalidationChannel) {
         Assert.nonNull(redisTemplate, "redisTemplate must be not null");
         Assert.nonNull(keys, "keys must be not null");
-        Assert.nonNull(properties, "properties must be not null");
+        Assert.nonNull(sessionCache, "sessionCache must be not null");
+        Assert.nonNull(invalidationChannel, "invalidationChannel must be not null");
         this.redisTemplate = redisTemplate;
         this.keys = keys;
-        this.sessionCache = new TokenSessionCache(properties.getLocalCacheTtl());
+        this.sessionCache = sessionCache;
+        this.invalidationChannel = invalidationChannel;
     }
 
     /** 写入令牌与用户索引并设置 TTL */
@@ -188,7 +194,7 @@ public class RedisTokenStore implements TokenStore {
                     String.valueOf(ttlMillis));
             deleteRoutesQuietly(previousHashes);
             saveRoute(storageHash, userId, ttlMillis);
-            invalidateCached(previousHashes);
+            invalidateAndPublish(previousHashes);
         } catch (RuntimeException e) {
             deleteSessionQuietly(userId, storageHash);
             throw e;
@@ -236,7 +242,8 @@ public class RedisTokenStore implements TokenStore {
         boolean renewed = result != null && result == 1L;
         if (renewed) {
             saveRoute(storageHash, userId, ttlMillis);
-            // 续期改了 expireAt：清掉缓存里的旧值，避免临近过期时命中旧 expireAt 被误判过期
+            // 续期改了 expireAt：清掉缓存里的旧值，避免临近过期时命中旧 expireAt 被误判过期。
+            // 不发通知：其它实例的条目 TTL ≤ 旧剩余有效期，到点自然回源拿到续期后的值
             sessionCache.invalidate(storageHash);
         }
         return renewed;
@@ -256,7 +263,7 @@ public class RedisTokenStore implements TokenStore {
                     storageHash);
         }
         redisTemplate.delete(keys.routeKeyByStorageToken(storageHash));
-        sessionCache.invalidate(storageHash);
+        invalidateAndPublish(List.of(storageHash));
     }
 
     /** 删除用户下全部令牌 */
@@ -270,7 +277,7 @@ public class RedisTokenStore implements TokenStore {
                 List.of(keys.userTokensKey(userId)),
                 keys.sessionKeyPrefix(userId));
         deleteRoutesQuietly(membersBeforeRevoke);
-        invalidateCached(membersBeforeRevoke);
+        invalidateAndPublish(membersBeforeRevoke);
     }
 
     /** 列出用户持有的令牌 */
@@ -342,13 +349,17 @@ public class RedisTokenStore implements TokenStore {
         redisTemplate.delete(routeKeys);
     }
 
-    /** 批量清掉进程内缓存条目（撤销/替换的旧令牌） */
-    private void invalidateCached(Set<String> storageHashes) {
+    /**
+     * 撤销/替换成功后：先清本实例条目，再逐条通知其它实例（顺序不可反——先发通知后删 Redis 会把
+     * "读到旧值→撤销→旧值才写进缓存"的竞态从瞬间放大到每次撤销）
+     */
+    private void invalidateAndPublish(Collection<String> storageHashes) {
         if (CollectionUtils.isEmpty(storageHashes)) {
             return;
         }
         for (String hash : storageHashes) {
             sessionCache.invalidate(hash);
+            invalidationChannel.publish(hash);
         }
     }
 

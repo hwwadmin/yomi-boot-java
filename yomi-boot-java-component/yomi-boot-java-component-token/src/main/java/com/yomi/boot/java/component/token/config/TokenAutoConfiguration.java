@@ -7,6 +7,8 @@ import com.yomi.boot.java.component.token.generator.TokenGenerator;
 import com.yomi.boot.java.component.token.generator.UuidTokenGenerator;
 import com.yomi.boot.java.component.token.service.TokenService;
 import com.yomi.boot.java.component.token.store.RedisTokenStore;
+import com.yomi.boot.java.component.token.store.TokenInvalidationChannel;
+import com.yomi.boot.java.component.token.store.TokenSessionCache;
 import com.yomi.boot.java.component.token.store.TokenKeys;
 import com.yomi.boot.java.component.token.store.TokenStore;
 import com.yomi.boot.java.component.token.web.TokenExceptionAdvice;
@@ -25,6 +27,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 /**
  * 令牌服务自动装配
@@ -52,6 +56,26 @@ public class TokenAutoConfiguration {
         return keys;
     }
 
+    /** 进程内会话薄缓存（TTL=0 时为空转态，读写作空操作） */
+    @Bean
+    @ConditionalOnMissingBean
+    public TokenSessionCache tokenSessionCache(TokenProperties properties) {
+        return new TokenSessionCache(properties.getLocalCacheTtl());
+    }
+
+    /**
+     * 失效通知通道：删除/替换在 Redis 生效后发布通知，同时作为订阅者接收其它实例的通知。
+     * <p>订阅注册在 {@link #tokenStore} 里做——那里已被"未自定义 TokenStore + Redis 已配置"把守：
+     * 宿主自带 TokenStore 时整条订阅链不参与（否则会给不使用的宿主白接一条 Redis 订阅，甚至拖垮启动）。</p>
+     * <p>发布失败只记 WARN——撤销本身已生效，其它实例靠条目 TTL 兜底</p>
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public TokenInvalidationChannel tokenInvalidationChannel(StringRedisTemplate redisTemplate, TokenKeys keys,
+                                                            TokenSessionCache sessionCache) {
+        return new TokenInvalidationChannel(redisTemplate, keys.invalidateChannel(), sessionCache);
+    }
+
     /**
      * 默认令牌存储（Redis）。
      * <p>
@@ -64,14 +88,38 @@ public class TokenAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public TokenStore tokenStore(ObjectProvider<StringRedisTemplate> redisTemplateProvider, TokenKeys keys,
-                                 TokenProperties properties, Environment environment) {
+                                 TokenSessionCache sessionCache, TokenInvalidationChannel invalidationChannel,
+                                 ObjectProvider<RedisMessageListenerContainer> listenerContainers,
+                                 Environment environment) {
         StringRedisTemplate redisTemplate = redisTemplateProvider.getIfAvailable();
         if (redisTemplate == null || !RedisConfiguredCondition.isConfigured(environment)) {
             throw new IllegalStateException("yomi.token.enabled=true 需要 Redis：请配置 spring.data.redis.host/url/"
                     + "sentinel/cluster 任一以启用 redis 组件（Boot 默认的 localhost 模板不算），"
                     + "或自定义 TokenStore Bean 覆盖");
         }
-        return new RedisTokenStore(redisTemplate, keys, properties);
+        registerInvalidationListener(invalidationChannel, listenerContainers);
+        return new RedisTokenStore(redisTemplate, keys, sessionCache, invalidationChannel);
+    }
+
+    /**
+     * 把失效通知订阅注册到现成的 {@code RedisMessageListenerContainer}（Boot 默认就注册一个，不另建容器：
+     * 早先按类型自建会被 Boot 那个顶掉，条件报告实测"谁都没订阅"）。
+     * <p>容器有多个（宿主自建 + Boot 默认）时不明选，退化为"只发不收"；容器在建连失败时会让上下文启动失败，
+     * 这正是 token 组件想要的 fail-fast——启用 token 却连不上 Redis，起不来比"起来了但每个请求 500"好</p>
+     */
+    private void registerInvalidationListener(TokenInvalidationChannel channel,
+                                              ObjectProvider<RedisMessageListenerContainer> listenerContainers) {
+        if (!channel.isEnabled()) {
+            log.info("[token] 进程内缓存已关闭(local-cache-ttl=0)，不注册失效通知订阅");
+            return;
+        }
+        RedisMessageListenerContainer container = listenerContainers.getIfUnique();
+        if (container == null) {
+            log.info("[token] 未找到唯一的 RedisMessageListenerContainer，失效通知只发不收（其它实例最迟在条目 TTL 内生效）");
+            return;
+        }
+        container.addMessageListener(channel, new ChannelTopic(channel.getChannel()));
+        log.info("[token] 失效通知订阅已注册: channel={}", channel.getChannel());
     }
 
     @Bean

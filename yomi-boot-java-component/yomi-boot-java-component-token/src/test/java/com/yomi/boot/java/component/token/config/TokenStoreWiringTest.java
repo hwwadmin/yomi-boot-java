@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
@@ -38,7 +39,11 @@ class TokenStoreWiringTest {
                         RedisAutoConfiguration.class, TokenAutoConfiguration.class))
                 .withPropertyValues("yomi.token.enabled=true", "yomi.token.store-prefix=yomi:token:test",
                         // 多端登录打开：此时没有任何其它检查兜底，全靠本判定
-                        "yomi.token.allow-multi-login=true");
+                        "yomi.token.allow-multi-login=true")
+                // 失效通知会注册到监听容器上；用桩容器避免离线上下文真去连 Redis（真实容器在无法建连时会让启动失败，
+                // 那是生产想要的 fail-fast，但离线用例不该受它影响）
+                .withBean("redisMessageListenerContainer", RedisMessageListenerContainer.class,
+                        TokenInvalidationWiringTest.RecordingContainer::new);
     }
 
     @Test

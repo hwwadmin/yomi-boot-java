@@ -104,6 +104,9 @@ yomi:
     renew-on-validate: false
     # 会话绝对存活上限：滑动续期不得超过 issuedAt + 该时长（0=不限制，不建议）
     max-lifetime: 1d
+    # 进程内会话缓存 TTL；0=关闭。条目 TTL 取 min(本值, 令牌剩余有效期)；
+    # 撤销/踢人经 Redis pub/sub 通知各实例即时失效，通知丢失时最迟本值内生效
+    local-cache-ttl: 30s
     # Redis 键前缀
     store-prefix: "yomi:token:${spring.application.name}"
     # 不校验令牌的路径（PathPattern）

@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @author zwei
  */
-class TokenSessionCache {
+public class TokenSessionCache {
 
     /** 容量上限：防伪造 token 撑爆进程内存 */
     private static final int MAX_ENTRIES = 10_000;
@@ -36,7 +36,7 @@ class TokenSessionCache {
     /** 键=令牌散列（sha256） → 值=会话 JSON + 该条目的 TTL */
     private final Cache<String, CachedSession> cache;
 
-    TokenSessionCache(Duration ttl) {
+    public TokenSessionCache(Duration ttl) {
         this.configuredTtl = ttl == null ? Duration.ZERO : ttl;
         this.enabled = configuredTtl.toMillis() > 0;
         this.cache = enabled

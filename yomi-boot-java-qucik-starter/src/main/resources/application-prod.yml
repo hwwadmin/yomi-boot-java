@@ -84,6 +84,7 @@ yomi:
     allow-multi-login: false
     renew-on-validate: false
     max-lifetime: 1d
+    local-cache-ttl: 30s
     store-prefix: "yomi:token:${spring.application.name}"
     skip-validate-paths:
       - /static/**

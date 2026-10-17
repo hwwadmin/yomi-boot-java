@@ -54,10 +54,10 @@ public class TokenProperties {
 
     /**
      * 进程内会话缓存 TTL；0 表示关闭这层（每次校验都读 Redis）。
-     * <p>默认 5 秒：只做一层"削峰"薄缓存，不承担失效通道——撤销在发起实例上同步生效、
-     * 其它实例最迟本值内生效。别调大</p>
+     * <p>条目 TTL 取 min(本值, 令牌剩余有效期)。撤销在发起实例上同步生效；其它实例由 Redis pub/sub
+     * 失效通知即时生效，通知丢失时最迟本值内生效</p>
      */
-    private Duration localCacheTtl = Duration.ofSeconds(5);
+    private Duration localCacheTtl = Duration.ofSeconds(30);
 
     /**
      * 配置自检，在令牌服务启用时装配期调用

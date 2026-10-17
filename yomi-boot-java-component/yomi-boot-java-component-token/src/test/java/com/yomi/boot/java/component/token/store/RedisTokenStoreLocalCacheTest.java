@@ -1,7 +1,6 @@
 package com.yomi.boot.java.component.token.store;
 
 import com.yomi.boot.java.base.utils.JsonUtils;
-import com.yomi.boot.java.component.token.config.TokenProperties;
 import com.yomi.boot.java.component.token.session.TokenSession;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -14,6 +13,7 @@ import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -118,6 +118,8 @@ class RedisTokenStoreLocalCacheTest {
 
         assertNull(store.load(TOKEN), "撤销后本实例条目已清、Redis 路由键已删");
         assertEquals(4, template.gets, "撤销后的读取必须回源（证明条目清掉了）：2 初始 + 1 删前路由读 + 1 回源");
+        assertEquals(List.of(KEYS.invalidateChannel() + "|" + TokenKeys.hashToken(TOKEN)), template.published,
+                "撤销必须发一条失效通知（内容=令牌散列），让其它实例也即时失效");
     }
 
     @Test
@@ -135,6 +137,7 @@ class RedisTokenStoreLocalCacheTest {
 
         assertNotNull(store.load(TOKEN));
         assertEquals(afterRenew + 2, template.gets, "续期改了 expireAt，旧条目必须清掉（否则可能命中旧 expireAt 被误判过期）");
+        assertEquals(List.of(), template.published, "续期不发通知：其它实例条目 TTL ≤ 旧剩余有效期，会自然回源");
     }
 
     private static TokenSession session(Duration remaining) {
@@ -147,15 +150,17 @@ class RedisTokenStoreLocalCacheTest {
     }
 
     private static RedisTokenStore store(SessionTemplate template, Duration localCacheTtl) {
-        TokenProperties properties = new TokenProperties();
-        properties.setLocalCacheTtl(localCacheTtl);
-        return new RedisTokenStore(template, KEYS, properties);
+        TokenSessionCache cache = new TokenSessionCache(localCacheTtl);
+        return new RedisTokenStore(template, KEYS, cache,
+                new TokenInvalidationChannel(template, KEYS.invalidateChannel(), cache));
     }
 
     /** 内存版模板桩：记录 GET 次数，按 KV 读写驱动 load/delete/renew */
     static class SessionTemplate extends StringRedisTemplate {
 
         final Map<String, String> values = new HashMap<>();
+
+        final List<String> published = new ArrayList<>();
 
         int gets;
 
@@ -185,6 +190,12 @@ class RedisTokenStoreLocalCacheTest {
                         }
                         default -> null;
                     });
+        }
+
+        @Override
+        public Long convertAndSend(String channel, Object message) {
+            published.add(channel + "|" + message);
+            return 1L;
         }
 
         @Override

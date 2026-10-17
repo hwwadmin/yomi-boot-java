@@ -29,6 +29,8 @@ public class TokenKeys {
     private static final String ROUTE_INFIX = ":rt:";
     /** 单点登录签发锁后缀 */
     private static final String ISSUE_LOCK_SUFFIX = ":lock:issue";
+    /** 失效通知通道后缀（pub/sub 的 channel 不是键，无需纳入键清理） */
+    private static final String INVALIDATE_CHANNEL_SUFFIX = ":invalidate";
 
     /** 规范化后的存储前缀 */
     @Getter
@@ -101,6 +103,13 @@ public class TokenKeys {
      */
     public String issueLockKey(Long userId) {
         return userHashTag(userId) + ISSUE_LOCK_SUFFIX;
+    }
+
+    /**
+     * 失效通知通道名：{@code prefix:invalidate}
+     */
+    public String invalidateChannel() {
+        return prefix + INVALIDATE_CHANNEL_SUFFIX;
     }
 
     /**
