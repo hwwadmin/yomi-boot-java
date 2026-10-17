@@ -40,7 +40,7 @@ public class HttpLogMetrics {
         counter("yomi.httplog.written", null).increment(n);
     }
 
-    /** 丢弃 n 条（reason：queue-full / shutdown-timeout / consume-failed） */
+    /** 丢弃 n 条（reason：queue-full / shutdown-timeout / consume-failed / redis-queue-limit） */
     public void dropped(String reason, int n) {
         counter("yomi.httplog.dropped", reason).increment(n);
         if (warnThrottled(lastDropWarnAt)) {

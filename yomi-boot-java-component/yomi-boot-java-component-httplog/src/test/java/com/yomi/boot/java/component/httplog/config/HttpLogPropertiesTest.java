@@ -24,6 +24,7 @@ class HttpLogPropertiesTest {
         assertFalse(properties.isEnabled());
         assertEquals(HttpLogMode.MEMORY, properties.getMode());
         assertEquals(HttpLogProperties.RedisStructure.LIST, properties.getRedis().getStructure());
+        assertEquals(50_000, properties.getRedis().getMaxLength());
         assertEquals(1000, properties.getBuffer().getBatchSize());
         assertEquals(4096, properties.getBuffer().getCapacity());
         assertEquals(Duration.ofMillis(500), properties.getBuffer().getFlushInterval());
@@ -76,6 +77,25 @@ class HttpLogPropertiesTest {
         HttpLogProperties properties = new HttpLogProperties();
         properties.getBuffer().setBatchSize(0);
         properties.getRetention().setDays(0);
+        assertDoesNotThrow(properties::validate);
+    }
+
+    @Test
+    void validate_negativeRedisMaxLength_failsFast() {
+        HttpLogProperties properties = new HttpLogProperties();
+        properties.setEnabled(true);
+        properties.setMode(HttpLogMode.REDIS);
+        properties.getRedis().setMaxLength(-1);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
+        assertTrue(ex.getMessage().contains("max-length"), ex.getMessage());
+    }
+
+    @Test
+    void validate_zeroRedisMaxLength_allowed() {
+        HttpLogProperties properties = new HttpLogProperties();
+        properties.setEnabled(true);
+        properties.setMode(HttpLogMode.REDIS);
+        properties.getRedis().setMaxLength(0);
         assertDoesNotThrow(properties::validate);
     }
 

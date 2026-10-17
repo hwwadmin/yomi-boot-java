@@ -148,6 +148,8 @@ yomi:
   httplog:
     enabled: true
     mode: redis
+    redis:
+      max-length: 10000
     collect:
       record-request-headers: true
       record-request-body: true

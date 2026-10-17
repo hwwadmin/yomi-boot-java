@@ -22,6 +22,12 @@ public class HttpLogProperties {
     /** body 截断上限的硬上限：sys_http_log 的 body 列为 text（64KB），留少量余量 */
     private static final int MAX_BODY_BYTES_LIMIT = 60_000;
 
+    /** 单条日志除 body 外的元数据估算开销（URL/头/JSON 包装），用于队列内存估算 */
+    private static final long PER_RECORD_OVERHEAD_BYTES = 2 * 1024L;
+
+    /** list 队列上限估算占用的告警阈值：条数上限不等于内存上限 */
+    private static final long QUEUE_SIZE_WARN_BYTES = 256L * 1024 * 1024;
+
     /** 组件开关 */
     private boolean enabled = false;
 
@@ -198,6 +204,14 @@ public class HttpLogProperties {
         /** 阻塞读取最长等待 */
         private Duration blockMs = Duration.ofMillis(2000);
 
+        /**
+         * list 结构队列长度上限（条）：超限丢弃队首最旧日志，0=不限；默认 5 万
+         * <p>条数上限不等于内存上限：估算占用 ≈ maxLength ×（请求体上限 + 响应体上限 + 约 2KB），
+         * 默认 8KB+8KB 时 5 万条 ≈ 0.9GB，估算超过 256MB 启动期 WARN。
+         * <p>stream 结构的上限尚未支持（单独立项）：stream 模式下本键不生效，启动期 WARN
+         */
+        private int maxLength = 50_000;
+
         /** 消费组（structure=stream 专用），默认 {service-name} */
         private String group = "";
 
@@ -351,6 +365,30 @@ public class HttpLogProperties {
             throw new IllegalStateException("yomi.httplog.redis.read-count 必须大于 0");
         }
         requirePositive(r.getBlockMs(), "yomi.httplog.redis.block-ms");
+        if (r.getMaxLength() < 0) {
+            throw new IllegalStateException("yomi.httplog.redis.max-length 不能为负数（0 表示不限）");
+        }
+        warnQueueLimit(r);
+    }
+
+    /** 队列上限仅作用于 list：stream 模式提示不生效；list 模式估算占用超阈值告警 */
+    private void warnQueueLimit(Redis r) {
+        if (r.getMaxLength() <= 0) {
+            return;
+        }
+        if (r.getStructure() == RedisStructure.STREAM) {
+            log.warn("[httplog]yomi.httplog.redis.max-length 仅作用于 list 结构，"
+                    + "当前 stream 模式队列仍无上限（该能力单独立项）；如需有界请改用 list");
+            return;
+        }
+        long perRecordBytes = collect.getMaxRequestBodyBytes() + collect.getMaxResponseBodyBytes()
+                + PER_RECORD_OVERHEAD_BYTES;
+        long projectedBytes = perRecordBytes * r.getMaxLength();
+        if (projectedBytes > QUEUE_SIZE_WARN_BYTES) {
+            log.warn("[httplog]redis list 队列上限估算占用 ≈{}MB（max-length={} × 单条上限≈{}KB）："
+                            + "条数上限不等于内存上限，请按 Redis 可用内存反算 max-length 或调小 body 上限",
+                    projectedBytes / 1024 / 1024, r.getMaxLength(), perRecordBytes / 1024);
+        }
     }
 
     /** 校验 Kafka 传输配置 */

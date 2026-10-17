@@ -30,6 +30,7 @@ import java.util.Map;
 /**
  * redis 模式传输：L1 有界缓冲 → 发送线程批量写入 Redis → 消费线程批量读取 → 回调
  * <p>structure=list（默认）：RPUSH 批量写 / LPOP count 批量读（Redis ≥ 6.2），pop 即删不重复；
+ * 写入后超过 {@code yomi.httplog.redis.max-length} 上限时丢队首最旧日志（0=不限）；
  * structure=stream：XADD + 消费组 XREADGROUP；无论成败都按批 XACK（失败按丢弃计数）；
  * 崩溃遗留的 PEL 由同名 consumer（默认主机名，可配）重启后补投，每个 consumer 只处理自己的 PEL。
  * <p>发送前完成 body 补脱敏：进入介质的即为脱敏后数据。
@@ -116,8 +117,14 @@ public class RedisHttpLogTransport extends AbstractBufferedTransport implements 
         for (HttpLogRecord record : batch) {
             payloads.add(JsonUtils.toJson(record));
         }
-        // RPUSH key v1..vN：单命令批量写入
-        redisTemplate.opsForList().rightPushAll(queueKey, payloads);
+        // RPUSH key v1..vN：单命令批量写入，返回值即写入后的队列长度
+        Long size = redisTemplate.opsForList().rightPushAll(queueKey, payloads);
+        int maxLength = properties.getRedis().getMaxLength();
+        if (maxLength > 0 && size != null && size > maxLength) {
+            // 超上限：保留最新，丢队首最旧
+            redisTemplate.opsForList().trim(queueKey, -maxLength, -1);
+            metrics.dropped("redis-queue-limit", (int) Math.min(Integer.MAX_VALUE, size - maxLength));
+        }
     }
 
     /** list 结构消费：LPOP key count 批量读取（Redis ≥ 6.2），pop 即删 */

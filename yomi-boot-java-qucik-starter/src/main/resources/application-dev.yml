@@ -221,6 +221,9 @@ yomi:
     enabled: true
     # 传输模式
     mode: redis
+    redis:
+      # list 队列长度上限（0=不限）：超限丢队首最旧日志。
+      max-length: 10000
     collect:
       # 头/体/响应全采（默认即全采，此段为显式展示）
       record-request-headers: true
