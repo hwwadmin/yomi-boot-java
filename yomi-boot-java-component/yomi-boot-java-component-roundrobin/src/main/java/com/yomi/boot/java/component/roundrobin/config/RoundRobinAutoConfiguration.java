@@ -7,7 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -16,10 +15,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
-
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
 
 /**
  * 分布式轮询调度自动装配，{@code yomi.roundrobin.enabled=true} 时注册任务注册表与 {@link RoundRobinLifecycle}
@@ -61,29 +56,14 @@ public class RoundRobinAutoConfiguration {
     }
 
     /**
-     * 专用调度线程池（承载 50ms 周期的锁存活检测与 max-hold）。
-     * <p>宿主提供名为 {@code roundRobinScheduler}、类型为 {@link ScheduledExecutorService} 的 Bean 时以宿主的为准，
-     * 其它同类型 Bean 不参与（注入按名限定）；池太小或 Redis 变慢会让检测/max-hold 延迟，检测延迟会被量出来并按次告警。
-     * 同名但类型不符的 Bean 会让 {@link RoundRobinLifecycle} 在启动期注入失败（明确报错）</p>
+     * 生命周期：启动/停止所有任务。锁存活探测与 max-hold 由每轮一条虚拟线程承载（{@code RoundRobinTick} 内部），
+     * 组件不再需要调度线程池，也没有宿主要调的池参数
      */
-    @Bean(name = "roundRobinScheduler", destroyMethod = "shutdown")
-    @ConditionalOnMissingBean(name = "roundRobinScheduler")
-    public ScheduledExecutorService roundRobinScheduler() {
-        ThreadFactory factory = r -> {
-            Thread t = new Thread(r);
-            t.setDaemon(true);
-            t.setName("yomi-roundrobin-shared-scheduler");
-            return t;
-        };
-        return Executors.newScheduledThreadPool(4, factory);
-    }
-
     @Bean
     @ConditionalOnMissingBean
     public RoundRobinLifecycle roundRobinLifecycle(RoundRobinRegistry registry,
-                                                   RoundRobinLockClient lockClient,
-                                                   @Qualifier("roundRobinScheduler") ScheduledExecutorService roundRobinScheduler) {
-        return new RoundRobinLifecycle(registry, lockClient, roundRobinScheduler);
+                                                   RoundRobinLockClient lockClient) {
+        return new RoundRobinLifecycle(registry, lockClient);
     }
 
     /** 从环境补全存储键前缀 */

@@ -8,15 +8,12 @@ import com.yomi.boot.java.component.roundrobin.RoundRobinHandler;
 import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient.UnlockOutcome;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -29,21 +26,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class RoundRobinLoopTest {
 
-    private ScheduledExecutorService scheduler;
-
-    @AfterEach
-    void shutdown() {
-        if (scheduler != null) {
-            scheduler.shutdownNow();
-        }
-    }
-
     @Test
     void taskFailuresAreCountedAndBackedOff() throws Exception {
-        scheduler = Executors.newScheduledThreadPool(1);
         CancellationToken token = new CancellationToken();
         AtomicInteger runs = new AtomicInteger();
-        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient(), scheduler));
+        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient()));
         RoundRobinTask task = task(ctx -> {
             if (runs.incrementAndGet() >= 2) {
                 token.cancel();
@@ -75,10 +62,9 @@ class RoundRobinLoopTest {
      */
     @Test
     void taskErrorsAreCountedAndBackedOff() throws Exception {
-        scheduler = Executors.newScheduledThreadPool(1);
         CancellationToken token = new CancellationToken();
         AtomicInteger runs = new AtomicInteger();
-        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient(), scheduler));
+        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient()));
         RoundRobinTask task = task(ctx -> {
             if (runs.incrementAndGet() >= 2) {
                 token.cancel();
@@ -109,7 +95,6 @@ class RoundRobinLoopTest {
      */
     @Test
     void frameworkErrorsAreCountedAndBackedOff() throws Exception {
-        scheduler = Executors.newScheduledThreadPool(1);
         CancellationToken token = new CancellationToken();
         AtomicInteger failures = new AtomicInteger();
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(
@@ -121,7 +106,7 @@ class RoundRobinLoopTest {
                         }
                         throw new StackOverflowError("框架层 Error");
                     }
-                }, scheduler));
+                }));
 
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
@@ -146,9 +131,8 @@ class RoundRobinLoopTest {
      */
     @Test
     void abnormalExitIsLoggedWhenErrorEscapesRoundTolerance() throws Exception {
-        scheduler = Executors.newScheduledThreadPool(1);
         CancellationToken token = new CancellationToken();
-        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient(), scheduler));
+        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient()));
         // 覆写摘要取数：构造期校验已挡住非法参数，这是"循环自身代码出错"仅剩的注入点
         RoundRobinTask broken = new RoundRobinTask("broken-task", null, Duration.ofMillis(50), null, null,
                 Duration.ZERO, Duration.ofSeconds(1), ctx -> {

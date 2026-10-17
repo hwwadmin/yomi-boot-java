@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * 启动 / 停止所有轮询任务
@@ -32,9 +31,6 @@ public class RoundRobinLifecycle implements SmartLifecycle {
 
     /** 任务互斥用的分布式锁客户端 */
     private final RoundRobinLockClient lockClient;
-
-    /** 锁检测与 max-hold 调度 */
-    private final ScheduledExecutorService scheduler;
 
     /** 调度取消令牌；stop 后 start 时会重建 */
     private CancellationToken scheduleToken = new CancellationToken();
@@ -67,8 +63,7 @@ public class RoundRobinLifecycle implements SmartLifecycle {
             for (RoundRobinTask task : tasks) {
                 startWorker(task, false);
             }
-            log.info("yomi.roundrobin 已启动 {} 个任务，调度线程池: {}", workers.size(),
-                    scheduler.getClass().getName());
+            log.info("yomi.roundrobin 已启动 {} 个任务", workers.size());
         }
         running = true;
     }
@@ -85,10 +80,12 @@ public class RoundRobinLifecycle implements SmartLifecycle {
             // 先于 worker 输出：合并后的 task started 行在 worker 线程，先后顺序才不取决于调度
             log.info("RoundRobin[{}] 运行期注册，正在增量启动（历史缺陷：这类任务此前会静默不执行）", task.getName());
         }
-        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(lockClient, scheduler));
+        // 取本轮快照：worker 线程体内不再读可变字段（stop→start 会换新令牌）
+        CancellationToken token = scheduleToken;
+        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(lockClient));
         Thread thread = Thread.ofVirtual()
                 .name("roundrobin-" + task.getName())
-                .unstarted(() -> loop.run(scheduleToken, task));
+                .unstarted(() -> loop.run(token, task));
         thread.start();
         workers.add(new RoundRobinWorker(thread, task.getShutdownAwait()));
     }

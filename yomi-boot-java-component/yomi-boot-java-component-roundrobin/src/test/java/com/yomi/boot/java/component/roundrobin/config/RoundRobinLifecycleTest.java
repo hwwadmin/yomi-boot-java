@@ -8,13 +8,10 @@ import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
 import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
 import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinLoop;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -25,23 +22,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class RoundRobinLifecycleTest {
 
-    private ScheduledExecutorService scheduler;
-
-    @AfterEach
-    void shutdown() {
-        if (scheduler != null) {
-            scheduler.shutdownNow();
-        }
-    }
-
     @Test
     void startLogsDescriptionForEachTask() throws Exception {
-        scheduler = Executors.newScheduledThreadPool(1);
         RoundRobinRegistry registry = new RoundRobinRegistry();
         register(registry, "任务甲", "清理超时订单");
         register(registry, "任务乙", null);
 
-        RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new IdleLockClient(), scheduler);
+        RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new IdleLockClient());
 
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
@@ -75,12 +62,11 @@ class RoundRobinLifecycleTest {
     /** 生命周期 stop 后再 start 时，取消令牌应复位以便任务继续运行 */
     @Test
     void restartsAfterStop() throws Exception {
-        scheduler = Executors.newScheduledThreadPool(1);
         RoundRobinRegistry registry = new RoundRobinRegistry();
         AtomicInteger runs = new AtomicInteger();
         registry.register(RoundRobin.task("可重启任务", Duration.ofMillis(50), ctx -> runs.incrementAndGet()));
 
-        RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new WorkingLockClient(), scheduler);
+        RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new WorkingLockClient());
         try {
             lifecycle.start();
             assertTrue(awaitUntil(() -> runs.get() > 0), "首次启动任务应执行");
@@ -111,9 +97,8 @@ class RoundRobinLifecycleTest {
     /** 启动之后注册的任务会被增量调度并执行 */
     @Test
     void lateRegistrationAfterStartActuallyRuns() throws Exception {
-        scheduler = Executors.newScheduledThreadPool(1);
         RoundRobinRegistry registry = new RoundRobinRegistry();
-        RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new WorkingLockClient(), scheduler);
+        RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new WorkingLockClient());
         AtomicInteger runs = new AtomicInteger();
 
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -139,9 +124,8 @@ class RoundRobinLifecycleTest {
     /** 停止之后注册：只入表、不调度（下次 start 生效），不会出现建了调度又被取消的情况 */
     @Test
     void registrationAfterStopIsNotScheduled() throws Exception {
-        scheduler = Executors.newScheduledThreadPool(1);
         RoundRobinRegistry registry = new RoundRobinRegistry();
-        RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new WorkingLockClient(), scheduler);
+        RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new WorkingLockClient());
         AtomicInteger runs = new AtomicInteger();
 
         lifecycle.start();
