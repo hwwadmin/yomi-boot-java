@@ -15,6 +15,8 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -121,10 +123,43 @@ class RoundRobinLifecycleTest {
         }
     }
 
-    /** 停止之后注册：只入表、不调度（下次 start 生效），不会出现建了调度又被取消的情况 */
+    /**
+     * 启动窗口内注册（回调补建时快照已建过该任务）：只入表、不重复建 worker、也不打增量日志。
+     * <p>直接调 {@code startLateTask} 复现该窗口——真实场景里注册方会阻塞在生命周期锁上，回调在 start 收尾后才执行</p>
+     */
     @Test
-    void registrationAfterStopIsNotScheduled() throws Exception {
+    void lateRegistrationInStartWindowDoesNotStartSecondWorker() throws Exception {
         RoundRobinRegistry registry = new RoundRobinRegistry();
+        RoundRobinTask windowTask = RoundRobin.task("窗口任务", Duration.ofMillis(50), ctx -> {
+        });
+        registry.register(windowTask);
+        RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new WorkingLockClient());
+
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger lifecycleLogger = (Logger) LoggerFactory.getLogger(RoundRobinLifecycle.class);
+        Logger loopLogger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
+        lifecycleLogger.addAppender(appender);
+        loopLogger.addAppender(appender);
+        try {
+            lifecycle.start();
+            lifecycle.startLateTask(windowTask);
+
+            assertTrue(awaitUntil(() -> logs(appender).contains("RoundRobin[窗口任务] task started")), logs(appender));
+            Thread.sleep(150);      // 若误建了第二个 worker，它也会打一行 task started
+            long startedLines = logs(appender).lines()
+                    .filter(line -> line.contains("RoundRobin[窗口任务] task started")).count();
+            assertEquals(1L, startedLines, "快照已建过的任务不得重复建 worker: " + logs(appender));
+            assertFalse(logs(appender).contains("正在增量启动"), "不该打增量启动日志: " + logs(appender));
+        } finally {
+            lifecycle.stop();
+            lifecycleLogger.detachAppender(appender);
+            loopLogger.detachAppender(appender);
+        }
+    }
+
+    /** 停止之后注册：只入表、不调度（下次 start 生效），不会出现建了调度又被取消的情况 */
+    @Test    void registrationAfterStopIsNotScheduled() throws Exception {        RoundRobinRegistry registry = new RoundRobinRegistry();
         RoundRobinLifecycle lifecycle = new RoundRobinLifecycle(registry, new WorkingLockClient());
         AtomicInteger runs = new AtomicInteger();
 

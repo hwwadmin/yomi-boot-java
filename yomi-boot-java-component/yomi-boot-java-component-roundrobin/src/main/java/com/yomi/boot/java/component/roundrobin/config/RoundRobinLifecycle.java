@@ -61,7 +61,8 @@ public class RoundRobinLifecycle implements SmartLifecycle {
             log.info("yomi.roundrobin 已启用，当前无已注册的轮询任务");
         } else {
             for (RoundRobinTask task : tasks) {
-                startWorker(task, false);
+                startedNames.add(task.getName());
+                startWorker(task);
             }
             log.info("yomi.roundrobin 已启动 {} 个任务", workers.size());
         }
@@ -69,17 +70,10 @@ public class RoundRobinLifecycle implements SmartLifecycle {
     }
 
     /**
-     * 建 worker（同名任务只建一次：快照与运行期注册可能同时命中同一个任务）
+     * 建 worker 并纳入停机等待（调用方保证同名任务只建一次）
      * <p>启动日志（task started + 生效配置）由 worker 线程输出一行，本方法不再重复打印</p>
      */
-    private void startWorker(RoundRobinTask task, boolean lateRegistration) {
-        if (!startedNames.add(task.getName())) {
-            return;
-        }
-        if (lateRegistration) {
-            // 先于 worker 输出：合并后的 task started 行在 worker 线程，先后顺序才不取决于调度
-            log.info("RoundRobin[{}] 运行期注册，正在增量启动（历史缺陷：这类任务此前会静默不执行）", task.getName());
-        }
+    private void startWorker(RoundRobinTask task) {
         // 取本轮快照：worker 线程体内不再读可变字段（stop→start 会换新令牌）
         CancellationToken token = scheduleToken;
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(lockClient));
@@ -92,14 +86,20 @@ public class RoundRobinLifecycle implements SmartLifecycle {
 
     /**
      * 启动完成后注册的任务：立刻补建调度（与 {@link RoundRobinRegistry} 的回调约定）
-     * <p>同步方法与 start/stop 共用生命周期锁：注册方会阻塞到启动/停止收尾，注册成功即完成调度补建</p>
+     * <p>同步方法与 start/stop 共用生命周期锁：注册方会阻塞到启动/停止收尾，注册成功即完成调度补建。
+     * 已被启动快照建过（注册落在 start 的"挂回调"与"取快照"之间）则只入表、不重复建、也不打增量日志</p>
      */
     synchronized void startLateTask(RoundRobinTask task) {
         if (!running) {
             log.warn("RoundRobin[{}] 在未启动或已停止时注册：本次不建调度，随下次 start 生效", task.getName());
             return;
         }
-        startWorker(task, true);
+        if (!startedNames.add(task.getName())) {
+            return;
+        }
+        // 先于 worker 输出：task started 行在 worker 线程，先后顺序才不取决于调度
+        log.info("RoundRobin[{}] 运行期注册，正在增量启动（历史缺陷：这类任务此前会静默不执行）", task.getName());
+        startWorker(task);
     }
 
     /** 停止全部 Worker */
