@@ -26,11 +26,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OutboxRelayCoordinator {
 
-    /** 抓取任务名前缀，完整注册名为 {@code 前缀 + "_" + serviceName} */
+    /** 抓取发件箱任务名 */
     public static final String TASK_FETCH = "eventOutboxFetch";
-    /** FETCHED 超时回收任务名前缀 */
+    /** FETCHED 超时回收任务名 */
     public static final String TASK_FETCH_TIMEOUT = "eventOutboxFetchTimeout";
-    /** DLQ 重试任务名前缀 */
+    /** DLQ 重试任务名 */
     public static final String TASK_DLQ = "eventDlqRetry";
 
     /** 事件模块配置 */

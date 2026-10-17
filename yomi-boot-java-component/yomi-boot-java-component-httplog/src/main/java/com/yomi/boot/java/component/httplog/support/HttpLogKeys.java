@@ -46,11 +46,6 @@ public class HttpLogKeys {
         return StringUtils.isNotBlank(group) ? group.trim() : serviceName + "-httplog";
     }
 
-    /** 保留期清理任务名（RoundRobin 注册名；服务维度任务，带服务名后缀） */
-    public String retentionTaskName() {
-        return "httpLogRetentionCleaner_" + serviceName;
-    }
-
     /** 未配置时从 spring.application.name 推导；都缺则启动失败 */
     private static String resolveServiceName(HttpLogProperties properties, Environment environment) {
         if (StringUtils.isNotBlank(properties.getServiceName())) {

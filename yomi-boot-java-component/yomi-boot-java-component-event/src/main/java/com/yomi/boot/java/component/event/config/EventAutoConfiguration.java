@@ -220,7 +220,7 @@ public class EventAutoConfiguration {
                                                                              EventKeys keys,
                                                                              OutboxRelayCoordinator coordinator,
                                                                              RoundRobinRegistry registry) {
-            registerRelayTasks(registry, properties, keys, coordinator);
+            registerRelayTasks(registry, properties, coordinator);
             return new EventOutboxRoundRobinRegistrar();
         }
 
@@ -295,21 +295,20 @@ public class EventAutoConfiguration {
     /** 注册发件箱 RoundRobin 后台任务 */
     private static void registerRelayTasks(RoundRobinRegistry registry,
                                            EventProperties properties,
-                                           EventKeys keys,
                                            OutboxRelayCoordinator coordinator) {
         RoundRobinDefaults defaults = RoundRobinDefaults.builder().build();
         registry.register(RoundRobin.task(
-                RoundRobinConfig.simple(keys.roundRobinName(OutboxRelayCoordinator.TASK_FETCH),
+                RoundRobinConfig.simple(OutboxRelayCoordinator.TASK_FETCH,
                         "抓取发件箱 PENDING 记录并投递 MQ",
                         properties.getFetchInterval(), defaults),
                 coordinator::fetchAndDispatch));
         registry.register(RoundRobin.task(
-                RoundRobinConfig.simple(keys.roundRobinName(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT),
+                RoundRobinConfig.simple(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT,
                         "回收长时间停留在 FETCHED 的发件箱记录（重置为 PENDING）",
                         properties.getFetchInterval(), defaults),
                 coordinator::recoverFetchedTimeout));
         registry.register(RoundRobin.task(
-                RoundRobinConfig.simple(keys.roundRobinName(OutboxRelayCoordinator.TASK_DLQ),
+                RoundRobinConfig.simple(OutboxRelayCoordinator.TASK_DLQ,
                         "重试发件箱死信（DLQ），清理已成功或无主的死信行",
                         properties.getDlqScanInterval(), defaults),
                 coordinator::processDlq));

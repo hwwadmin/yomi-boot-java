@@ -10,7 +10,10 @@ import com.yomi.boot.java.component.httplog.queue.kafka.KafkaHttpLogTransport;
 import com.yomi.boot.java.component.httplog.queue.memory.MemoryHttpLogTransport;
 import com.yomi.boot.java.component.httplog.queue.redis.RedisHttpLogTransport;
 import com.yomi.boot.java.component.httplog.repository.IHttpLogRepository;
+import com.yomi.boot.java.component.httplog.retention.HttpLogRetentionCleaner;
 import com.yomi.boot.java.component.httplog.store.HttpLogStore;
+import com.yomi.boot.java.component.httplog.support.HttpLogKeys;
+import com.yomi.boot.java.component.roundrobin.core.RoundRobinRegistry;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
@@ -187,6 +190,21 @@ class HttpLogAutoConfigurationTest {
                     assertThat(context).hasSingleBean(HttpLogFilter.class);
                     assertThat(context).hasBean("httpLogFilterRegistration");
                 });
+    }
+
+    /** 保留期清理的任务注册名 = 常量本身：不带服务名后缀（应用隔离由 roundrobin 前缀保证） */
+    @Test
+    void roundRobinRetentionTask_registeredWithBareName() {
+        HttpLogProperties properties = new HttpLogProperties();
+        properties.setServiceName("demo");
+        HttpLogKeys keys = new HttpLogKeys(properties, null);
+        RoundRobinRegistry registry = new RoundRobinRegistry();
+
+        new HttpLogAutoConfiguration.RetentionConfiguration()
+                .httpLogRetentionCleaner(properties, keys, null, registry);
+
+        assertThat(registry.contains(HttpLogRetentionCleaner.TASK_NAME)).isTrue();
+        assertThat(registry.contains(HttpLogRetentionCleaner.TASK_NAME + "_demo")).isFalse();
     }
 
     private static String[] baseProperties() {

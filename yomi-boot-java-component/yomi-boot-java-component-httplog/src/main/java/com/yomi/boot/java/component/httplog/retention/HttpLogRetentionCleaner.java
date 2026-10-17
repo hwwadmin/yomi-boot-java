@@ -21,6 +21,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class HttpLogRetentionCleaner {
 
+    /** RoundRobin 任务名（不带服务名后缀：应用隔离由 roundrobin 前缀保证） */
+    public static final String TASK_NAME = "httpLogRetentionCleaner";
+
     /** 模块配置 */
     private final HttpLogProperties properties;
 

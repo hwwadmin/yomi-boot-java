@@ -361,7 +361,7 @@ public class HttpLogAutoConfiguration {
                                                                RoundRobinRegistry registry) {
             HttpLogRetentionCleaner cleaner = new HttpLogRetentionCleaner(properties, keys, httpLogRepository);
             RoundRobinDefaults defaults = RoundRobinDefaults.builder().build();
-            RoundRobinConfig config = RoundRobinConfig.simple(keys.retentionTaskName(),
+            RoundRobinConfig config = RoundRobinConfig.simple(HttpLogRetentionCleaner.TASK_NAME,
                     "清理超过保留期的 HTTP 请求日志", properties.getRetention().getScanInterval(), defaults);
             config.validate();
             registry.register(RoundRobin.task(config, cleaner::clean));
