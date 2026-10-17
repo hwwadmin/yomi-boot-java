@@ -19,7 +19,7 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class IdempotencyStaleCleaner {
 
-    /** 与 RoundRobin 注册名一致，供自动配置注册任务 */
+    /** 与 RoundRobin 注册名一致，供自动配置注册任务；全局任务（整表清理），不带服务名后缀 */
     public static final String TASK_NAME = "idempotencyRecordCleaner";
 
     /** 幂等记录仓储 */

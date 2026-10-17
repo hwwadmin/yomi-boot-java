@@ -26,12 +26,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OutboxRelayCoordinator {
 
-    /** RoundRobin 任务名前缀，完整名为 {@code 前缀 + "_" + serviceName} */
-    public static final String TASK_FETCH = "MqIEventPublisherFetch";
-    /** FETCHED 超时回收任务名 */
-    public static final String TASK_FETCH_TIMEOUT = "MqIEventPublisherFetchTimeout";
-    /** DLQ 重试任务名 */
-    public static final String TASK_DLQ = "MqIEventPublisherDlq";
+    /** 抓取任务名前缀，完整注册名为 {@code 前缀 + "_" + serviceName} */
+    public static final String TASK_FETCH = "eventOutboxFetch";
+    /** FETCHED 超时回收任务名前缀 */
+    public static final String TASK_FETCH_TIMEOUT = "eventOutboxFetchTimeout";
+    /** DLQ 重试任务名前缀 */
+    public static final String TASK_DLQ = "eventDlqRetry";
 
     /** 事件模块配置 */
     private final EventProperties properties;

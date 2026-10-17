@@ -18,7 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class RbacProjectionRefresher {
 
-    /** RoundRobin 任务名 */
+    /** RoundRobin 任务名；全局任务（整投影刷新），不带服务名后缀 */
     public static final String TASK_NAME = "rbacProjectionRefresh";
 
     /** 触发投影刷新的授权服务 */
