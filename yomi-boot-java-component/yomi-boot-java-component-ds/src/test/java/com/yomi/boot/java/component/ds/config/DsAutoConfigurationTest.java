@@ -404,6 +404,48 @@ class DsAutoConfigurationTest {
         return appender.list.stream().map(ILoggingEvent::getFormattedMessage).collect(Collectors.joining("\n"));
     }
 
+    /** 主数据源公告只打一次（工厂与事务管理器都会解析主数据源，公告不能跟着解析重复） */
+    @Test
+    void masterDataSourceIsAnnouncedExactlyOnce() {
+        List<String> announcements = announcementsOf(new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
+                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource));
+        assertEquals(1, announcements.size(), "主数据源公告应只打一次: " + announcements);
+        assertTrue(announcements.get(0).contains("masterDataSource（component-ds 装配）"), announcements.get(0));
+    }
+
+    /** 宿主提供数据源（唯一候选）时同样只公告一次，并注明"宿主提供" */
+    @Test
+    void hostProvidedDataSourceIsAnnouncedExactlyOnce() {
+        List<String> announcements = announcementsOf(new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
+                .withBean("dataSource", DataSource.class, DsAutoConfigurationTest::stubDataSource));
+        assertEquals(1, announcements.size(), "主数据源公告应只打一次: " + announcements);
+        assertTrue(announcements.get(0).contains("（宿主提供）"), announcements.get(0));
+    }
+
+    /**
+     * 跑一次上下文并收集"主数据源 = ?"公告：appender 挂在 ds 包级 Logger 上，
+     * 无论公告由哪个类打出都计入，计数才有判别力
+     */
+    private static List<String> announcementsOf(ApplicationContextRunner runner) {
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger("com.yomi.boot.java.component.ds");
+        logger.addAppender(appender);
+        try {
+            runner.run(context -> {
+                assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
+                assertNotNull(context.getBean(DsMaster.TRANSACTION_MANAGER_BEAN, PlatformTransactionManager.class),
+                        "事务管理器要真的装配出来，公告计数才有意义");
+            });
+        } finally {
+            logger.detachAppender(appender);
+        }
+        return appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .filter(message -> message.startsWith("[ds] 主数据源 =")).toList();
+    }
+
     /** 防全表更新/删除：默认必须进链（BlockAttack 拦截无有效条件的 UPDATE/DELETE） */
     @Test
     void blockAttackIsAlwaysInChain() {

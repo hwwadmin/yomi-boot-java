@@ -90,6 +90,15 @@ public class MasterDataSourceConfiguration {
         return "spring.datasource." + Character.toLowerCase(name.charAt(0)) + name.substring(1);
     }
 
+    /** 主数据源公告：只在这里打一次（事务管理器同样解析主数据源，不再重复公告） */
+    private static void announceMasterDataSource(DsMaster.Resolved<DataSource> resolved) {
+        if (DsMaster.DATASOURCE_BEAN.equals(resolved.beanName())) {
+            log.info("[ds] 主数据源 = {}（component-ds 装配）", DsMaster.DATASOURCE_BEAN);
+        } else {
+            log.info("[ds] 主数据源 = 容器里唯一/@Primary 的 {}（宿主提供）", resolved.bean().getClass().getName());
+        }
+    }
+
     /** 主库工厂：装配口径逐条对齐 MP 的自动配置（见 {@link DsSqlSessionFactoryBuilder}） */
     @Bean
     @Primary
@@ -100,8 +109,9 @@ public class MasterDataSourceConfiguration {
                                                      @Value("${yomi.ds.transaction-guard:error}") String transactionGuard)
             throws Exception {
         DsCrossDbGuard.setEnabled(DsCrossDbGuard.parseEnabled(transactionGuard));
-        DataSource dataSource = DsMaster.resolveDataSource(beanFactory).bean();
-        return builder.build(DsMaster.LIBRARY_NAME, dataSource, databaseIdProvider.getIfAvailable());
+        DsMaster.Resolved<DataSource> resolved = DsMaster.resolveDataSource(beanFactory);
+        announceMasterDataSource(resolved);
+        return builder.build(DsMaster.LIBRARY_NAME, resolved.bean(), databaseIdProvider.getIfAvailable());
     }
 
     /** 主库模板：尊重 {@code mybatis-plus.executor-type}；不指定名称注入 SqlSessionTemplate 的组件/业务都取它 */

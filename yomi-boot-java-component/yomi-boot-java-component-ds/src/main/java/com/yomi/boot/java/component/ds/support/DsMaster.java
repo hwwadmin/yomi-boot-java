@@ -1,6 +1,5 @@
 package com.yomi.boot.java.component.ds.support;
 
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ListableBeanFactory;
 
 import javax.sql.DataSource;
@@ -19,7 +18,6 @@ import java.util.List;
  *
  * @author zwei
  */
-@Slf4j
 public final class DsMaster {
 
     /** 主库名（日志展示用；也用作 Hikari 默认池名） */
@@ -42,14 +40,7 @@ public final class DsMaster {
 
     /** 解析主数据源：{@code masterDataSource} → 唯一/{@code @Primary} → 失败 */
     public static Resolved<DataSource> resolveDataSource(ListableBeanFactory beanFactory) {
-        Resolved<DataSource> resolved = resolve(beanFactory, DataSource.class, DATASOURCE_BEAN, "主数据源");
-        if (DATASOURCE_BEAN.equals(resolved.beanName())) {
-            log.info("[ds] 主数据源 = {}（component-ds 装配）", DATASOURCE_BEAN);
-        } else {
-            log.info("[ds] 主数据源 = 容器里唯一/@Primary 的 {}（宿主提供）",
-                    resolved.bean().getClass().getName());
-        }
-        return resolved;
+        return resolve(beanFactory, DataSource.class, DATASOURCE_BEAN, "主数据源");
     }
 
     /** 通用解析：先按名字命中，再退到"唯一或 @Primary"，都没有则启动失败并列出候选 */
