@@ -62,14 +62,4 @@ public final class RoundRobin {
         return new RoundRobinWorker(thread, config.getShutdownAwait());
     }
 
-    /**
-     * 在当前线程阻塞执行轮询
-     */
-    public static void runBlocking(CancellationToken scheduleToken, RoundRobinConfig config, RoundRobinHandler handler,
-                                 RoundRobinLockClient lockClient, ScheduledExecutorService scheduler) {
-        config.validate();
-        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(lockClient, scheduler));
-        loop.run(scheduleToken, config, handler);
-    }
-
 }

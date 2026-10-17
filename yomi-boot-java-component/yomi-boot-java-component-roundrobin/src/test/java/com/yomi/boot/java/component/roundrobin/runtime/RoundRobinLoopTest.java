@@ -137,7 +137,7 @@ class RoundRobinLoopTest {
     }
 
     /**
-     * 循环自身的节奏代码出错（这里用缺 jitter 配置触发 NPE，走"框架层错误逃出单轮容错"这条路径）：
+     * 循环自身的代码出错（这里用缺 jitter 参数的配置，在 task started 行的生效配置摘要取数时踩 NPE）：
      * worker 线程结束，日志留 ERROR 与"异常退出"标记，与正常停机区分
      */
     @Test
@@ -145,7 +145,7 @@ class RoundRobinLoopTest {
         scheduler = Executors.newScheduledThreadPool(1);
         CancellationToken token = new CancellationToken();
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient(), scheduler));
-        // randomDelayMin=null：validate() 会拦住真实配置，此处刻意构造以触发节奏代码抛错
+        // randomDelayMin=null：validate() 会拦住真实配置，此处刻意构造以在生效配置摘要取数时抛错
         RoundRobinConfig broken = RoundRobinConfig.builder()
                 .name("broken-task")
                 .frequency(Duration.ofMillis(50))
@@ -165,7 +165,7 @@ class RoundRobinLoopTest {
             Thread worker = Thread.ofVirtual().start(() -> loop.run(token, broken, ctx -> {
             }));
             worker.join(10_000);
-            assertFalse(worker.isAlive(), "节奏代码出错后 worker 必须退出（不得静默续跑或挂死）");
+            assertFalse(worker.isAlive(), "循环代码出错后 worker 必须退出（不得静默续跑或挂死）");
         } finally {
             logger.detachAppender(appender);
         }

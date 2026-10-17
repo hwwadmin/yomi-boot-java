@@ -8,7 +8,7 @@ import lombok.extern.slf4j.Slf4j;
  * 单任务轮询主循环
  * <p>
  * 错误分级：<b>单轮执行</b>失败（任务异常、任务 Error、取锁/检测失败）计入连续失败并按退避节奏重试，worker 不退出；
- * <b>循环自身</b>的节奏/记账代码出错则记 ERROR 后退出，退出日志与正常停机区分开
+ * <b>循环自身</b>代码（节奏、记账、生效配置摘要）出错则记 ERROR 后退出，退出日志与正常停机区分开
  *
  * @author zwei
  */
@@ -22,10 +22,11 @@ public class RoundRobinLoop {
     /** 执行业务逻辑 */
     public void run(CancellationToken scheduleToken, RoundRobinConfig config, RoundRobinHandler task) {
         String name = config.getName();
-        log.info("RoundRobin[{}] task started", name);
         int consecutiveErrors = 0;
         boolean abnormalExit = false;
         try {
+            // 生效配置摘要在 try 内：摘要取数出错同走"循环自身代码出错"，worker 退出必留 ERROR 与异常退出标记
+            log.info("RoundRobin[{}] task started, 生效配置: {}", name, config.toLogSummary());
             while (!scheduleToken.isCancelled()) {
                 boolean executed;
                 try {

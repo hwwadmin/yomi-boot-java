@@ -28,6 +28,7 @@ public class RoundRobinLifecycle implements SmartLifecycle {
 
     /** 已注册的 @RoundRobinTask */
     private final RoundRobinRegistry registry;
+
     /** 任务互斥用的分布式锁客户端 */
     private final RoundRobinLockClient lockClient;
 
@@ -71,19 +72,22 @@ public class RoundRobinLifecycle implements SmartLifecycle {
         running = true;
     }
 
-    /** 建 worker（同名任务只建一次：快照与运行期注册可能同时命中同一个任务） */
+    /**
+     * 建 worker（同名任务只建一次：快照与运行期注册可能同时命中同一个任务）
+     * <p>启动日志（task started + 生效配置）由 worker 线程输出一行，本方法不再重复打印</p>
+     */
     private void startWorker(RoundRobinTaskDefinition definition, boolean lateRegistration) {
         var config = definition.getConfig();
         if (!startedNames.add(config.getName())) {
             return;
         }
-        log.info("RoundRobin[{}] 生效配置: {}", config.getName(), config.toLogSummary());
+        if (lateRegistration) {
+            // 先于 worker 输出：合并后的 task started 行在 worker 线程，先后顺序才不取决于调度
+            log.info("RoundRobin[{}] 运行期注册，正在增量启动（历史缺陷：这类任务此前会静默不执行）", config.getName());
+        }
         RoundRobinWorker worker = RoundRobin.startWorker(scheduleToken, config, definition.getTask(),
                 lockClient, scheduler);
         workers.add(worker);
-        if (lateRegistration) {
-            log.info("RoundRobin[{}] 运行期注册，已增量启动（历史缺陷：这类任务此前会静默不执行）", config.getName());
-        }
     }
 
     /**
