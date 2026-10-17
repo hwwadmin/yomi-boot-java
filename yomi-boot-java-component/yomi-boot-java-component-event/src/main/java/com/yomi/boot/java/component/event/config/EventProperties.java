@@ -33,6 +33,7 @@ public class EventProperties {
 
     /** 每轮抓取发件箱的最大条数 */
     private int fetchBatchSize = 500;
+
     /**
      * 单条事件序列化后（含 eventId/topic 信封）的字节上限，发布超过即抛业务异常。
      * <p>
@@ -60,6 +61,7 @@ public class EventProperties {
 
     /** DLQ 最大自动重试次数，0 表示关闭自动重试 */
     private int dlqMaxRetry = 30;
+
     /**
      * DLQ 投递占用 {@code retry_after_time} 的时长，占用期内同一行不会被并行重试；
      * 建议不小于 Kafka 同步发送超时（默认约 60s）
