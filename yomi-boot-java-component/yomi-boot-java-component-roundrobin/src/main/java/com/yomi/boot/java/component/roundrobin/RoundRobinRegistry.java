@@ -60,8 +60,6 @@ public class RoundRobinRegistry implements SmartLifecycle {
             throw new IllegalStateException("yomi.roundrobin 任务 name 重复: " + name);
         }
         if (running) {
-            // 先于实例输出：task started 行在实例线程，先后顺序才不取决于调度
-            log.info("RoundRobin[{}] 运行期注册，正在增量启动（历史缺陷：这类任务此前会静默不执行）", name);
             startInstance(task);
         }
         return task;
