@@ -140,7 +140,7 @@ public class SpringUtils implements ApplicationContextAware {
     /** 由 Spring 注入并缓存 {@link ApplicationContext} */
     @Override
     public void setApplicationContext(@NonNull ApplicationContext context) {
-        log.info("初始化spring上下文");
+        log.info("SpringUtils注入spring上下文");
         applicationContext = context;
     }
 
