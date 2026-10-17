@@ -1,5 +1,7 @@
 package com.yomi.boot.java.component.roundrobin;
 
+import lombok.Setter;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +23,9 @@ public class RoundRobinRegistry {
     /** 注册顺序不参与语义，用并发容器保证运行期注册的安全 */
     private final Map<String, RoundRobinTask> tasks = new ConcurrentHashMap<>();
 
-    /** 启动后注册的补建回调：由 lifecycle 在 start 时设置、stop 时清空 */
+    /** 启动后注册的补建回调：由 lifecycle 在 start 时设置、stop 时清空
+     */
+    @Setter
     private volatile Consumer<RoundRobinTask> lateRegistrationHandler;
 
     /**
@@ -40,11 +44,6 @@ public class RoundRobinRegistry {
             handler.accept(task);
         }
         return task;
-    }
-
-    /** 由 lifecycle 设置：启动完成后注册的任务需要立即补建调度 */
-    public void setLateRegistrationHandler(Consumer<RoundRobinTask> handler) {
-        this.lateRegistrationHandler = handler;
     }
 
     /** 返回已注册任务的副本列表 */
