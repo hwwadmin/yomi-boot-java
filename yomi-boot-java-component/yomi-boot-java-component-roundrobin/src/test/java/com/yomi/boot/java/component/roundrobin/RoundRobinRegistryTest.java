@@ -138,13 +138,12 @@ class RoundRobinRegistryTest {
         }
     }
 
-    /** 启动之后注册：立即补建实例并执行，日志写明增量启动 */
+    /** 启动之后注册：立即补建实例并执行 */
     @Test
     void lateRegistrationAfterStartActuallyRuns() throws Exception {
         RoundRobinRegistry registry = new RoundRobinRegistry(new WorkingLockClient());
         AtomicInteger runs = new AtomicInteger();
 
-        ListAppender<ILoggingEvent> appender = attach(RoundRobinRegistry.class);
         try {
             registry.start();
             assertTrue(registry.isRunning());
@@ -153,10 +152,8 @@ class RoundRobinRegistryTest {
             registry.register(RoundRobin.task("运行期任务", Duration.ofMillis(50), ctx -> runs.incrementAndGet()));
 
             assertTrue(awaitUntil(() -> runs.get() > 0), "启动后注册的任务必须立即被调度并执行");
-            assertTrue(logs(appender).contains("运行期注册，正在增量启动"), logs(appender));
         } finally {
             registry.stop();
-            detach(appender);
         }
     }
 

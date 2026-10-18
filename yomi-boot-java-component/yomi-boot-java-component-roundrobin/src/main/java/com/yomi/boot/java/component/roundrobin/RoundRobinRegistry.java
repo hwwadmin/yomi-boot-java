@@ -1,7 +1,7 @@
 package com.yomi.boot.java.component.roundrobin;
 
 import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
-import com.yomi.boot.java.component.roundrobin.runtime.CancellationToken;
+import com.yomi.boot.java.component.roundrobin.runtime.DefaultRoundRobinContext;
 import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinLoop;
 import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinTick;
 import com.yomi.boot.java.component.roundrobin.runtime.RoundRobinWorker;
@@ -38,8 +38,8 @@ public class RoundRobinRegistry implements SmartLifecycle {
     /** 任务互斥用的分布式锁客户端 */
     private final RoundRobinLockClient lockClient;
 
-    /** 调度取消令牌；stop 后 start 时会重建 */
-    private CancellationToken scheduleToken = new CancellationToken();
+    /** 调度根上下文：停机时取消（实例线程与逐轮上下文都挂在它下面）；stop 后 start 会重建 */
+    private DefaultRoundRobinContext rootContext = DefaultRoundRobinContext.root();
 
     /** 是否已启动 */
     private volatile boolean running;
@@ -84,9 +84,9 @@ public class RoundRobinRegistry implements SmartLifecycle {
         if (running) {
             return;
         }
-        if (scheduleToken.isCancelled()) {
-            // 生命周期重启时新建取消令牌，以便实例继续运行
-            scheduleToken = new CancellationToken();
+        if (rootContext.isCancelled()) {
+            // 生命周期重启时重建根上下文，以便实例继续运行
+            rootContext = DefaultRoundRobinContext.root();
         }
         for (RoundRobinTask task : tasks.values()) {
             startInstance(task);
@@ -105,7 +105,38 @@ public class RoundRobinRegistry implements SmartLifecycle {
         if (!running) {
             return;
         }
-        scheduleToken.cancel();
+        rootContext.cancel();
+        awaitInstances();
+        instances.clear();
+        running = false;
+        log.info("yomi.roundrobin 已停止");
+    }
+
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+
+    /** 尽量晚启动、早停止的 SmartLifecycle 阶段 */
+    @Override
+    public int getPhase() {
+        return Integer.MAX_VALUE - 200;
+    }
+
+    /** 建实例并纳入停机回收（调用方持有监视器，同名任务只会建一次） */
+    private void startInstance(RoundRobinTask task) {
+        // 取本轮快照：实例线程体内不再读可变字段（stop→start 会换根上下文）
+        DefaultRoundRobinContext scheduleContext = rootContext;
+        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(lockClient));
+        Thread thread = Thread.ofVirtual()
+                .name("roundrobin-" + task.getName())
+                .unstarted(() -> loop.run(scheduleContext, task));
+        thread.start();
+        instances.put(task.getName(), new RoundRobinWorker(task, thread));
+    }
+
+    /** 并发等待各实例线程结束（逐个串行等待会把各自的 shutdown-await 叠加成总时长） */
+    private void awaitInstances() {
         List<Thread> joiners = new ArrayList<>(instances.size());
         for (RoundRobinWorker instance : instances.values()) {
             Duration await = instance.shutdownAwait();
@@ -128,32 +159,6 @@ public class RoundRobinRegistry implements SmartLifecycle {
                 break;
             }
         }
-        instances.clear();
-        running = false;
-        log.info("yomi.roundrobin 已停止");
-    }
-
-    @Override
-    public boolean isRunning() {
-        return running;
-    }
-
-    /** 尽量晚启动、早停止的 SmartLifecycle 阶段 */
-    @Override
-    public int getPhase() {
-        return Integer.MAX_VALUE - 200;
-    }
-
-    /** 建实例并纳入停机回收（调用方持有监视器，同名任务只会建一次） */
-    private void startInstance(RoundRobinTask task) {
-        // 取本轮快照：实例线程体内不再读可变字段（stop→start 会换新令牌）
-        CancellationToken token = scheduleToken;
-        RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(lockClient));
-        Thread thread = Thread.ofVirtual()
-                .name("roundrobin-" + task.getName())
-                .unstarted(() -> loop.run(token, task));
-        thread.start();
-        instances.put(task.getName(), new RoundRobinWorker(task, thread));
     }
 
 }

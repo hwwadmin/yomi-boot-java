@@ -27,16 +27,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class RoundRobinTickTest {
 
-    @Test
-    void shouldStopOnlyWhenScheduleCancelled() {
-        CancellationToken alive = new CancellationToken();
-        assertFalse(RoundRobinTick.shouldStopOnTickError(alive));
-
-        CancellationToken cancelled = new CancellationToken();
-        cancelled.cancel();
-        assertTrue(RoundRobinTick.shouldStopOnTickError(cancelled));
-    }
-
     /**
      * 丢锁是严重事件（硬租约下最可能是任务超租约、其它实例并发执行）：
      * 记 ERROR 并给出排查方向，这是这类问题唯一的可观测信号
@@ -62,7 +52,7 @@ class RoundRobinTickTest {
         HeldLockClient lockClient = new HeldLockClient();
         RoundRobinTick tick = new RoundRobinTick(lockClient);
 
-        assertThrows(IllegalStateException.class, () -> tick.tick(new CancellationToken(), task(ctx -> {
+        assertThrows(IllegalStateException.class, () -> tick.tick(DefaultRoundRobinContext.root(), task(ctx -> {
             throw new IllegalStateException("下游故障");
         })));
 
@@ -79,7 +69,7 @@ class RoundRobinTickTest {
         RoundRobinTick tick = new RoundRobinTick(lockClient);
 
         NoClassDefFoundError panic = assertThrows(NoClassDefFoundError.class,
-                () -> tick.tick(new CancellationToken(), task(ctx -> {
+                () -> tick.tick(DefaultRoundRobinContext.root(), task(ctx -> {
                     throw new NoClassDefFoundError("boom");
                 })));
 
@@ -140,7 +130,7 @@ class RoundRobinTickTest {
         logger.addAppender(appender);
         try {
             // 跑一轮拿到观测回调（本轮不需要探测）
-            assertDoesNotThrow(() -> tick.tick(new CancellationToken(), task(ctx -> {
+            assertDoesNotThrow(() -> tick.tick(DefaultRoundRobinContext.root(), task(ctx -> {
             })));
             probe.get().accept(-1);
             probe.get().accept(-1);
@@ -301,7 +291,7 @@ class RoundRobinTickTest {
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinTick.class);
         logger.addAppender(appender);
         try {
-            tick.tick(new CancellationToken(), task);
+            tick.tick(DefaultRoundRobinContext.root(), task);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {

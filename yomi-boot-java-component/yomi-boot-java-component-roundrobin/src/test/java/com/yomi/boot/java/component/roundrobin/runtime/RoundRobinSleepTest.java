@@ -21,18 +21,18 @@ class RoundRobinSleepTest {
     void sleepsFullDuration() {
         long start = System.nanoTime();
 
-        assertTrue(RoundRobinSleep.sleep(new CancellationToken(), SLEEP));
+        assertTrue(RoundRobinSleep.sleep(DefaultRoundRobinContext.root(), SLEEP));
 
         assertTrue(System.nanoTime() - start >= SLEEP.toNanos());
     }
 
     @Test
     void returnsFalseImmediatelyWhenCancelled() {
-        CancellationToken token = new CancellationToken();
-        token.cancel();
+        DefaultRoundRobinContext scheduleContext = DefaultRoundRobinContext.root();
+        scheduleContext.cancel();
         long start = System.nanoTime();
 
-        assertFalse(RoundRobinSleep.sleep(token, Duration.ofSeconds(30)));
+        assertFalse(RoundRobinSleep.sleep(scheduleContext, Duration.ofSeconds(30)));
 
         assertTrue(System.nanoTime() - start < Duration.ofSeconds(5).toNanos(), "取消后应立即返回");
     }
@@ -47,7 +47,7 @@ class RoundRobinSleepTest {
         long cpuBefore = currentThreadCpuMillis();
         long start = System.nanoTime();
 
-        boolean slept = RoundRobinSleep.sleep(new CancellationToken(), SLEEP);
+        boolean slept = RoundRobinSleep.sleep(DefaultRoundRobinContext.root(), SLEEP);
 
         long wallMillis = (System.nanoTime() - start) / 1_000_000L;
         long cpuMillis = currentThreadCpuMillis() - cpuBefore;

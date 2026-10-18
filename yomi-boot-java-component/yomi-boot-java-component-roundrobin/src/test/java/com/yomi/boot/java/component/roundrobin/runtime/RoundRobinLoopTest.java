@@ -28,12 +28,12 @@ class RoundRobinLoopTest {
 
     @Test
     void taskFailuresAreCountedAndBackedOff() throws Exception {
-        CancellationToken token = new CancellationToken();
+        DefaultRoundRobinContext scheduleContext = DefaultRoundRobinContext.root();
         AtomicInteger runs = new AtomicInteger();
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient()));
         RoundRobinTask task = task(ctx -> {
             if (runs.incrementAndGet() >= 2) {
-                token.cancel();
+                scheduleContext.cancel();
             }
             throw new IllegalStateException("下游故障");
         });
@@ -43,7 +43,7 @@ class RoundRobinLoopTest {
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
         logger.addAppender(appender);
         try {
-            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, task));
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(scheduleContext, task));
             worker.join(10_000);
         } finally {
             logger.detachAppender(appender);
@@ -62,12 +62,12 @@ class RoundRobinLoopTest {
      */
     @Test
     void taskErrorsAreCountedAndBackedOff() throws Exception {
-        CancellationToken token = new CancellationToken();
+        DefaultRoundRobinContext scheduleContext = DefaultRoundRobinContext.root();
         AtomicInteger runs = new AtomicInteger();
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient()));
         RoundRobinTask task = task(ctx -> {
             if (runs.incrementAndGet() >= 2) {
-                token.cancel();
+                scheduleContext.cancel();
             }
             throw new NoClassDefFoundError("boom");
         });
@@ -77,7 +77,7 @@ class RoundRobinLoopTest {
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
         logger.addAppender(appender);
         try {
-            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, task));
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(scheduleContext, task));
             worker.join(10_000);
         } finally {
             logger.detachAppender(appender);
@@ -95,14 +95,14 @@ class RoundRobinLoopTest {
      */
     @Test
     void frameworkErrorsAreCountedAndBackedOff() throws Exception {
-        CancellationToken token = new CancellationToken();
+        DefaultRoundRobinContext scheduleContext = DefaultRoundRobinContext.root();
         AtomicInteger failures = new AtomicInteger();
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(
                 new HeldLockClient() {
                     @Override
                     public boolean tryAcquireFrequency(RoundRobinTask task) {
                         if (failures.incrementAndGet() >= 2) {
-                            token.cancel();
+                            scheduleContext.cancel();
                         }
                         throw new StackOverflowError("框架层 Error");
                     }
@@ -113,7 +113,7 @@ class RoundRobinLoopTest {
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
         logger.addAppender(appender);
         try {
-            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, task(ctx -> {
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(scheduleContext, task(ctx -> {
             })));
             worker.join(10_000);
         } finally {
@@ -131,7 +131,7 @@ class RoundRobinLoopTest {
      */
     @Test
     void abnormalExitIsLoggedWhenErrorEscapesRoundTolerance() throws Exception {
-        CancellationToken token = new CancellationToken();
+        DefaultRoundRobinContext scheduleContext = DefaultRoundRobinContext.root();
         RoundRobinLoop loop = new RoundRobinLoop(new RoundRobinTick(new HeldLockClient()));
         // 覆写摘要取数：构造期校验已挡住非法参数，这是"循环自身代码出错"仅剩的注入点
         RoundRobinTask broken = new RoundRobinTask("broken-task", null, Duration.ofMillis(50), null, null,
@@ -148,7 +148,7 @@ class RoundRobinLoopTest {
         Logger logger = (Logger) LoggerFactory.getLogger(RoundRobinLoop.class);
         logger.addAppender(appender);
         try {
-            Thread worker = Thread.ofVirtual().start(() -> loop.run(token, broken));
+            Thread worker = Thread.ofVirtual().start(() -> loop.run(scheduleContext, broken));
             worker.join(10_000);
             assertFalse(worker.isAlive(), "循环代码出错后 worker 必须退出（不得静默续跑或挂死）");
         } finally {

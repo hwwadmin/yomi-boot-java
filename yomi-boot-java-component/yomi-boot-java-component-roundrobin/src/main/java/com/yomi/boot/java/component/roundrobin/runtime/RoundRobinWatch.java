@@ -49,8 +49,9 @@ public interface RoundRobinWatch {
                 onTick.accept(gapNanos);
                 // 固定节奏；探测被拖住超过一个周期时不追帧，从当前时刻重新起算
                 nextTickNanos += periodNanos;
-                if (nextTickNanos < System.nanoTime()) {
-                    nextTickNanos = System.nanoTime() + periodNanos;
+                long afterTickNanos = System.nanoTime();
+                if (nextTickNanos < afterTickNanos) {
+                    nextTickNanos = afterTickNanos + periodNanos;
                 }
             }
         });

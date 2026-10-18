@@ -1,6 +1,7 @@
 package com.yomi.boot.java.component.roundrobin.runtime;
 
 import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
@@ -15,6 +16,7 @@ import java.time.Duration;
 public final class RoundRobinWorker {
 
     /** 对应的任务定义 */
+    @Getter
     private final RoundRobinTask task;
 
     /** 轮询循环线程 */
@@ -23,16 +25,6 @@ public final class RoundRobinWorker {
     public RoundRobinWorker(RoundRobinTask task, Thread thread) {
         this.task = task;
         this.thread = thread;
-    }
-
-    /** 任务名 */
-    public String name() {
-        return task.getName();
-    }
-
-    /** 对应的任务定义 */
-    public RoundRobinTask task() {
-        return task;
     }
 
     /** 本实例停止时等待线程结束的超时 */
