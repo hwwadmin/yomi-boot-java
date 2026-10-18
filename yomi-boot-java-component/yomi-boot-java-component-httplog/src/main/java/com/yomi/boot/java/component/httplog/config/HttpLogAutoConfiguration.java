@@ -25,9 +25,8 @@ import com.yomi.boot.java.component.httplog.support.HttpLogKeys;
 import com.yomi.boot.java.component.httplog.support.HttpLogMetrics;
 import com.yomi.boot.java.component.kafka.config.KafkaAutoConfiguration;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.RoundRobin;
-import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
-import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
+import com.yomi.boot.java.component.redis.config.RedisConfiguredCondition;
+import com.yomi.boot.java.component.redis.schedule.ClusterTask;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -36,7 +35,6 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -44,6 +42,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -59,7 +58,7 @@ import java.util.Set;
 /**
  * HTTP 请求日志组件自动装配
  * <p>采集全量（请求/响应头、请求/响应体，默认开）+ 可插拔传输（memory/redis/kafka）+ 共享批量落库；
- * 脱敏编排对接 component-desensitize（词表全配置，零内置词表）；保留期清理挂 roundrobin；
+ * 脱敏编排对接 component-desensitize（词表全配置，零内置词表）；保留期清理由集群定时任务（Redis 锁互斥）驱动；
  * 本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描，宿主无需关心依赖 jar
  *
  * @author zwei
@@ -70,7 +69,6 @@ import java.util.Set;
 @AutoConfigureAfter(
         value = {
                 RedisAutoConfiguration.class,
-                RoundRobinAutoConfiguration.class,
                 DesensitizeAutoConfiguration.class,
                 KafkaAutoConfiguration.class},
         // Boot 4 已模块化（类名不复用 auto-configure 包），按名引用，无需编译期依赖
@@ -160,7 +158,7 @@ public class HttpLogAutoConfiguration {
         properties.validate();
         validateDesensitize(properties, registryProvider.getIfAvailable());
         validateMode(properties, context, redisProvider, consumerFactoryProvider);
-        warnRetentionWithoutRoundRobin(properties, environment);
+        warnRetentionWithoutRedis(properties, environment);
         logSummary(properties, keys, desensitizer);
         return new HttpLogBootstrap();
     }
@@ -238,11 +236,10 @@ public class HttpLogAutoConfiguration {
         }
     }
 
-    /** 启用保留清理但未装配 RoundRobin 时打告警 */
-    private static void warnRetentionWithoutRoundRobin(HttpLogProperties properties, Environment environment) {
-        if (properties.getRetention().isEnabled()
-                && !environment.getProperty("yomi.roundrobin.enabled", Boolean.class, false)) {
-            log.warn("[httplog]保留期清理已启用但 yomi.roundrobin.enabled 未开启：清理任务不会注册，"
+    /** 启用保留清理但未配置 Redis 时打告警（清理任务用 Redis 锁做集群互斥，未配置 Redis 则不装配） */
+    private static void warnRetentionWithoutRedis(HttpLogProperties properties, Environment environment) {
+        if (properties.getRetention().isEnabled() && !RedisConfiguredCondition.isConfigured(environment)) {
+            log.warn("[httplog]保留期清理已启用但未配置 Redis（spring.data.redis.*）：清理任务不会装配，"
                     + "sys_http_log 将只增不减（配置 yomi.httplog.retention.enabled=false 可消除本告警）");
         }
     }
@@ -344,25 +341,27 @@ public class HttpLogAutoConfiguration {
 
     }
 
-    /** 保留期清理（默认开，需 roundrobin） */
+    /** 保留期清理（默认开；需要 Redis 做集群互斥，未配置 Redis 时不装配） */
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(RoundRobinRegistry.class)
-    @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
+    @Conditional(RedisConfiguredCondition.class)
     static class RetentionConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
         @ConditionalOnProperty(value = "yomi.httplog.retention.enabled", havingValue = "true", matchIfMissing = true)
         public HttpLogRetentionCleaner httpLogRetentionCleaner(HttpLogProperties properties, HttpLogKeys keys,
-                                                               IHttpLogRepository httpLogRepository,
-                                                               RoundRobinRegistry registry) {
-            HttpLogRetentionCleaner cleaner = new HttpLogRetentionCleaner(properties, keys, httpLogRepository);
-            registry.register(RoundRobin.task(HttpLogRetentionCleaner.TASK_NAME,
-                    "清理超过保留期的 HTTP 请求日志",
-                    properties.getRetention().getScanInterval(), cleaner::clean));
-            log.info("[httplog]保留期清理已注册: days={}, scanInterval={}",
+                                                               IHttpLogRepository httpLogRepository) {
+            log.info("[httplog]保留期清理已启用: days={}, scanInterval={}",
                     properties.getRetention().getDays(), properties.getRetention().getScanInterval());
-            return cleaner;
+            return new HttpLogRetentionCleaner(properties, keys, httpLogRepository);
+        }
+
+        /** 保留期清理任务（集群定时任务：同一时刻只有一个实例执行） */
+        @Bean
+        @ConditionalOnProperty(value = "yomi.httplog.retention.enabled", havingValue = "true", matchIfMissing = true)
+        public ClusterTask httpLogRetentionTask(HttpLogProperties properties, HttpLogRetentionCleaner cleaner) {
+            return ClusterTask.of(HttpLogRetentionCleaner.TASK_NAME,
+                    properties.getRetention().getScanInterval(), cleaner::clean);
         }
 
     }

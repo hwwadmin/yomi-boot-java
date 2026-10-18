@@ -1,4 +1,4 @@
-package com.yomi.boot.java.qucik.starter.testroundrobin;
+package com.yomi.boot.java.qucik.starter.testschedule;
 
 import com.yomi.boot.java.base.enums.StatusCode;
 import com.yomi.boot.java.base.utils.JsonUtils;
@@ -13,14 +13,14 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * RoundRobin 流程 HTTP 测试。
+ * 集群定时任务流程 HTTP 测试。
  * <p>
- * 运行前需启动应用，且 {@code yomi.roundrobin.enabled=true}、Redis 可用。
+ * 运行前需启动应用，且 Redis 可用。
  */
-class TestRoundRobinFlowApiTest {
+class TestScheduleFlowApiTest {
 
     private static final String BASE_URL = "http://127.0.0.1:28080";
-    private static final String FLOW_PATH = "/test/ds/test-roundrobin/flow";
+    private static final String FLOW_PATH = "/test/ds/test-schedule/flow";
 
     private final RestClient restClient = RestClient.create(BASE_URL);
 
@@ -29,7 +29,7 @@ class TestRoundRobinFlowApiTest {
         List<String> steps = requestFlow();
         assertEquals(3, steps.size(), "步骤数应为3，实际: " + steps);
         assertTrue(steps.get(0).startsWith("1.计数重置:"), steps.get(0));
-        assertTrue(steps.get(1).startsWith("2.轮询任务:"), steps.get(1));
+        assertTrue(steps.get(1).startsWith("2.定时任务:"), steps.get(1));
         assertEquals("3.流程通过", steps.get(2));
     }
 

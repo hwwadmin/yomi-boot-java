@@ -15,7 +15,6 @@
         <module>yomi-boot-java-component-redis</module>
         <module>yomi-boot-java-component-kafka</module>
         <module>yomi-boot-java-component-token</module>
-        <module>yomi-boot-java-component-roundrobin</module>
         <module>yomi-boot-java-component-idempotency</module>
         <module>yomi-boot-java-component-oss</module>
         <module>yomi-boot-java-component-event</module>

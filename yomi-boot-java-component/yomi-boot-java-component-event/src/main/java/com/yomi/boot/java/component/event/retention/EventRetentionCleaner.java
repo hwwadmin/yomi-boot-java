@@ -4,7 +4,6 @@ import com.yomi.boot.java.component.event.config.EventProperties;
 import com.yomi.boot.java.component.event.repository.IEventInboxRepository;
 import com.yomi.boot.java.component.event.repository.IEventOutboxRepository;
 import com.yomi.boot.java.component.event.support.EventKeys;
-import com.yomi.boot.java.component.roundrobin.RoundRobinContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -25,9 +24,9 @@ import java.util.function.IntSupplier;
 @RequiredArgsConstructor
 public class EventRetentionCleaner {
 
-    /** 发件箱清理任务名（RoundRobin 注册名） */
+    /** 发件箱清理任务名（集群定时任务名与锁键） */
     public static final String TASK_NAME_OUTBOX = "eventOutboxRetentionCleaner";
-    /** 收件箱清理任务名（RoundRobin 注册名） */
+    /** 收件箱清理任务名（集群定时任务名与锁键） */
     public static final String TASK_NAME_INBOX = "eventInboxRetentionCleaner";
 
     /** 模块配置 */
@@ -43,7 +42,7 @@ public class EventRetentionCleaner {
     private final IEventInboxRepository inboxRepository;
 
     /** 发布侧任务：清理已成功且超过保留期的发件箱行 */
-    public void cleanOutbox(RoundRobinContext ctx) {
+    public void cleanOutbox() {
         if (outboxRepository == null) {
             return;
         }
@@ -60,7 +59,7 @@ public class EventRetentionCleaner {
     }
 
     /** 消费侧任务：清理超过保留期的收件箱行 */
-    public void cleanInbox(RoundRobinContext ctx) {
+    public void cleanInbox() {
         if (inboxRepository == null) {
             return;
         }

@@ -7,7 +7,6 @@ import com.yomi.boot.java.component.event.model.OutboxStatus;
 import com.yomi.boot.java.component.event.repository.IEventOutboxDlqRepository;
 import com.yomi.boot.java.component.event.repository.IEventOutboxRepository;
 import com.yomi.boot.java.component.event.support.EventKeys;
-import com.yomi.boot.java.component.roundrobin.RoundRobinContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -18,7 +17,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 发件箱后台任务：抓取、超时回收、DLQ 重试（由 RoundRobin 调度）
+ * 发件箱后台任务：抓取、超时回收、DLQ 重试（由集群定时任务调度）
  *
  * @author zwei
  */
@@ -49,7 +48,7 @@ public class OutboxRelayCoordinator {
     private final OutboxDispatcher dispatcher;
 
     /** 抓取 PENDING → FETCHED 并提交发送队列 */
-    public void fetchAndDispatch(RoundRobinContext ctx) {
+    public void fetchAndDispatch() {
         String serviceName = eventKeys.getServiceName();
         List<EventOutbox> rows = outboxRepository.fetchAndMark(serviceName, properties.getFetchBatchSize());
         if (rows.isEmpty()) {
@@ -65,12 +64,12 @@ public class OutboxRelayCoordinator {
      * <p>按批回收：Kafka 长时间不可用时 FETCHED 行会持续累积（每轮抓取 fetchBatchSize 行），
      * 一次性加载全部行并把等量 id 放进单条 UPDATE 会超过绑定参数上限（PG 65535）
      */
-    public void recoverFetchedTimeout(RoundRobinContext ctx) {
+    public void recoverFetchedTimeout() {
         Instant before = Instant.now().minus(properties.getFetchedTimeout());
         String serviceName = eventKeys.getServiceName();
         int batchSize = properties.getFetchBatchSize();
         int recovered = 0;
-        while (!ctx.isCancelled()) {
+        while (true) {
             List<EventOutbox> rows = outboxRepository.findFetchedTimeout(serviceName, before, batchSize);
             if (rows.isEmpty()) {
                 break;
@@ -87,7 +86,7 @@ public class OutboxRelayCoordinator {
     }
 
     /** 扫描 DLQ 并重试 Kafka 发送 */
-    public void processDlq(RoundRobinContext ctx) {
+    public void processDlq() {
         int maxRetry = properties.getDlqMaxRetry();
         if (maxRetry <= 0) {
             return;

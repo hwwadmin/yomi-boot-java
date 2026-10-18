@@ -3,14 +3,13 @@ package com.yomi.boot.java.component.rbac.relay;
 import com.yomi.boot.java.base.exception.BizException;
 import com.yomi.boot.java.component.rbac.IRbacAuthService;
 import com.yomi.boot.java.component.rbac.exception.RbacErrorCode;
-import com.yomi.boot.java.component.roundrobin.RoundRobinContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
  * 定时全量刷新鉴权 Redis 投影
  * <p>
- * 需 {@code yomi.rbac.scheduled-refresh-enabled=true} 且 {@code yomi.roundrobin.enabled=true}
+ * 需 {@code yomi.rbac.scheduled-refresh-enabled=true} 时装配，由集群定时任务调度
  *
  * @author zwei
  */
@@ -18,14 +17,14 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class RbacProjectionRefresher {
 
-    /** RoundRobin 任务名；全局任务（整投影刷新），不带服务名后缀 */
+    /** 集群定时任务名（兼作锁键） */
     public static final String TASK_NAME = "rbacProjectionRefresh";
 
     /** 触发投影刷新的授权服务 */
     private final IRbacAuthService authService;
 
     /** 定时任务入口：全量刷新鉴权投影；投影刷新进行中时跳过本次 */
-    public void refresh(RoundRobinContext ctx) {
+    public void refresh() {
         try {
             authService.refreshProjection();
         } catch (BizException e) {

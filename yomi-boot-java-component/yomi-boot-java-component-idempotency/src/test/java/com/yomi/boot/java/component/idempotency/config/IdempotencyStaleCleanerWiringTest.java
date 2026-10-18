@@ -1,16 +1,15 @@
 package com.yomi.boot.java.component.idempotency.config;
 
 import com.yomi.boot.java.component.idempotency.stale.IdempotencyStaleCleaner;
-import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
-import com.yomi.boot.java.component.roundrobin.RoundRobinTask;
-import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
+import com.yomi.boot.java.component.redis.schedule.ClusterTask;
+import com.yomi.boot.java.core.utils.SpringUtils;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.apache.ibatis.transaction.managed.ManagedTransactionFactory;
 import org.junit.jupiter.api.Test;
+import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -20,67 +19,42 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
+import java.time.Duration;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 记录清理任务与 roundrobin 的装配：开启清理却没启用 roundrobin 时启动失败；
- * 开启清理时日志说"已启用"而任务没注册（记录表只增不删）的情况在启动期就被拦住。
+ * 记录清理的装配：开启清理即装配清理器与集群定时任务（任务名即锁键、间隔取 scan-interval），
+ * 关闭清理则两者都不装配
  * <p>依赖全为 stub，离线运行。</p>
  */
 class IdempotencyStaleCleanerWiringTest {
 
     @Test
-    void failsFastWhenStaleCleanerEnabledWithoutRoundRobin() {
-        runner().withPropertyValues("yomi.idempotency.stale-cleaner-enabled=true").run(context -> {
-            Throwable failure = context.getStartupFailure();
-            assertNotNull(failure, "开了清理但没开 roundrobin 必须启动失败，否则清理静默不注册");
-            String text = failureText(failure);
-            assertTrue(text.contains("yomi.roundrobin.enabled"), "报错要指出需要 roundrobin: " + text);
-            assertTrue(text.contains("stale-cleaner-enabled=false"), "报错要给出关闭清理的出路: " + text);
-        });
-    }
-
-    @Test
-    void startsWhenStaleCleanerDisabled() {
-        runner().withPropertyValues("yomi.idempotency.stale-cleaner-enabled=false").run(context ->
-                assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure())));
-    }
-
-    @Test
-    void failsFastWhenRoundRobinFlagIsTruthyButNotTrue() {
-        // 注解条件只认 true/TRUE：属性写成 1/yes/on 时 roundrobin 自身也不装配。
-        // 这里用真实 autoconfig 验证：守卫判断的是"注册表 Bean 是否存在"，注册表不在即认定为不可用
-        runner().withConfiguration(AutoConfigurations.of(RoundRobinAutoConfiguration.class))
-                .withPropertyValues("yomi.idempotency.stale-cleaner-enabled=true", "yomi.roundrobin.enabled=1")
-                .run(context -> {
-                    Throwable failure = context.getStartupFailure();
-                    assertNotNull(failure, "roundrobin 未真正装配时清理任务注册不进去，必须启动失败");
-                    assertTrue(failureText(failure).contains("yomi.roundrobin.enabled"), failureText(failure));
-                });
-    }
-
-    @Test
-    void registersCleanerTaskWhenBothEnabled() {
-        runner().withPropertyValues("yomi.idempotency.stale-cleaner-enabled=true", "yomi.roundrobin.enabled=true")
-                .withBean(RoundRobinRegistry.class, IdempotencyStaleCleanerWiringTest::idleRegistry)
+    void wiresCleanerAndClusterTaskWhenEnabled() {
+        runner().withPropertyValues("yomi.idempotency.stale-cleaner-enabled=true")
                 .run(context -> {
                     assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
                     assertNotNull(context.getBean(IdempotencyStaleCleaner.class), "清理器 Bean 应装配");
-                    RoundRobinRegistry registry = context.getBean(RoundRobinRegistry.class);
-                    assertTrue(registry.contains(IdempotencyStaleCleaner.TASK_NAME),
-                            "两项都开启时清理任务应真正注册到 roundrobin");
+                    ClusterTask task = context.getBean(ClusterTask.class);
+                    assertEquals(IdempotencyStaleCleaner.TASK_NAME, task.getTaskName());
+                    assertEquals("yomi:schedule:idem-stale-wiring:lock:" + IdempotencyStaleCleaner.TASK_NAME,
+                            task.getLockKey());
+                    assertEquals(Duration.ofMinutes(10), task.getInterval(), "间隔默认取 scan-interval");
                 });
     }
 
-    /** 锁客户端桩：频率锁始终获取不到 → 注册表随容器启停，但实例只休眠、不触达 Redis */
-    private static RoundRobinRegistry idleRegistry() {
-        return new RoundRobinRegistry(new RoundRobinLockClient(null, null, null) {
-            @Override
-            public boolean tryAcquireFrequency(RoundRobinTask task) {
-                return false;
-            }
-        });
+    @Test
+    void wiresNothingWhenDisabled() {
+        runner().withPropertyValues("yomi.idempotency.stale-cleaner-enabled=false")
+                .run(context -> {
+                    assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
+                    assertTrue(context.getBeansOfType(IdempotencyStaleCleaner.class).isEmpty());
+                    assertTrue(context.getBeansOfType(ClusterTask.class).isEmpty());
+                });
     }
 
     /** 构造带测试 Bean 的 ApplicationContextRunner（与建表检查测试同款桩；Mapper 由装配类自己的 @MapperScan 扫出） */
@@ -88,8 +62,9 @@ class IdempotencyStaleCleanerWiringTest {
         return new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempotencyAutoConfiguration.class))
                 .withPropertyValues("yomi.idempotency.enabled=true", "spring.application.name=idem-stale-wiring")
+                .withBean(SpringUtils.class)
                 .withBean(StringRedisTemplate.class, () -> new StringRedisTemplate(proxy(RedisConnectionFactory.class)))
-                .withBean(RedissonClient.class, () -> proxy(RedissonClient.class))
+                .withBean(RedissonClient.class, IdempotencyStaleCleanerWiringTest::busyRedissonStub)
                 .withBean(SqlSessionFactory.class, IdempotencyStaleCleanerWiringTest::sqlSessionFactoryStub)
                 .withBean(PlatformTransactionManager.class, () -> proxy(PlatformTransactionManager.class));
     }
@@ -99,6 +74,26 @@ class IdempotencyStaleCleanerWiringTest {
         Environment environment = new Environment("idem-stale-wiring", new ManagedTransactionFactory(),
                 proxy(DataSource.class));
         return new SqlSessionFactoryBuilder().build(new Configuration(environment));
+    }
+
+    /** Redisson 桩：锁始终繁忙 → 清理任务本轮跳过（装配测试不触达真 Redis） */
+    private static RedissonClient busyRedissonStub() {
+        RLock lock = (RLock) Proxy.newProxyInstance(IdempotencyStaleCleanerWiringTest.class.getClassLoader(),
+                new Class<?>[]{RLock.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "tryLock" -> false;
+                    case "toString" -> "stub-lock";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == (args == null || args.length == 0 ? null : args[0]);
+                    default -> null;
+                });
+        return (RedissonClient) Proxy.newProxyInstance(IdempotencyStaleCleanerWiringTest.class.getClassLoader(),
+                new Class<?>[]{RedissonClient.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getLock" -> lock;
+                    case "toString" -> "stub-redisson";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == (args == null || args.length == 0 ? null : args[0]);
+                    default -> null;
+                });
     }
 
     /** 动态代理桩：未知方法返回默认值，仅 Object 方法给出合理实现 */

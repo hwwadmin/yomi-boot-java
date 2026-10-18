@@ -3,44 +3,73 @@ package com.yomi.boot.java.component.event.config;
 import com.yomi.boot.java.component.event.relay.OutboxRelayCoordinator;
 import com.yomi.boot.java.component.event.retention.EventRetentionCleaner;
 import com.yomi.boot.java.component.event.support.EventKeys;
-import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
-import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
+import com.yomi.boot.java.component.redis.schedule.ClusterTask;
+import com.yomi.boot.java.core.utils.SpringUtils;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
-import java.util.List;
+import java.time.Duration;
+import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 事件后台任务注册名约定：直接使用任务类上的常量，不带服务名后缀
- * （应用隔离由 roundrobin 前缀保证：{@code yomi.roundrobin.store-prefix}）
+ * 事件后台任务的命名与节奏：任务名直接取任务类上的常量（不带服务名后缀与分隔符），
+ * 间隔取各自配置键；锁键/占位键约定由 {@code ClusterTaskTest} 覆盖。
+ * <p>直接调用装配类的 @Bean 方法（任务不被容器启动，故不触达 Redis）
  *
  * @author zwei
  */
 class EventTaskNamingTest {
 
     @Test
-    void registeredTaskNames_areBareConstants() {
-        EventProperties properties = new EventProperties();
-        EventKeys keys = new EventKeys("demo");
-        // 只注册不启动：锁客户端不会被动用
-        RoundRobinRegistry registry = new RoundRobinRegistry(new RoundRobinLockClient(null, null, null));
-        OutboxRelayCoordinator coordinator = new OutboxRelayCoordinator(properties, keys, null, null, null);
-        EventAutoConfiguration.PublisherConfiguration configuration =
-                new EventAutoConfiguration.PublisherConfiguration();
-        configuration.eventOutboxRoundRobinRegistrar(properties, keys, coordinator, registry);
-        configuration.eventOutboxRetentionCleaner(properties, keys, null, registry);
+    void taskNamesAreBareConstantsAndIntervalsComeFromProperties() {
+        new ApplicationContextRunner()
+                .withBean(SpringUtils.class)
+                .withPropertyValues("spring.application.name=event-task-naming")
+                .run(context -> {
+                    EventProperties properties = new EventProperties();
+                    properties.setFetchInterval(Duration.ofMillis(500));
+                    properties.setDlqScanInterval(Duration.ofMillis(700));
+                    properties.getRetention().setScanInterval(Duration.ofMinutes(30));
+                    EventKeys keys = new EventKeys("demo");
+                    OutboxRelayCoordinator coordinator =
+                            new OutboxRelayCoordinator(properties, keys, null, null, null);
+                    EventAutoConfiguration.PublisherConfiguration publisher =
+                            new EventAutoConfiguration.PublisherConfiguration();
+                    EventAutoConfiguration.ConsumerConfiguration consumer =
+                            new EventAutoConfiguration.ConsumerConfiguration();
 
-        for (String name : List.of(
-                OutboxRelayCoordinator.TASK_FETCH,
-                OutboxRelayCoordinator.TASK_FETCH_TIMEOUT,
-                OutboxRelayCoordinator.TASK_DLQ,
-                EventRetentionCleaner.TASK_NAME_OUTBOX)) {
-            assertTrue(registry.contains(name), name + " 应为注册名本身（不带服务名后缀）");
-            assertTrue(name.indexOf('_') < 0 && name.indexOf(':') < 0, name + " 不应含分隔符");
-        }
-        assertFalse(registry.contains(OutboxRelayCoordinator.TASK_FETCH + "_demo"));
+                    Map<String, ClusterTask> tasks = Map.of(
+                            OutboxRelayCoordinator.TASK_FETCH,
+                            publisher.eventOutboxFetchTask(properties, coordinator),
+                            OutboxRelayCoordinator.TASK_FETCH_TIMEOUT,
+                            publisher.eventOutboxFetchTimeoutTask(properties, coordinator),
+                            OutboxRelayCoordinator.TASK_DLQ,
+                            publisher.eventDlqRetryTask(properties, coordinator),
+                            EventRetentionCleaner.TASK_NAME_OUTBOX,
+                            publisher.eventOutboxRetentionTask(properties,
+                                    publisher.eventOutboxRetentionCleaner(properties, keys, null)),
+                            EventRetentionCleaner.TASK_NAME_INBOX,
+                            consumer.eventInboxRetentionTask(properties,
+                                    consumer.eventInboxRetentionCleaner(properties, keys, null)));
+
+                    tasks.forEach((name, task) -> {
+                        assertEquals(name, task.getTaskName(), "任务名必须是任务类上的常量本身");
+                        assertFalse(name.contains(":") || name.contains("_") || name.contains("-"),
+                                name + " 不应含分隔符或服务名后缀");
+                    });
+                    assertEquals(Duration.ofMillis(500), tasks.get(OutboxRelayCoordinator.TASK_FETCH).getInterval());
+                    assertEquals(Duration.ofMillis(500),
+                            tasks.get(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT).getInterval(),
+                            "FETCHED 超时回收与抓取共用 yomi.event.fetch-interval");
+                    assertEquals(Duration.ofMillis(700), tasks.get(OutboxRelayCoordinator.TASK_DLQ).getInterval());
+                    assertEquals(Duration.ofMinutes(30),
+                            tasks.get(EventRetentionCleaner.TASK_NAME_OUTBOX).getInterval());
+                    assertEquals(Duration.ofMinutes(30),
+                            tasks.get(EventRetentionCleaner.TASK_NAME_INBOX).getInterval());
+                });
     }
 
 }

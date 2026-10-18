@@ -98,7 +98,7 @@ public class OutboxDispatcher {
         }
     }
 
-    /** 提交 DLQ 重试到发送线程池，RoundRobin 调度线程随即返回 */
+    /** 提交 DLQ 重试到发送线程池，集群定时任务线程随即返回 */
     public void offerFromDlq(EventOutbox outbox, EventOutboxDlq dlq) {
         try {
             executor.execute(() -> runTaskQuietly("DLQ 重试", outbox.getEventId(), () -> dispatchFromDlq(outbox, dlq)));

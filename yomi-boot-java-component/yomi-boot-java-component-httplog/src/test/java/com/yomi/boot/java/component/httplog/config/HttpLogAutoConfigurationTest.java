@@ -13,13 +13,19 @@ import com.yomi.boot.java.component.httplog.repository.IHttpLogRepository;
 import com.yomi.boot.java.component.httplog.retention.HttpLogRetentionCleaner;
 import com.yomi.boot.java.component.httplog.store.HttpLogStore;
 import com.yomi.boot.java.component.httplog.support.HttpLogKeys;
-import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
-import com.yomi.boot.java.component.roundrobin.lock.RoundRobinLockClient;
+import com.yomi.boot.java.component.redis.schedule.ClusterTask;
+import com.yomi.boot.java.core.utils.SpringUtils;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.apache.ibatis.transaction.managed.ManagedTransactionFactory;
 import org.junit.jupiter.api.Test;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -193,20 +199,39 @@ class HttpLogAutoConfigurationTest {
                 });
     }
 
-    /** 保留期清理的任务注册名 = 常量本身：不带服务名后缀（应用隔离由 roundrobin 前缀保证） */
+    /** 配置了 Redis：装配保留期清理任务（集群定时任务，任务名即锁名） */
     @Test
-    void roundRobinRetentionTask_registeredWithBareName() {
-        HttpLogProperties properties = new HttpLogProperties();
-        properties.setServiceName("demo");
-        HttpLogKeys keys = new HttpLogKeys(properties, null);
-        // 只注册不启动：锁客户端不会被动用
-        RoundRobinRegistry registry = new RoundRobinRegistry(new RoundRobinLockClient(null, null, null));
+    void retentionTask_wiredWhenRedisConfigured() {
+        runner.withBean(SpringUtils.class)
+                .withBean(RedissonClient.class, HttpLogAutoConfigurationTest::busyRedissonStub)
+                .withPropertyValues("yomi.httplog.enabled=true", "yomi.httplog.service-name=demo",
+                        "spring.application.name=httplog-retention-test", "spring.data.redis.host=127.0.0.1")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    ClusterTask task = context.getBean(ClusterTask.class);
+                    assertThat(task.getTaskName()).isEqualTo(HttpLogRetentionCleaner.TASK_NAME);
+                    assertThat(task.getLockKey())
+                            .isEqualTo("yomi:schedule:httplog-retention-test:lock:"
+                                    + HttpLogRetentionCleaner.TASK_NAME);
+                });
+    }
 
-        new HttpLogAutoConfiguration.RetentionConfiguration()
-                .httpLogRetentionCleaner(properties, keys, null, registry);
-
-        assertThat(registry.contains(HttpLogRetentionCleaner.TASK_NAME)).isTrue();
-        assertThat(registry.contains(HttpLogRetentionCleaner.TASK_NAME + "_demo")).isFalse();
+    /** 未配置 Redis：保留期清理不装配（清理任务用 Redis 锁做集群互斥），启动日志留痕说明表只增不减 */
+    @Test
+    void retentionTask_absentWithoutRedisConfigured() {
+        ListAppender<ILoggingEvent> logs = attachLogs();
+        try {
+            runner.withPropertyValues("yomi.httplog.enabled=true", "yomi.httplog.service-name=demo")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        assertThat(context).doesNotHaveBean(ClusterTask.class);
+                        assertThat(context).doesNotHaveBean(HttpLogRetentionCleaner.class);
+                    });
+        } finally {
+            detachLogs(logs);
+        }
+        assertThat(logs.list.stream().map(ILoggingEvent::getFormattedMessage))
+                .anyMatch(message -> message.contains("保留期清理已启用但未配置 Redis"));
     }
 
     private static String[] baseProperties() {
@@ -225,6 +250,37 @@ class HttpLogAutoConfigurationTest {
             current = current.getCause();
         }
         return builder.toString();
+    }
+
+    /** Redisson 桩：锁始终繁忙 → 清理任务本轮跳过（装配测试不触达真 Redis） */
+    private static RedissonClient busyRedissonStub() {
+        RLock lock = (RLock) Proxy.newProxyInstance(HttpLogAutoConfigurationTest.class.getClassLoader(),
+                new Class<?>[]{RLock.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "tryLock" -> false;
+                    case "toString" -> "stub-lock";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == (args == null || args.length == 0 ? null : args[0]);
+                    default -> null;
+                });
+        return (RedissonClient) Proxy.newProxyInstance(HttpLogAutoConfigurationTest.class.getClassLoader(),
+                new Class<?>[]{RedissonClient.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getLock" -> lock;
+                    case "toString" -> "stub-redisson";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == (args == null || args.length == 0 ? null : args[0]);
+                    default -> null;
+                });
+    }
+
+    private static ListAppender<ILoggingEvent> attachLogs() {
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        ((Logger) LoggerFactory.getLogger(HttpLogAutoConfiguration.class)).addAppender(appender);
+        return appender;
+    }
+
+    private static void detachLogs(ListAppender<ILoggingEvent> appender) {
+        ((Logger) LoggerFactory.getLogger(HttpLogAutoConfiguration.class)).detachAppender(appender);
     }
 
     /** 替身：SqlSessionFactory 用真实 Configuration + 空 DataSource（装配测试不触库）；Mapper 由装配类自己扫描 */

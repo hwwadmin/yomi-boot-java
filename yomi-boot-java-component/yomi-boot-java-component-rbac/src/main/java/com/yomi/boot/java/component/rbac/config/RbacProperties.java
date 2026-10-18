@@ -41,7 +41,7 @@ public class RbacProperties {
     /** 不做 RBAC 鉴权的路径（需与 token 放行路径对齐）；Spring PathPattern 语法，不能含首尾空格 */
     private List<String> skipAuthorizePaths = new ArrayList<>();
 
-    /** 是否注册 roundrobin 定时全量刷新投影；默认关闭 */
+    /** 是否启用定时全量刷新投影（集群定时任务）；默认关闭 */
     private boolean scheduledRefreshEnabled = false;
 
     /** 定时刷新间隔；默认 60 秒 */

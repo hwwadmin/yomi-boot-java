@@ -21,7 +21,7 @@
 |------|------|
 | `yomi-boot-java-base` | 与 Spring 无关的基础库：工具类、通用模型、Jackson 序列化、异常等 |
 | `yomi-boot-java-core` | 框架核心：启动入口（`AppBoot`）、统一配置、CORS、全局异常、XSS 与耗时切面、BCrypt、雪花 ID 等 |
-| `yomi-boot-java-component` | 可选组件：`ds`（主数据源 + MyBatis-Plus；附加库由业务自建，见《组件使用说明》多数据源使用规范）、`redis`、`kafka`、`token`、`rbac`、`roundrobin`、`idempotency`、`event`、`oss`、`captcha`、`desensitize` |
+| `yomi-boot-java-component` | 可选组件：`ds`（主数据源 + MyBatis-Plus；附加库由业务自建，见《组件使用说明》多数据源使用规范）、`redis`、`kafka`、`token`、`rbac`、`idempotency`、`event`、`oss`、`captcha`、`desensitize` |
 | `yomi-boot-java-qucik-starter` | 快速体验 / 集成参考的 Spring Boot 应用（含各组件演示） |
 
 ## 技术栈

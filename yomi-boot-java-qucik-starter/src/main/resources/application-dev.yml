@@ -193,11 +193,6 @@ yomi:
       scan-interval: 1h
       batch-size: 1000
       max-delete-per-run: 50000
-  roundrobin:
-    # 是否启用分布式轮询调度（任务参数见 @RoundRobinTask）
-    enabled: true
-    # Redis 键前缀
-    store-prefix: "yomi:roundrobin:${spring.application.name}"
   rbac:
     # 启用 RBAC
     enabled: true

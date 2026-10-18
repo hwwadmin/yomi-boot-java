@@ -257,7 +257,7 @@ public class HttpLogProperties {
     @Data
     public static class Retention {
 
-        /** 是否启用过期清理（需 yomi.roundrobin.enabled=true） */
+        /** 是否启用过期清理（需 Redis：清理任务用 Redis 锁做集群互斥） */
         private boolean enabled = true;
 
         /** 保留天数 */

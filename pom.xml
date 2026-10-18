@@ -175,11 +175,6 @@
             </dependency>
             <dependency>
                 <groupId>com.yomi</groupId>
-                <artifactId>yomi-boot-java-component-roundrobin</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.yomi</groupId>
                 <artifactId>yomi-boot-java-component-idempotency</artifactId>
                 <version>${project.version}</version>
             </dependency>

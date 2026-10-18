@@ -37,7 +37,7 @@ class EventRetentionCleanerTest {
         });
 
         new EventRetentionCleaner(properties, EVENT_KEYS, new EventOutboxRepository(calls.mapper()), null)
-                .cleanOutbox(null);
+                .cleanOutbox();
 
         assertEquals(3, calls.invocations.size(), "2,2 满批继续，0 < 批次即停");
         assertEquals(List.of(2, 2, 2), calls.limits);
@@ -57,7 +57,7 @@ class EventRetentionCleanerTest {
         EventProperties properties = retentionProps(r -> r.setBatchSize(2));
 
         new EventRetentionCleaner(properties, EVENT_KEYS, new EventOutboxRepository(calls.mapper()), null)
-                .cleanOutbox(null);
+                .cleanOutbox();
 
         assertEquals(2, calls.invocations.size(), "删到不足一批时应结束本轮清理");
     }
@@ -72,7 +72,7 @@ class EventRetentionCleanerTest {
         });
 
         new EventRetentionCleaner(properties, EVENT_KEYS, new EventOutboxRepository(calls.mapper()), null)
-                .cleanOutbox(null);
+                .cleanOutbox();
 
         assertEquals(3, calls.invocations.size(), "达到单轮上限即停，剩余行留在下轮");
     }
@@ -97,8 +97,8 @@ class EventRetentionCleanerTest {
 
         EventRetentionCleaner cleaner = new EventRetentionCleaner(properties, EVENT_KEYS, null,
                 new EventInboxRepository(mapper));
-        assertDoesNotThrow(() -> cleaner.cleanOutbox(null), "未传发件箱仓储时不应有动作/报错");
-        cleaner.cleanInbox(null);
+        assertDoesNotThrow(() -> cleaner.cleanOutbox(), "未传发件箱仓储时不应有动作/报错");
+        cleaner.cleanInbox();
 
         assertEquals(1, beforeTimes.size());
         Instant expectedBefore = Instant.now().minus(Duration.ofDays(5));
@@ -111,7 +111,7 @@ class EventRetentionCleanerTest {
         EventProperties properties = retentionProps(r -> { });
         EventRetentionCleaner cleaner = new EventRetentionCleaner(properties, EVENT_KEYS, null, null);
 
-        assertDoesNotThrow(() -> cleaner.cleanInbox(null), "未传收件箱仓储时不应有动作/报错");
+        assertDoesNotThrow(() -> cleaner.cleanInbox(), "未传收件箱仓储时不应有动作/报错");
     }
 
     @Test

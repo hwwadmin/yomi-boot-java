@@ -137,9 +137,6 @@ yomi:
       scan-interval: 1h
       batch-size: 1000
       max-delete-per-run: 50000
-  roundrobin:
-    enabled: true
-    store-prefix: "yomi:roundrobin:${spring.application.name}"
   rbac:
     enabled: false
     projection-enabled: true

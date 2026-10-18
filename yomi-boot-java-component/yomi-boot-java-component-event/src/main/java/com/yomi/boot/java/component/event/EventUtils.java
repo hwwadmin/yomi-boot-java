@@ -20,7 +20,7 @@ import java.util.UUID;
  * <ul>
  *   <li>发布：需 {@code yomi.event.publisher-enabled=true}，{@link #publish} 须在 Spring 事务内调用（写入发件箱）</li>
  *   <li>消费：需 {@code yomi.event.consumer-enabled=true}，{@link #onMessage} 经收件箱幂等（分布式锁 + inbox）</li>
- *   <li>后台投递 Kafka 由发件箱 relay 完成，另需 {@code yomi.roundrobin.enabled=true} 与 Kafka 配置</li>
+ *   <li>后台投递 Kafka 由发件箱 relay 完成，另需 Kafka 配置</li>
  * </ul>
  *
  * @author zwei

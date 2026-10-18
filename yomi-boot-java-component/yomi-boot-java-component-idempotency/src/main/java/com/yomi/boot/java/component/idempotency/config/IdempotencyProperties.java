@@ -37,7 +37,7 @@ public class IdempotencyProperties {
     /** 是否注册轮询清理任务 */
     private boolean staleCleanerEnabled = false;
 
-    /** 清理任务轮询间隔（注册到 roundrobin 的 frequency） */
+    /** 清理任务间隔 */
     private Duration scanInterval = Duration.ofMinutes(10);
 
     /** update_time 早于该阈值的「处理中」记录将被删除 */

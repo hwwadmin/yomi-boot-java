@@ -25,10 +25,6 @@
             <groupId>com.yomi</groupId>
             <artifactId>yomi-boot-java-component-ds</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.yomi</groupId>
-            <artifactId>yomi-boot-java-component-roundrobin</artifactId>
-        </dependency>
 
         <!-- tx（@Transactional / TransactionTemplate / 保存点） -->
         <dependency>

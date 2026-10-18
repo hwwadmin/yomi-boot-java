@@ -3,7 +3,6 @@ package com.yomi.boot.java.component.httplog.retention;
 import com.yomi.boot.java.component.httplog.config.HttpLogProperties;
 import com.yomi.boot.java.component.httplog.repository.IHttpLogRepository;
 import com.yomi.boot.java.component.httplog.support.HttpLogKeys;
-import com.yomi.boot.java.component.roundrobin.RoundRobinContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -21,25 +20,25 @@ import java.util.List;
 @RequiredArgsConstructor
 public class HttpLogRetentionCleaner {
 
-    /** RoundRobin 任务名（不带服务名后缀：应用隔离由 roundrobin 前缀保证） */
+    /** 集群定时任务名（兼作锁键） */
     public static final String TASK_NAME = "httpLogRetentionCleaner";
 
     /** 模块配置 */
     private final HttpLogProperties properties;
 
-    /** 服务名与 RoundRobin 任务键 */
+    /** 服务名 */
     private final HttpLogKeys keys;
 
     /** 数据访问 */
     private final IHttpLogRepository repository;
 
-    /** RoundRobin 任务体：分批删除直到删空或达到单轮上限 */
-    public void clean(RoundRobinContext ctx) {
+    /** 任务体：分批删除直到删空或达到单轮上限 */
+    public void clean() {
         HttpLogProperties.Retention retention = properties.getRetention();
         Instant before = Instant.now().minus(Duration.ofDays(retention.getDays()));
         String serviceName = keys.getServiceName();
         long total = 0;
-        while (total < retention.getMaxDeletePerRun() && !ctx.isCancelled()) {
+        while (total < retention.getMaxDeletePerRun()) {
             List<Long> ids = repository.selectExpiredIds(serviceName, before, retention.getBatchSize());
             if (ids.isEmpty()) {
                 break;

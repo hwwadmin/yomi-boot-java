@@ -10,9 +10,7 @@ import com.yomi.boot.java.component.idempotency.stale.IdempotencyStaleCleaner;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyKeys;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyRedisStore;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.RoundRobin;
-import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
-import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
+import com.yomi.boot.java.component.redis.schedule.ClusterTask;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
@@ -20,7 +18,6 @@ import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -44,7 +41,7 @@ import java.util.List;
 @Slf4j
 @AutoConfiguration
 @MapperScan("com.yomi.boot.java.component.idempotency.repository.mapper")
-@AutoConfigureAfter({RedisAutoConfiguration.class, RoundRobinAutoConfiguration.class})
+@AutoConfigureAfter({RedisAutoConfiguration.class})
 @EnableConfigurationProperties(IdempotencyProperties.class)
 @ConditionalOnProperty(value = "yomi.idempotency.enabled", havingValue = "true")
 public class IdempotencyAutoConfiguration {
@@ -100,40 +97,32 @@ public class IdempotencyAutoConfiguration {
         return new IdempotencyRecordRepository(mapper);
     }
 
-    /** 需同时开启 roundrobin 与 stale-cleaner-enabled */
+    /** 记录清理（默认关闭，需 yomi.idempotency.stale-cleaner-enabled=true） */
     @Bean
     @ConditionalOnProperty(value = "yomi.idempotency.stale-cleaner-enabled", havingValue = "true")
-    @ConditionalOnClass(RoundRobinRegistry.class)
-    @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
     public IdempotencyStaleCleaner idempotencyStaleCleaner(IIdempotencyRecordRepository repository,
-                                                           IdempotencyProperties properties,
-                                                           RoundRobinRegistry roundRobinRegistry) {
-        IdempotencyStaleCleaner cleaner = new IdempotencyStaleCleaner(repository, properties);
-        registerStaleCleanerRoundRobinTask(roundRobinRegistry, cleaner, properties);
-        log.info("[幂等]记录清理任务已注册: scanInterval={}, staleTimeout={}, batchSize={}",
+                                                           IdempotencyProperties properties) {
+        log.info("[幂等]记录清理已启用: scanInterval={}, staleTimeout={}, batchSize={}",
                 properties.getScanInterval(), properties.getStaleTimeout(), properties.getBatchSize());
-        return cleaner;
+        return new IdempotencyStaleCleaner(repository, properties);
     }
 
-    /** 注册幂等记录清理 RoundRobin 任务 */
-    private static void registerStaleCleanerRoundRobinTask(RoundRobinRegistry registry,
-                                                           IdempotencyStaleCleaner cleaner,
-                                                           IdempotencyProperties properties) {
-        registry.register(RoundRobin.task(IdempotencyStaleCleaner.TASK_NAME,
-                "清理超时「处理中」与已过期的幂等记录",
-                properties.getScanInterval(), cleaner::clean));
+    /** 记录清理任务（集群定时任务：同一时刻只有一个实例执行） */
+    @Bean
+    @ConditionalOnProperty(value = "yomi.idempotency.stale-cleaner-enabled", havingValue = "true")
+    public ClusterTask idempotencyRecordCleanerTask(IdempotencyProperties properties,
+                                                    IdempotencyStaleCleaner cleaner) {
+        return ClusterTask.of(IdempotencyStaleCleaner.TASK_NAME, properties.getScanInterval(), cleaner::clean);
     }
 
     /** 启动期校验依赖并打日志 */
     @Bean
     public IdempotencyBootstrap idempotencyBootstrap(IdempotencyProperties properties,
                                                      IdempotencyKeys keys,
-                                                     ObjectProvider<RoundRobinRegistry> roundRobinRegistryProvider,
                                                      ObjectProvider<StringRedisTemplate> redisTemplateProvider,
                                                      ObjectProvider<RedissonClient> redissonClientProvider,
                                                      ObjectProvider<IdempotencyRecordMapper> mapperProvider) {
         properties.validate();
-        requireRoundRobinIfStaleCleanerEnabled(properties, roundRobinRegistryProvider);
         if (redisTemplateProvider.getIfAvailable() == null || redissonClientProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
                     "yomi.idempotency.enabled=true 需要 Redis/Redisson：请配置 spring.data.redis.host");
@@ -148,23 +137,6 @@ public class IdempotencyAutoConfiguration {
                 keys.getPrefix(), properties.getResultCacheTtl(), properties.getRecordRetention(),
                 properties.isStaleCleanerEnabled());
         return new IdempotencyBootstrap();
-    }
-
-    /**
-     * 开启记录清理时 roundrobin 要真正可用：清理任务注册在它的注册表上，注册表不在容器里任务就不会注册
-     * （记录表只增不删），而启动日志仍会打印"已启用"——启动期直接拦住，防止这种失效。
-     * <p>用注册表 Bean 判断而不是读 {@code yomi.roundrobin.enabled}：注解条件只认 true/TRUE，
-     * 写成 1/yes/on 时 roundrobin 本身也不会装配，按属性判断会漏判</p>
-     */
-    private static void requireRoundRobinIfStaleCleanerEnabled(IdempotencyProperties properties,
-                                                              ObjectProvider<RoundRobinRegistry> roundRobinRegistryProvider) {
-        if (!properties.isStaleCleanerEnabled() || roundRobinRegistryProvider.getIfAvailable() != null) {
-            return;
-        }
-        throw new IllegalStateException("yomi.idempotency.stale-cleaner-enabled=true 需要 roundrobin："
-                + "请引入 yomi-boot-java-component-roundrobin 并确认 yomi.roundrobin.enabled 为 true"
-                + "（注解条件只认 true/TRUE）；否则记录清理任务不会注册（记录表只增不删）。"
-                + "要关闭清理请设 yomi.idempotency.stale-cleaner-enabled=false");
     }
 
     /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_idempotency_record.sql 自动创建 */

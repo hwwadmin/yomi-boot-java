@@ -20,9 +20,7 @@ import com.yomi.boot.java.component.rbac.web.RbacExceptionAdvice;
 import com.yomi.boot.java.component.rbac.web.RbacInterceptor;
 import com.yomi.boot.java.component.rbac.web.RbacWebMvcConfig;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.RoundRobin;
-import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
-import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
+import com.yomi.boot.java.component.redis.schedule.ClusterTask;
 import com.yomi.boot.java.component.token.ITokenService;
 import com.yomi.boot.java.component.token.config.TokenAutoConfiguration;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +30,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -53,7 +50,7 @@ import java.util.List;
 @Slf4j
 @AutoConfiguration
 @MapperScan("com.yomi.boot.java.component.rbac.repository.mapper")
-@AutoConfigureAfter({TokenAutoConfiguration.class, RedisAutoConfiguration.class, RoundRobinAutoConfiguration.class})
+@AutoConfigureAfter({TokenAutoConfiguration.class, RedisAutoConfiguration.class})
 @EnableConfigurationProperties(RbacProperties.class)
 @ConditionalOnProperty(value = "yomi.rbac.enabled", havingValue = "true")
 public class RbacAutoConfiguration {
@@ -185,27 +182,22 @@ public class RbacAutoConfiguration {
         return new RbacExceptionAdvice(tokenServiceProvider);
     }
 
+    /** 定时投影刷新（默认关闭，需 yomi.rbac.scheduled-refresh-enabled=true） */
     @Bean
     @ConditionalOnProperty(value = "yomi.rbac.scheduled-refresh-enabled", havingValue = "true")
     @ConditionalOnProperty(value = "yomi.rbac.projection-enabled", havingValue = "true", matchIfMissing = true)
-    @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
-    @ConditionalOnClass(RoundRobinRegistry.class)
-    public RbacProjectionRefresher rbacProjectionRefresher(IRbacAuthService authService,
-                                                           RbacProperties properties,
-                                                           RoundRobinRegistry roundRobinRegistry) {
-        RbacProjectionRefresher refresher = new RbacProjectionRefresher(authService);
-        registerProjectionRefreshTask(roundRobinRegistry, refresher, properties);
-        log.info("[RBAC] 定时投影刷新已注册: interval={}", properties.getScheduledRefreshInterval());
-        return refresher;
+    public RbacProjectionRefresher rbacProjectionRefresher(IRbacAuthService authService, RbacProperties properties) {
+        log.info("[RBAC]定时投影刷新已启用: interval={}", properties.getScheduledRefreshInterval());
+        return new RbacProjectionRefresher(authService);
     }
 
-    /** 注册 RBAC 投影定时刷新任务 */
-    private static void registerProjectionRefreshTask(RoundRobinRegistry registry,
-                                                      RbacProjectionRefresher refresher,
-                                                      RbacProperties properties) {
-        registry.register(RoundRobin.task(RbacProjectionRefresher.TASK_NAME,
-                "定时全量刷新 RBAC 鉴权投影（Redis）",
-                properties.getScheduledRefreshInterval(), refresher::refresh));
+    /** 投影刷新任务（集群定时任务：同一时刻只有一个实例执行） */
+    @Bean
+    @ConditionalOnProperty(value = "yomi.rbac.scheduled-refresh-enabled", havingValue = "true")
+    @ConditionalOnProperty(value = "yomi.rbac.projection-enabled", havingValue = "true", matchIfMissing = true)
+    public ClusterTask rbacProjectionRefreshTask(RbacProperties properties, RbacProjectionRefresher refresher) {
+        return ClusterTask.of(RbacProjectionRefresher.TASK_NAME,
+                properties.getScheduledRefreshInterval(), refresher::refresh);
     }
 
     @Bean

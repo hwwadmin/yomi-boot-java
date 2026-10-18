@@ -11,7 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 @Getter
 public class EventKeys {
 
-    /** 多租户隔离：消费锁键等带此服务名（轮询任务名不带，任务隔离由 roundrobin 前缀保证） */
+    /** 多租户隔离：消费锁键等带此服务名（后台任务名不带，锁键按 spring.application.name 隔离） */
     private final String serviceName;
 
     public EventKeys(String serviceName) {

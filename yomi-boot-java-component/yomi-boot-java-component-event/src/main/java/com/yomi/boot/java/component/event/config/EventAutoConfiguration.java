@@ -20,18 +20,15 @@ import com.yomi.boot.java.component.event.retention.EventRetentionCleaner;
 import com.yomi.boot.java.component.event.service.EventService;
 import com.yomi.boot.java.component.event.support.EventKeys;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
-import com.yomi.boot.java.component.roundrobin.RoundRobin;
-import com.yomi.boot.java.component.roundrobin.RoundRobinHandler;
-import com.yomi.boot.java.component.roundrobin.RoundRobinRegistry;
-import com.yomi.boot.java.component.roundrobin.config.RoundRobinAutoConfiguration;
+import com.yomi.boot.java.component.redis.schedule.ClusterTask;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -51,7 +48,7 @@ import java.util.Map;
 
 /**
  * 发件箱/收件箱事件组件自动装配
- * <p>发布侧依赖：数据源、Redis、RoundRobin、Kafka；消费侧依赖：数据源、Redis；
+ * <p>发布侧依赖：数据源、Redis、Kafka；消费侧依赖：数据源、Redis；中继与清理由集群定时任务驱动；
  * 本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描，宿主无需关心依赖 jar
  *
  * @author zwei
@@ -59,7 +56,7 @@ import java.util.Map;
 @Slf4j
 @AutoConfiguration
 @MapperScan("com.yomi.boot.java.component.event.repository.mapper")
-@AutoConfigureAfter(value = {RedisAutoConfiguration.class, RoundRobinAutoConfiguration.class},
+@AutoConfigureAfter(value = {RedisAutoConfiguration.class},
         name = "org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration")
 @EnableConfigurationProperties(EventProperties.class)
 @ConditionalOnExpression("'${yomi.event.publisher-enabled:false}' == 'true' or '${yomi.event.consumer-enabled:false}' == 'true'")
@@ -91,54 +88,31 @@ public class EventAutoConfiguration {
                                          ObjectProvider<EventInboxMapper> inboxMapperProvider,
                                          ObjectProvider<StringRedisTemplate> redisProvider,
                                          ObjectProvider<RedissonClient> redissonProvider,
-                                         ObjectProvider<KafkaTemplate<String, Object>> kafkaTemplateProvider,
-                                         ObjectProvider<RoundRobinRegistry> roundRobinRegistryProvider) {
+                                         ObjectProvider<KafkaTemplate<String, Object>> kafkaTemplateProvider) {
         properties.validate();
-        // 轮询调度是否可用：以容器里有没有 RoundRobinRegistry 为准，
-        // 不看 yomi.roundrobin.enabled（该键只认字面量 true，'1'/'yes' 时属性判定通过但任务不会注册）
-        boolean roundRobinReady = roundRobinRegistryProvider.getIfAvailable() != null;
         if (properties.isPublisherEnabled()) {
-            requireRoundRobin(roundRobinReady, "yomi.event.publisher-enabled=true");
             requirePublisherDeps(outboxMapperProvider, redisProvider, redissonProvider);
             requireKafkaTemplate(properties, applicationContext, kafkaTemplateProvider);
         }
         if (properties.isConsumerEnabled()) {
             requireConsumerDeps(inboxMapperProvider, redisProvider, redissonProvider);
         }
-        requireRoundRobinForRetention(properties, roundRobinReady);
+        warnIfRetentionRegistersNothing(properties);
         log.info("[事件]已启用 service={}, publisher={}, consumer={}",
                 keys.getServiceName(), properties.isPublisherEnabled(), properties.isConsumerEnabled());
         return new EventBootstrap();
     }
 
-    /** 依赖轮询调度的开关：RoundRobinRegistry 不在容器里即启动失败（按容器内的 Bean 判定，不看属性字面量） */
-    static void requireRoundRobin(boolean roundRobinReady, String switchedOn) {
-        if (roundRobinReady) {
-            return;
-        }
-        throw new IllegalStateException(switchedOn + " 需要 yomi.roundrobin.enabled=true"
-                + "（RoundRobinRegistry 未注册：投递中继、DLQ 重试与保留期清理都由轮询任务调度；"
-                + "该键只认字面量 true，'1'/'yes' 不生效）");
-    }
-
-    /**
-     * 保留期清理的依赖校验：发布侧由 {@link #requireRoundRobin} 覆盖，
-     * 消费侧在这里单独校验：开关开启但 RoundRobin 不可用时启动失败，报错点明需要的配置
-     */
-    static void requireRoundRobinForRetention(EventProperties properties, boolean roundRobinReady) {
+    /** retention 开关打开却不会装配任何清理任务时留痕（仅消费侧启用且未开收件箱清理） */
+    static void warnIfRetentionRegistersNothing(EventProperties properties) {
         EventProperties.Retention retention = properties.getRetention();
         if (retention == null || !retention.isEnabled()) {
             return;
         }
-        if (properties.isConsumerEnabled() && retention.isInboxRetentionEnabled() && !roundRobinReady) {
-            throw new IllegalStateException("yomi.event.retention.inbox-retention-enabled=true 需要 "
-                    + "yomi.roundrobin.enabled=true（RoundRobinRegistry 未注册）：清理任务由轮询调度，"
-                    + "否则开关看似开启、收件箱清理永不执行");
-        }
         if (properties.isConsumerEnabled() && !properties.isPublisherEnabled()
                 && !retention.isInboxRetentionEnabled()) {
             log.warn("[事件]yomi.event.retention.enabled=true 但仅消费侧启用且 "
-                    + "yomi.event.retention.inbox-retention-enabled=false：不会注册任何清理任务"
+                    + "yomi.event.retention.inbox-retention-enabled=false：不会装配任何清理任务"
                     + "（发件箱清理随 publisher 生效，收件箱清理需再开 inbox-retention-enabled）");
         }
     }
@@ -189,8 +163,6 @@ public class EventAutoConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
-        @ConditionalOnClass(RoundRobinRegistry.class)
-        @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
         public OutboxDispatcher outboxDispatcher(EventProperties properties,
                                                  IEventOutboxRepository outboxRepository,
                                                  IEventOutboxDlqRepository dlqRepository,
@@ -200,8 +172,6 @@ public class EventAutoConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
-        @ConditionalOnClass(RoundRobinRegistry.class)
-        @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
         public OutboxRelayCoordinator outboxRelayCoordinator(EventProperties properties,
                                                              EventKeys keys,
                                                              IEventOutboxRepository outboxRepository,
@@ -210,32 +180,46 @@ public class EventAutoConfiguration {
             return new OutboxRelayCoordinator(properties, keys, outboxRepository, dlqRepository, dispatcher);
         }
 
+        /** 抓取发件箱 PENDING 记录并投递 MQ（集群定时任务：同一时刻只有一个实例执行） */
         @Bean
-        @ConditionalOnClass(RoundRobinRegistry.class)
-        @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
-        public EventOutboxRoundRobinRegistrar eventOutboxRoundRobinRegistrar(EventProperties properties,
-                                                                             EventKeys keys,
-                                                                             OutboxRelayCoordinator coordinator,
-                                                                             RoundRobinRegistry registry) {
-            registerRelayTasks(registry, properties, coordinator);
-            return new EventOutboxRoundRobinRegistrar();
+        public ClusterTask eventOutboxFetchTask(EventProperties properties, OutboxRelayCoordinator coordinator) {
+            return ClusterTask.of(OutboxRelayCoordinator.TASK_FETCH, properties.getFetchInterval(),
+                    coordinator::fetchAndDispatch);
+        }
+
+        /** 回收长时间停留在 FETCHED 的发件箱记录（重置为 PENDING） */
+        @Bean
+        public ClusterTask eventOutboxFetchTimeoutTask(EventProperties properties,
+                                                       OutboxRelayCoordinator coordinator) {
+            return ClusterTask.of(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT, properties.getFetchInterval(),
+                    coordinator::recoverFetchedTimeout);
+        }
+
+        /** 重试发件箱死信（DLQ），清理已成功或无主的死信行 */
+        @Bean
+        public ClusterTask eventDlqRetryTask(EventProperties properties, OutboxRelayCoordinator coordinator) {
+            return ClusterTask.of(OutboxRelayCoordinator.TASK_DLQ, properties.getDlqScanInterval(),
+                    coordinator::processDlq);
         }
 
         /** 保留期清理（默认关闭）：仅删 SENT_SUCCESS 且超过保留期的行 */
         @Bean
-        @ConditionalOnClass(RoundRobinRegistry.class)
-        @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
         @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
-        public EventRetentionCleaner eventOutboxRetentionCleaner(EventProperties properties,
-                                                                 EventKeys keys,
-                                                                 IEventOutboxRepository outboxRepository,
-                                                                 RoundRobinRegistry registry) {
-            EventRetentionCleaner cleaner = new EventRetentionCleaner(properties, keys, outboxRepository, null);
-            registerRetentionTask(registry, properties, EventRetentionCleaner.TASK_NAME_OUTBOX,
-                    "清理已成功发送且超过保留期的发件箱行", cleaner::cleanOutbox);
-            log.info("[事件]发件箱保留期清理已注册: outboxRetention={}, scanInterval={}",
+        public EventRetentionCleaner eventOutboxRetentionCleaner(EventProperties properties, EventKeys keys,
+                                                                 IEventOutboxRepository outboxRepository) {
+            log.info("[事件]发件箱保留期清理已启用: outboxRetention={}, scanInterval={}",
                     properties.getRetention().getOutboxRetention(), properties.getRetention().getScanInterval());
-            return cleaner;
+            return new EventRetentionCleaner(properties, keys, outboxRepository, null);
+        }
+
+        /** 发件箱保留期清理任务 */
+        @Bean
+        @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
+        public ClusterTask eventOutboxRetentionTask(EventProperties properties,
+                                                    @Qualifier("eventOutboxRetentionCleaner")
+                                                    EventRetentionCleaner cleaner) {
+            return ClusterTask.of(EventRetentionCleaner.TASK_NAME_OUTBOX,
+                    properties.getRetention().getScanInterval(), cleaner::cleanOutbox);
         }
     }
 
@@ -272,45 +256,26 @@ public class EventAutoConfiguration {
          * 保留期短于这个窗口时，超期重投的事件会被当作新消息再消费一次</p>
          */
         @Bean
-        @ConditionalOnClass(RoundRobinRegistry.class)
-        @ConditionalOnProperty(value = "yomi.roundrobin.enabled", havingValue = "true")
         @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
         @ConditionalOnProperty(value = "yomi.event.retention.inbox-retention-enabled", havingValue = "true")
         public EventRetentionCleaner eventInboxRetentionCleaner(EventProperties properties,
                                                                 EventKeys keys,
-                                                                IEventInboxRepository inboxRepository,
-                                                                RoundRobinRegistry registry) {
-            EventRetentionCleaner cleaner = new EventRetentionCleaner(properties, keys, null, inboxRepository);
-            registerRetentionTask(registry, properties, EventRetentionCleaner.TASK_NAME_INBOX,
-                    "清理超过保留期的收件箱行（保留期须 ≥ 事件可能重投的最长时间）", cleaner::cleanInbox);
-            log.info("[事件]收件箱保留期清理已注册: inboxRetention={}, scanInterval={}",
+                                                                IEventInboxRepository inboxRepository) {
+            log.info("[事件]收件箱保留期清理已启用: inboxRetention={}, scanInterval={}",
                     properties.getRetention().getInboxRetention(), properties.getRetention().getScanInterval());
-            return cleaner;
+            return new EventRetentionCleaner(properties, keys, null, inboxRepository);
         }
-    }
 
-    /** 注册发件箱 RoundRobin 后台任务 */
-    private static void registerRelayTasks(RoundRobinRegistry registry,
-                                           EventProperties properties,
-                                           OutboxRelayCoordinator coordinator) {
-        registry.register(RoundRobin.task(OutboxRelayCoordinator.TASK_FETCH,
-                "抓取发件箱 PENDING 记录并投递 MQ",
-                properties.getFetchInterval(), coordinator::fetchAndDispatch));
-        registry.register(RoundRobin.task(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT,
-                "回收长时间停留在 FETCHED 的发件箱记录（重置为 PENDING）",
-                properties.getFetchInterval(), coordinator::recoverFetchedTimeout));
-        registry.register(RoundRobin.task(OutboxRelayCoordinator.TASK_DLQ,
-                "重试发件箱死信（DLQ），清理已成功或无主的死信行",
-                properties.getDlqScanInterval(), coordinator::processDlq));
-        log.info("[事件]发件箱轮询任务已注册 fetchInterval={}, dlqInterval={}",
-                properties.getFetchInterval(), properties.getDlqScanInterval());
-    }
-
-    /** 注册保留期清理任务（间隔取 yomi.event.retention.scan-interval） */
-    private static void registerRetentionTask(RoundRobinRegistry registry, EventProperties properties,
-                                              String taskName, String description, RoundRobinHandler handler) {
-        registry.register(RoundRobin.task(taskName, description,
-                properties.getRetention().getScanInterval(), handler));
+        /** 收件箱保留期清理任务 */
+        @Bean
+        @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
+        @ConditionalOnProperty(value = "yomi.event.retention.inbox-retention-enabled", havingValue = "true")
+        public ClusterTask eventInboxRetentionTask(EventProperties properties,
+                                                   @Qualifier("eventInboxRetentionCleaner")
+                                                   EventRetentionCleaner cleaner) {
+            return ClusterTask.of(EventRetentionCleaner.TASK_NAME_INBOX,
+                    properties.getRetention().getScanInterval(), cleaner::cleanInbox);
+        }
     }
 
     /** 校验发布侧 Mapper 等依赖 */
@@ -324,7 +289,7 @@ public class EventAutoConfiguration {
                             + "Mapper 由 component-event 自动配置扫描，无需宿主配置 @MapperScan");
         }
         if (redisProvider.getIfAvailable() == null || redissonProvider.getIfAvailable() == null) {
-            throw new IllegalStateException("yomi.event.publisher-enabled=true 需要 Redis/Redisson（roundrobin 分布式锁）");
+            throw new IllegalStateException("yomi.event.publisher-enabled=true 需要 Redis/Redisson（中继任务的集群互斥锁）");
         }
     }
 
@@ -391,10 +356,6 @@ public class EventAutoConfiguration {
 
     /** 无业务逻辑，仅触发启动校验 */
     public static final class EventBootstrap {
-    }
-
-    /** 无业务逻辑，仅触发 RoundRobin 任务注册 */
-    public static final class EventOutboxRoundRobinRegistrar {
     }
 
 }

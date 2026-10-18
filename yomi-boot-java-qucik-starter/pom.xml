@@ -27,10 +27,6 @@
         </dependency>
         <dependency>
             <groupId>com.yomi</groupId>
-            <artifactId>yomi-boot-java-component-roundrobin</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.yomi</groupId>
             <artifactId>yomi-boot-java-component-idempotency</artifactId>
         </dependency>
         <dependency>

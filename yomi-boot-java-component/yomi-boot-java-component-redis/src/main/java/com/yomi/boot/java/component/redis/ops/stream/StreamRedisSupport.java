@@ -147,7 +147,7 @@ public class StreamRedisSupport {
     }
 
     /**
-     * 认领 PEL 中超过 {@code minIdle} 未确认的消息并重新投递（补投入口，供调用方定时触发，如 roundrobin 任务）。
+     * 认领 PEL 中超过 {@code minIdle} 未确认的消息并重新投递（补投入口，供调用方定时触发，如集群定时任务）。
      * <p>处理成功自动 ACK；失败不 ACK（留 PEL 等下一轮）。单轮只扫描 PEL 头部
      * {@link #DEFAULT_CLAIM_BATCH} 条，累计投递次数达到 {@link #DEFAULT_MAX_DELIVERY_ATTEMPTS}
      * 的消息跳过重投并告警（见 {@link RedeliverResult}）</p>
