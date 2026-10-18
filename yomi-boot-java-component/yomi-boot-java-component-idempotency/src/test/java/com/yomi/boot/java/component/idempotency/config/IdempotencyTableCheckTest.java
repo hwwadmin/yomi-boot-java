@@ -12,6 +12,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.redisson.api.RedissonClient;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -76,11 +77,15 @@ class IdempotencyTableCheckTest {
         });
     }
 
-    /** 构造带测试 Bean 的 ApplicationContextRunner（Mapper 由装配类自己的 @MapperScan 扫出） */
+    /**
+     * 构造带测试 Bean 的 ApplicationContextRunner（Mapper 由装配类自己的 @MapperScan 扫出）；
+     * 事务模板由 Boot 从唯一管理器自动注册（组件不再自建模板）
+     */
     private ApplicationContextRunner runner(String productName, boolean tableExists, boolean ddlEffective,
                                            List<String> executedSql) {
         return new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IdempotencyAutoConfiguration.class))
+                .withConfiguration(AutoConfigurations.of(TransactionAutoConfiguration.class,
+                        IdempotencyAutoConfiguration.class))
                 .withPropertyValues("yomi.idempotency.enabled=true", "spring.application.name=idem-table-check")
                 .withBean(StringRedisTemplate.class, () -> new StringRedisTemplate(redisConnectionFactoryStub()))
                 .withBean(RedissonClient.class, () -> proxy(RedissonClient.class))

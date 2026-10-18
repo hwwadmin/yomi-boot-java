@@ -22,7 +22,9 @@ import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -62,27 +64,18 @@ public class IdempotencyAutoConfiguration {
     }
 
     /**
-     * 事务模板解析：容器里有（宿主自定义或 Boot 标准 {@code transactionTemplate}）就直接复用、保留宿主语义——
-     * 占位、业务与写回同一事务，用应用的事务管理器；没有则按事务管理器自建默认 REQUIRED 私有模板（不注册为
-     * Bean，不占用 Boot 标准 Bean 名）；模板/管理器多候选且无 {@code @Primary} 时启动失败并点名候选，不随意挑一个
+     * 幂等守卫：占位记录与结果写回必须与业务同事务，事务模板只复用应用自己的
+     * （Boot 标准 {@code transactionTemplate} 或宿主自定义，校验见 {@link #requireTransactionTemplate}）
      */
     @Bean
     @ConditionalOnMissingBean
+    // 校验先行：依赖项缺失时要报组件自己的错，而不是 Spring 的注入错误
+    @DependsOn("idempotencyBootstrap")
     public IdempotencyGuard idempotencyGuard(IIdempotencyRecordRepository repository,
                                              IdempotencyRedisStore redisStore,
                                              IdempotencyKeys keys,
                                              IdempotencyProperties properties,
-                                             ObjectProvider<TransactionTemplate> transactionTemplateProvider,
-                                             ObjectProvider<PlatformTransactionManager> transactionManagerProvider) {
-        TransactionTemplate transactionTemplate = transactionTemplateProvider.getIfAvailable();
-        if (transactionTemplate == null) {
-            PlatformTransactionManager manager = transactionManagerProvider.getIfAvailable();
-            if (manager == null) {
-                throw new IllegalStateException(
-                        "yomi.idempotency.enabled=true 需要事务管理器：请配置数据源并启用 JDBC");
-            }
-            transactionTemplate = new TransactionTemplate(manager);
-        }
+                                             TransactionTemplate transactionTemplate) {
         return new IdempotencyGuard(repository, redisStore, keys, transactionTemplate, properties);
     }
 
@@ -123,10 +116,13 @@ public class IdempotencyAutoConfiguration {
     @Bean
     public IdempotencyBootstrap idempotencyBootstrap(IdempotencyProperties properties,
                                                      IdempotencyKeys keys,
+                                                     ApplicationContext applicationContext,
+                                                     ObjectProvider<TransactionTemplate> transactionTemplateProvider,
                                                      ObjectProvider<StringRedisTemplate> redisTemplateProvider,
                                                      ObjectProvider<RedissonClient> redissonClientProvider,
                                                      ObjectProvider<IdempotencyRecordMapper> mapperProvider) {
         properties.validate();
+        requireTransactionTemplate(applicationContext, transactionTemplateProvider);
         if (redisTemplateProvider.getIfAvailable() == null || redissonClientProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
                     "yomi.idempotency.enabled=true 需要 Redis/Redisson：请配置 spring.data.redis.host");
@@ -141,6 +137,26 @@ public class IdempotencyAutoConfiguration {
                 keys.getPrefix(), properties.getResultCacheTtl(), properties.getRecordRetention(),
                 properties.isStaleCleanerEnabled());
         return new IdempotencyBootstrap();
+    }
+
+    /**
+     * 事务模板启动期校验：组件只复用应用自己的模板——Boot 在存在唯一事务管理器时自动注册
+     * {@code transactionTemplate}，宿主也可自行声明；缺失或候选不唯一即启动失败并点名候选。
+     * <p>组件不注册事务模板：事务基础设施属于应用，沉默自建会把"写错库/不进业务事务"变成运行时故障。</p>
+     */
+    static void requireTransactionTemplate(ApplicationContext context,
+                                           ObjectProvider<TransactionTemplate> templateProvider) {
+        if (templateProvider.getIfUnique() != null) {
+            return;
+        }
+        throw new IllegalStateException("幂等组件需要唯一的 TransactionTemplate（占位记录与结果写回必须与业务同事务）："
+                + "现有 TransactionTemplate 候选 "
+                + java.util.Arrays.toString(context.getBeanNamesForType(TransactionTemplate.class))
+                + "，PlatformTransactionManager 候选 "
+                + java.util.Arrays.toString(context.getBeanNamesForType(PlatformTransactionManager.class))
+                + "；组件不注册事务模板，请确保存在唯一的事务管理器"
+                + "（Boot 由此自动注册 transactionTemplate，多管理器时给应用使用的那个加 @Primary），"
+                + "或自行声明 TransactionTemplate Bean");
     }
 
     /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_idempotency_record.sql 自动创建 */

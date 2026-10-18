@@ -37,6 +37,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -57,8 +58,7 @@ import java.util.Map;
 @Slf4j
 @AutoConfiguration
 @MapperScan("com.yomi.boot.java.component.event.repository.mapper")
-@AutoConfigureAfter(value = {RedisAutoConfiguration.class},
-        name = "org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration")
+@AutoConfigureAfter(RedisAutoConfiguration.class)
 @EnableConfigurationProperties(EventProperties.class)
 @ConditionalOnExpression("'${yomi.event.publisher-enabled:false}' == 'true' or '${yomi.event.consumer-enabled:false}' == 'true'")
 public class EventAutoConfiguration {
@@ -69,28 +69,19 @@ public class EventAutoConfiguration {
         return new EventKeys(resolveServiceName(properties, environment));
     }
 
-    /** 事件查询与运维服务（业务接入）：未启用的能力调用时给出带配置指引的异常 */
-    @Bean
-    @ConditionalOnMissingBean(IEventService.class)
-    public IEventService eventService(ObjectProvider<IEventOutboxRepository> outboxProvider,
-                                      ObjectProvider<IEventOutboxDlqRepository> dlqProvider,
-                                      ObjectProvider<IEventInboxRepository> inboxProvider,
-                                      EventKeys eventKeys,
-                                      TransactionTemplate transactionTemplate) {
-        return new EventService(outboxProvider, dlqProvider, inboxProvider, eventKeys, transactionTemplate);
-    }
-
-    /** 启动期校验依赖并打日志 */
+    /** 启动期校验依赖并打日志（依赖方以 {@code @DependsOn} 指向本 Bean，保证校验先于它们实例化） */
     @Bean
     public EventBootstrap eventBootstrap(EventProperties properties,
                                          EventKeys keys,
                                          ApplicationContext applicationContext,
+                                         ObjectProvider<TransactionTemplate> transactionTemplateProvider,
                                          ObjectProvider<EventOutboxMapper> outboxMapperProvider,
                                          ObjectProvider<EventInboxMapper> inboxMapperProvider,
                                          ObjectProvider<StringRedisTemplate> redisProvider,
                                          ObjectProvider<RedissonClient> redissonProvider,
                                          ObjectProvider<KafkaTemplate<String, Object>> kafkaTemplateProvider) {
         properties.validate();
+        requireTransactionTemplate(applicationContext, transactionTemplateProvider);
         if (properties.isPublisherEnabled()) {
             requirePublisherDeps(outboxMapperProvider, redisProvider, redissonProvider);
             requireKafkaTemplate(properties, applicationContext, kafkaTemplateProvider);
@@ -102,6 +93,19 @@ public class EventAutoConfiguration {
         log.info("[事件]已启用 service={}, publisher={}, consumer={}",
                 keys.getServiceName(), properties.isPublisherEnabled(), properties.isConsumerEnabled());
         return new EventBootstrap();
+    }
+
+    /** 事件查询与运维服务（业务接入）：未启用的能力调用时给出带配置指引的异常 */
+    @Bean
+    @ConditionalOnMissingBean(IEventService.class)
+    // 校验先行：依赖项缺失时要报组件自己的错，而不是 Spring 的注入错误
+    @DependsOn("eventBootstrap")
+    public IEventService eventService(ObjectProvider<IEventOutboxRepository> outboxProvider,
+                                      ObjectProvider<IEventOutboxDlqRepository> dlqProvider,
+                                      ObjectProvider<IEventInboxRepository> inboxProvider,
+                                      EventKeys eventKeys,
+                                      TransactionTemplate transactionTemplate) {
+        return new EventService(outboxProvider, dlqProvider, inboxProvider, eventKeys, transactionTemplate);
     }
 
     /** retention 开关打开却不会装配对应清理任务时留痕（清理任务分别随发布侧/消费侧装配） */
@@ -121,16 +125,24 @@ public class EventAutoConfiguration {
     }
 
     /**
-     * 事务模板：容器里已有（Boot 标准 Bean 或宿主自定义）即按 {@code @ConditionalOnMissingBean} 原样复用，
-     * 都没有才注册默认 REQUIRED 模板。消费侧 inbox 插入与业务写入必须同事务，所以只认应用的事务管理器：
-     * 多个管理器无 {@code @Primary} 时启动失败，报错点名候选。
-     * <p>类上的 {@code @AutoConfigureAfter(Boot TransactionAutoConfiguration)} 保证注册顺序：缺它时按类名字母序，
-     * 组件会先于 Boot 注册，占用容器级 {@code transactionTemplate} 这个 Bean 名。
+     * 事务模板启动期校验：组件只复用应用自己的模板——Boot 在存在唯一事务管理器时自动注册
+     * {@code transactionTemplate}，宿主也可自行声明；缺失或候选不唯一即启动失败并点名候选。
+     * <p>组件不注册事务模板：事务基础设施属于应用，消费侧 inbox 插入与业务写入必须同事务，
+     * 沉默自建会把"写错库/不进业务事务"变成运行时故障。</p>
      */
-    @Bean
-    @ConditionalOnMissingBean(TransactionTemplate.class)
-    public TransactionTemplate eventTransactionTemplate(PlatformTransactionManager transactionManager) {
-        return new TransactionTemplate(transactionManager);
+    static void requireTransactionTemplate(ApplicationContext context,
+                                          ObjectProvider<TransactionTemplate> templateProvider) {
+        if (templateProvider.getIfUnique() != null) {
+            return;
+        }
+        throw new IllegalStateException("事件组件需要唯一的 TransactionTemplate（消费侧 inbox 插入必须与业务写入同事务）："
+                + "现有 TransactionTemplate 候选 "
+                + java.util.Arrays.toString(context.getBeanNamesForType(TransactionTemplate.class))
+                + "，PlatformTransactionManager 候选 "
+                + java.util.Arrays.toString(context.getBeanNamesForType(PlatformTransactionManager.class))
+                + "；组件不注册事务模板，请确保存在唯一的事务管理器"
+                + "（Boot 由此自动注册 transactionTemplate，多管理器时给应用使用的那个加 @Primary），"
+                + "或自行声明 TransactionTemplate Bean");
     }
 
     /** 发布端：`yomi.event.publisher-enabled=true` 时装配 */
@@ -166,6 +178,7 @@ public class EventAutoConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
+        @DependsOn("eventBootstrap")
         public OutboxDispatcher outboxDispatcher(EventProperties properties,
                                                  IEventOutboxRepository outboxRepository,
                                                  IEventOutboxDlqRepository dlqRepository,
@@ -255,6 +268,7 @@ public class EventAutoConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
+        @DependsOn("eventBootstrap")
         public EventInboxGuard eventInboxGuard(IEventInboxRepository repository,
                                                EventKeys keys,
                                                EventProperties properties,
@@ -367,7 +381,10 @@ public class EventAutoConfiguration {
         return app.trim();
     }
 
-    /** 无业务逻辑，仅触发启动校验 */
+    /**
+     * 无业务逻辑，创建即完成启动校验；并被 {@code @DependsOn} 指向，保证校验先于
+     * 用到事务模板等资源的组件 Bean（eventService / outboxDispatcher / eventInboxGuard）实例化
+     */
     public static final class EventBootstrap {
     }
 

@@ -14,6 +14,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.boot.autoconfigure.context.LifecycleAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -58,11 +59,14 @@ class IdempotencyStaleCleanerWiringTest {
                 });
     }
 
-    /** 构造带测试 Bean 的 ApplicationContextRunner（与建表检查测试同款桩；Mapper 由装配类自己的 @MapperScan 扫出） */
+    /**
+     * 构造带测试 Bean 的 ApplicationContextRunner（与建表检查测试同款桩；Mapper 由装配类自己的 @MapperScan 扫出）；
+     * 事务模板由 Boot 从唯一管理器自动注册（组件不再自建模板）
+     */
     private ApplicationContextRunner runner() {
         return new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(IdempotencyAutoConfiguration.class,
-                        LifecycleAutoConfiguration.class))
+                .withConfiguration(AutoConfigurations.of(TransactionAutoConfiguration.class,
+                        IdempotencyAutoConfiguration.class, LifecycleAutoConfiguration.class))
                 .withPropertyValues("yomi.idempotency.enabled=true", "spring.application.name=idem-stale-wiring")
                 .withBean(SpringUtils.class)
                 .withBean(StringRedisTemplate.class, () -> new StringRedisTemplate(proxy(RedisConnectionFactory.class)))

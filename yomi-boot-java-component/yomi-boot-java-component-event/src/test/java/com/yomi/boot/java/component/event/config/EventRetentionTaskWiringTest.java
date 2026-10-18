@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.context.LifecycleAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -114,11 +115,14 @@ class EventRetentionTaskWiringTest {
         assertTrue(logs.list.isEmpty(), "retention 关闭时不应有任何日志: " + messages(logs));
     }
 
-    /** 消费侧最小上下文：组件依赖全用桩（不连 DB/Redis/Kafka），清理任务的锁桩设为"始终繁忙"（不真正执行） */
+    /**
+     * 消费侧最小上下文：组件依赖全用桩（不连 DB/Redis/Kafka）；事务模板由 Boot 从唯一管理器自动注册
+     * （组件不再自建模板）；清理任务的锁桩设为"始终繁忙"（不真正执行）
+     */
     private static ApplicationContextRunner consumerRunner() {
         return new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(EventAutoConfiguration.class,
-                        LifecycleAutoConfiguration.class))
+                .withConfiguration(AutoConfigurations.of(TransactionAutoConfiguration.class,
+                        EventAutoConfiguration.class, LifecycleAutoConfiguration.class))
                 .withPropertyValues("yomi.event.consumer-enabled=true",
                         "yomi.event.service-name=retention-wiring-test",
                         "spring.application.name=event-retention-wiring")

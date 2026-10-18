@@ -7,7 +7,6 @@ import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.apache.ibatis.transaction.managed.ManagedTransactionFactory;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RedissonClient;
-import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration;
@@ -28,9 +27,9 @@ import java.lang.reflect.Proxy;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 事务模板解析：容器里有 TransactionTemplate（Boot 标准 Bean / 宿主自定义）时组件直接复用，
- * 也不注册模板 Bean；没有模板可复用时按事务管理器自建私有默认 REQUIRED 模板（不注册为 Bean）；
- * 多候选模板或管理器无 @Primary 时启动失败并点名本组件与候选（与 Boot 同口径，不随意挑一个）。
+ * 事务模板解析契约：组件不注册事务模板，只用应用自己的——容器里有
+ * （Boot 标准 {@code transactionTemplate} / 宿主自定义）就原样复用，
+ * 缺失或候选不唯一时启动失败并点名候选（事务基础设施属于应用，组件不自行创建）
  */
 class IdempotencyTransactionTemplateWiringTest {
 
@@ -41,7 +40,7 @@ class IdempotencyTransactionTemplateWiringTest {
             assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
             assertArrayEquals(new String[]{"transactionTemplate"},
                     context.getBeanNamesForType(TransactionTemplate.class),
-                    "默认应用里只能有 Boot 标准模板；组件必须复用而不是另行注册");
+                    "组件不得注册事务模板：容器里应只有应用/ Boot 的模板");
             TransactionTemplate template = context.getBean(TransactionTemplate.class);
             assertEquals(TransactionDefinition.PROPAGATION_REQUIRED, template.getPropagationBehavior());
             assertSame(template, guardTemplate(context), "守卫必须用容器里的模板（占位、业务与写回同一事务）");
@@ -75,42 +74,53 @@ class IdempotencyTransactionTemplateWiringTest {
         });
     }
 
-    /** 多候选模板且无 @Primary：启动失败点名 idempotencyGuard 与候选 Bean 名，不随意挑一个 */
+    /** 多候选模板且无 @Primary：启动失败点名模板候选，不随意挑一个 */
     @Test
     void ambiguousTemplatesFailFastInsteadOfPickingOne() {
         runner(SingleManagerCase.class, AmbiguousTemplateCase.class).run(context -> {
             assertNotNull(context.getStartupFailure(),
                     "多候选模板无 @Primary 必须启动失败：静默挑一个可能丢掉宿主为守卫准备的传播语义");
             Throwable root = rootCause(context.getStartupFailure());
-            assertInstanceOf(NoUniqueBeanDefinitionException.class, root,
-                    () -> "必须因事务模板歧义失败: " + failureText(context.getStartupFailure()));
+            assertInstanceOf(IllegalStateException.class, root,
+                    () -> "必须是组件的事务模板校验失败: " + failureText(context.getStartupFailure()));
             assertTrue(root.getMessage().contains("hostTxA") && root.getMessage().contains("hostTxB"),
                     "报错必须点名候选: " + root.getMessage());
-            assertTrue(failureText(context.getStartupFailure()).contains("idempotencyGuard"),
-                    "报错链必须指向本组件的装配点（I4 复核断言）: " + failureText(context.getStartupFailure()));
+            assertTrue(failureText(context.getStartupFailure()).contains("IdempotencyAutoConfiguration"),
+                    "报错必须指向本组件的装配点: " + failureText(context.getStartupFailure()));
         });
     }
 
-    /** 多事务管理器且无 @Primary：启动失败点名候选，不随意挑一个（可能写错库/不进业务事务） */
+    /** 多候选模板 + @Primary：用 @Primary 那个（与 KafkaTemplate/event 校验同口径） */
+    @Test
+    void primaryTemplateWinsAmongCandidates() {
+        runner(SingleManagerCase.class, PrimaryTemplateCase.class).run(context -> {
+            assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
+            assertSame(context.getBean("hostPrimaryTemplate"), guardTemplate(context),
+                    "多候选时应取 @Primary，不拒绝");
+        });
+    }
+
+    /** 多事务管理器且无 @Primary：启动失败点名管理器候选，不随意挑一个（可能写错库/不进业务事务） */
     @Test
     void ambiguousManagersFailFastInsteadOfPickingOne() {
         runner(AmbiguousManagerCase.class).run(context -> {
             assertNotNull(context.getStartupFailure(),
                     "多事务管理器无 @Primary 必须启动失败：静默挑一个正是'写错库/不进事务'的成因");
             Throwable root = rootCause(context.getStartupFailure());
-            assertInstanceOf(NoUniqueBeanDefinitionException.class, root,
-                    () -> "必须因事务管理器歧义失败: " + failureText(context.getStartupFailure()));
+            assertInstanceOf(IllegalStateException.class, root,
+                    () -> "必须是组件的事务模板校验失败: " + failureText(context.getStartupFailure()));
             assertTrue(root.getMessage().contains("businessDbTxManager")
                             && root.getMessage().contains("otherDbTxManager"),
                     "报错必须点名候选: " + root.getMessage());
-            assertTrue(failureText(context.getStartupFailure()).contains("idempotencyGuard"),
-                    "报错链必须指向本组件的装配点: " + failureText(context.getStartupFailure()));
+            assertTrue(root.getMessage().contains("@Primary"), "报错必须给出加 @Primary 的出路: " + root.getMessage());
+            assertTrue(failureText(context.getStartupFailure()).contains("IdempotencyAutoConfiguration"),
+                    "报错必须指向本组件的装配点: " + failureText(context.getStartupFailure()));
         });
     }
 
-    /** 无模板可复用（宿主排除 Boot 事务自动配置）：组件按事务管理器自建私有模板，不注册为 Bean */
+    /** 没有模板可用（宿主排除事务自动配置等）：组件不自建模板，启动失败并给出出路 */
     @Test
-    void noTemplateAvailableFallsBackToPrivateTemplate() {
+    void missingTemplateFailsFastWithGuidance() {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(IdempotencyAutoConfiguration.class))
                 .withPropertyValues("yomi.idempotency.enabled=true", "spring.application.name=idem-tx-wiring")
@@ -119,14 +129,15 @@ class IdempotencyTransactionTemplateWiringTest {
                 .withBean(SqlSessionFactory.class, IdempotencyTransactionTemplateWiringTest::stubSqlSessionFactory)
                 .withUserConfiguration(SingleManagerCase.class)
                 .run(context -> {
-                    assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
-                    assertEquals(0, context.getBeanNamesForType(TransactionTemplate.class).length,
-                            "兜底模板必须私有：注册进容器会占用/挤掉 Boot 标准 transactionTemplate Bean 名");
-                    TransactionTemplate fallback = (TransactionTemplate) guardTemplate(context);
-                    assertNotNull(fallback, "无模板可复用时守卫必须有兜底模板");
-                    assertEquals(TransactionDefinition.PROPAGATION_REQUIRED, fallback.getPropagationBehavior());
-                    assertSame(context.getBean("transactionManager"), fallback.getTransactionManager(),
-                            "兜底模板必须绑定应用的事务管理器");
+                    assertNotNull(context.getStartupFailure(),
+                            "容器里没有 TransactionTemplate 时必须启动失败：组件不注册事务基础设施");
+                    Throwable root = rootCause(context.getStartupFailure());
+                    assertInstanceOf(IllegalStateException.class, root,
+                            () -> "必须是组件的事务模板校验失败: " + failureText(context.getStartupFailure()));
+                    assertTrue(root.getMessage().contains("PlatformTransactionManager 候选"),
+                            "报错必须带上下文（管理器候选）: " + root.getMessage());
+                    assertTrue(root.getMessage().contains("自行声明 TransactionTemplate Bean"),
+                            "报错必须给出出路: " + root.getMessage());
                 });
     }
 
@@ -180,6 +191,22 @@ class IdempotencyTransactionTemplateWiringTest {
 
         @Bean
         TransactionTemplate hostTxB(PlatformTransactionManager transactionManager) {
+            return new TransactionTemplate(transactionManager);
+        }
+    }
+
+    /** 多个模板、其中一个 @Primary：取 @Primary */
+    @Configuration(proxyBeanMethods = false)
+    static class PrimaryTemplateCase {
+
+        @Bean
+        @Primary
+        TransactionTemplate hostPrimaryTemplate(PlatformTransactionManager transactionManager) {
+            return new TransactionTemplate(transactionManager);
+        }
+
+        @Bean
+        TransactionTemplate hostOtherTemplate(PlatformTransactionManager transactionManager) {
             return new TransactionTemplate(transactionManager);
         }
     }
