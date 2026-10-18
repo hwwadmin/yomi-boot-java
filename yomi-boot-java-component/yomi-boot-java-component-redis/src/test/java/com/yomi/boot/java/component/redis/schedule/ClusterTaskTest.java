@@ -30,7 +30,7 @@ class ClusterTaskTest {
     private static final Environment APP_ENV =
             new MockEnvironment().withProperty("spring.application.name", "cluster-task-test");
 
-    /** 键名 = yomi:schedule:{spring.application.name}:{turn|lock}:{任务名} */
+    /** 键名 = yomi:schedule:{spring.application.name}:{turn|lock}:{任务名}；停机等待按 Boot 默认阶段超时推算 */
     @Test
     void keysIsolateByApplicationName() {
         AtomicInteger runs = new AtomicInteger();
@@ -41,8 +41,20 @@ class ClusterTaskTest {
             assertEquals(Duration.ofMillis(50), task.getInterval());
             assertEquals("yomi:schedule:cluster-task-test:turn:demoTask", task.getTurnKey());
             assertEquals("yomi:schedule:cluster-task-test:lock:demoTask", task.getLockKey());
+            assertEquals(Duration.ofSeconds(24), task.getShutdownAwait(),
+                    "未配阶段超时 → 按 Boot 默认 30s 取 80%");
             assertTrue(task.isRunning(), "容器 refresh 后任务应已启动");
         });
+    }
+
+    /** 停机等待跟随宿主的阶段停机超时：取 80%，不超过自身上限；负值=未定义语义，构造期失败 */
+    @Test
+    void shutdownAwaitFollowsPhaseTimeout() {
+        assertEquals(Duration.ofSeconds(12), awaitFor("15s"), "宿主配 15s → 12s");
+        assertEquals(Duration.ofSeconds(4).plusMillis(800), awaitFor("6s"));
+        assertEquals(Duration.ofSeconds(30), awaitFor("5m"), "宿主的阶段超时很大时受自身上限约束");
+        assertEquals(Duration.ZERO, awaitFor("0s"), "0 = 不留等待，随宿主");
+        assertThrows(IllegalStateException.class, () -> awaitFor("-1s"), "负值属未定义语义，配错即失败");
     }
 
     /** 周期执行：达到多轮后停机，停机后不再开新一轮 */
@@ -136,6 +148,15 @@ class ClusterTaskTest {
         assertThrows(IllegalStateException.class,
                 () -> new ClusterTask("demoTask", Duration.ofSeconds(1), new MockEnvironment(), () -> {
                 }));
+    }
+
+    /** 指定阶段停机超时构造的任务：返回其算定的停机等待 */
+    private static Duration awaitFor(String phaseTimeout) {
+        MockEnvironment env = new MockEnvironment()
+                .withProperty("spring.application.name", "cluster-task-test")
+                .withProperty("spring.lifecycle.timeout-per-shutdown-phase", phaseTimeout);
+        return new ClusterTask("demoTask", Duration.ofSeconds(1), env, () -> {
+        }).getShutdownAwait();
     }
 
     /** 演示任务：名额恒能抢到（绕开 Redis），执行体是给定逻辑 */

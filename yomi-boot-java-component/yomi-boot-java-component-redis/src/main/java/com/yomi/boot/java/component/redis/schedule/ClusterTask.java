@@ -6,12 +6,14 @@ import com.yomi.boot.java.component.redis.exception.LockBusyException;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 
 /**
@@ -25,11 +27,15 @@ import java.util.Objects;
  *       上一轮仍在执行时下一轮跳过，长任务不会与下一轮并发</li>
  * </ul>
  * 任一步未通过本轮静默跳过（正常情况）；任务体异常记 ERROR 后继续下一轮，调度不中断。
- * 容器停机时优雅退出：等当前一轮结束（上限 {@link #SHUTDOWN_AWAIT}）、不中断；超时后的残留线程是守护线程，
- * 不阻塞 JVM 退出。
+ * 容器停机时优雅退出：等当前一轮结束（等待见 {@link #shutdownAwait}，不超过容器给的阶段停机超时）、不中断；
+ * 超时后的残留线程是守护线程，不阻塞 JVM 退出。
  * <p>
- * {@code environment} 由 Spring 注入（{@code @Bean} 方法参数），键名在构造期解析：缺
- * {@code spring.application.name} 时 Bean 创建即失败。任务名即集群互斥维度，改名等于换键
+ * {@code environment} 由 Spring 注入（{@code @Bean} 方法参数），键名与停机等待都在构造期算定：缺
+ * {@code spring.application.name}、或阶段停机超时配成负值时 Bean 创建即失败。任务名即集群互斥维度，改名等于换键。
+ * <p>
+ * 停机等待按 {@code spring.lifecycle.timeout-per-shutdown-phase}（Boot 属性，缺省取其默认 30s）推算；
+ * 宿主若替换 {@code lifecycleProcessor} Bean 或用 {@code LifecycleProcessor#setTimeoutForShutdownPhase}
+ * 给本阶段单独设了更短超时，请自行保证该值不小于本等待值
  *
  * @author zwei
  */
@@ -42,8 +48,14 @@ public class ClusterTask implements SmartLifecycle {
     /** 最小间隔：更小的间隔视为配置错误（Duration 绑定里裸数字按毫秒解析，1ms 级间隔会把 Redis 打成热点） */
     private static final Duration MIN_INTERVAL = Duration.ofMillis(50);
 
-    /** 停机等待当前一轮结束的上限 */
-    private static final Duration SHUTDOWN_AWAIT = Duration.ofSeconds(30);
+    /** 容器每阶段停机超时的配置键（Boot 属性；Spring 内部默认 10s，Boot 覆盖为 30s） */
+    private static final String PHASE_TIMEOUT_KEY = "spring.lifecycle.timeout-per-shutdown-phase";
+
+    /** {@link #PHASE_TIMEOUT_KEY} 缺省时的取值（Boot 默认 30s） */
+    private static final Duration DEFAULT_PHASE_TIMEOUT = Duration.ofSeconds(30);
+
+    /** 自身停机等待上限：宿主把阶段超时配得很大时也不无限等 */
+    private static final Duration SHUTDOWN_AWAIT_CAP = Duration.ofSeconds(30);
 
     /** 轮次名额的持有者标识（pid@host），仅用于排查谁占着本轮 */
     private static final String INSTANCE_ID = ManagementFactory.getRuntimeMXBean().getName();
@@ -64,6 +76,10 @@ public class ClusterTask implements SmartLifecycle {
     @Getter
     private final String lockKey;
 
+    /** 停机等待当前一轮结束的上限（构造期按 spring.lifecycle.timeout-per-shutdown-phase 推算） */
+    @Getter
+    private final Duration shutdownAwait;
+
     /** 单轮执行体 */
     private final Runnable action;
 
@@ -83,10 +99,11 @@ public class ClusterTask implements SmartLifecycle {
         this.taskName = requireTaskName(taskName);
         this.interval = requireInterval(interval);
         this.action = Objects.requireNonNull(action, "集群定时任务执行体不能为空（任务: " + taskName + "）");
-        String base = KEY_PREFIX + requireApplicationName(
-                Objects.requireNonNull(environment, "集群定时任务 environment 不能为空（由 Spring 注入）")) + ":";
+        Environment env = Objects.requireNonNull(environment, "集群定时任务 environment 不能为空（由 Spring 注入）");
+        String base = KEY_PREFIX + requireApplicationName(env) + ":";
         this.turnKey = base + "turn:" + taskName;
         this.lockKey = base + "lock:" + taskName;
+        this.shutdownAwait = resolveShutdownAwait(env);
     }
 
     @Override
@@ -99,14 +116,14 @@ public class ClusterTask implements SmartLifecycle {
         taskScheduler.setThreadNamePrefix(taskName + "-");
         // 优雅停机：等当前一轮跑完再退出、不中断；守护线程，超时后的残留线程不阻塞 JVM 退出（任务幂等，可安全放弃）
         taskScheduler.setWaitForTasksToCompleteOnShutdown(true);
-        taskScheduler.setAwaitTerminationSeconds((int) SHUTDOWN_AWAIT.toSeconds());
+        taskScheduler.setAwaitTerminationMillis(shutdownAwait.toMillis());
         taskScheduler.setDaemon(true);
         taskScheduler.initialize();
         taskScheduler.scheduleWithFixedDelay(this::runOnce, interval);
         this.scheduler = taskScheduler;
         this.running = true;
-        log.info("[集群定时任务]已启动: task={}, interval={}, turnKey={}, lockKey={}",
-                taskName, interval, turnKey, lockKey);
+        log.info("[集群定时任务]已启动: task={}, interval={}, shutdownWait={}, turnKey={}, lockKey={}",
+                taskName, interval, shutdownAwait, turnKey, lockKey);
     }
 
     @Override
@@ -186,6 +203,37 @@ public class ClusterTask implements SmartLifecycle {
                     + "未配置且无法推导，请配置 spring.application.name");
         }
         return applicationName.trim();
+    }
+
+    /**
+     * 算定停机等待：{@code min(自身上限, 阶段停机超时 × 0.8)}——不得大于容器给的阶段超时，
+     * 留 20% 余量给同阶段其它 Bean 与容器自身开销；属性缺省按 Boot 默认 30s。
+     * <p>取值字符串自行解析（与 Boot 的 yml Duration 绑定同口径），不走 Environment 的转换服务：
+     * 非 Boot 宿主的环境没有 String→Duration 转换器，靠 {@code getProperty(key, Duration.class)} 会报 ConverterNotFound
+     */
+    private static Duration resolveShutdownAwait(Environment environment) {
+        String raw = environment.getProperty(PHASE_TIMEOUT_KEY);
+        Duration phaseTimeout = StringUtils.isBlank(raw) ? DEFAULT_PHASE_TIMEOUT : parsePhaseTimeout(raw.trim());
+        if (phaseTimeout.isNegative()) {
+            throw new IllegalStateException(PHASE_TIMEOUT_KEY + " 不能为负（当前: [" + raw + "]）："
+                    + "集群定时任务的停机等待按它推算，且 Spring 未定义负值语义，请改为非负值");
+        }
+        // 阶段超时 ≥ 2×上限 时 80% 必然超过上限，直接封顶（也避免超大 Duration 乘法溢出）
+        if (phaseTimeout.compareTo(SHUTDOWN_AWAIT_CAP.multipliedBy(2)) >= 0) {
+            return SHUTDOWN_AWAIT_CAP;
+        }
+        Duration bounded = phaseTimeout.multipliedBy(4).dividedBy(5);
+        return bounded.compareTo(SHUTDOWN_AWAIT_CAP) < 0 ? bounded : SHUTDOWN_AWAIT_CAP;
+    }
+
+    /** 解析阶段停机超时（ISO-8601 / 15s / 裸数字=毫秒），格式非法即失败 */
+    private static Duration parsePhaseTimeout(String raw) {
+        try {
+            return DurationStyle.detectAndParse(raw, ChronoUnit.MILLIS);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException(PHASE_TIMEOUT_KEY + " 取值非法: [" + raw + "]，"
+                    + "支持 ISO-8601（PT15S）、简写（15s/500ms）或裸数字（毫秒）", e);
+        }
     }
 
 }
