@@ -195,9 +195,10 @@ public class RbacAutoConfiguration {
     @Bean
     @ConditionalOnProperty(value = "yomi.rbac.scheduled-refresh-enabled", havingValue = "true")
     @ConditionalOnProperty(value = "yomi.rbac.projection-enabled", havingValue = "true", matchIfMissing = true)
-    public ClusterTask rbacProjectionRefreshTask(RbacProperties properties, RbacProjectionRefresher refresher) {
-        return ClusterTask.of(RbacProjectionRefresher.TASK_NAME,
-                properties.getScheduledRefreshInterval(), refresher::refresh);
+    public ClusterTask rbacProjectionRefreshTask(RbacProperties properties, RbacProjectionRefresher refresher,
+                                                 Environment environment) {
+        return new ClusterTask(RbacProjectionRefresher.TASK_NAME,
+                properties.getScheduledRefreshInterval(), environment, refresher::refresh);
     }
 
     @Bean

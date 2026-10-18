@@ -182,23 +182,26 @@ public class EventAutoConfiguration {
 
         /** 抓取发件箱 PENDING 记录并投递 MQ（集群定时任务：同一时刻只有一个实例执行） */
         @Bean
-        public ClusterTask eventOutboxFetchTask(EventProperties properties, OutboxRelayCoordinator coordinator) {
-            return ClusterTask.of(OutboxRelayCoordinator.TASK_FETCH, properties.getFetchInterval(),
+        public ClusterTask eventOutboxFetchTask(EventProperties properties, OutboxRelayCoordinator coordinator,
+                                               Environment environment) {
+            return new ClusterTask(OutboxRelayCoordinator.TASK_FETCH, properties.getFetchInterval(), environment,
                     coordinator::fetchAndDispatch);
         }
 
         /** 回收长时间停留在 FETCHED 的发件箱记录（重置为 PENDING） */
         @Bean
         public ClusterTask eventOutboxFetchTimeoutTask(EventProperties properties,
-                                                       OutboxRelayCoordinator coordinator) {
-            return ClusterTask.of(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT, properties.getFetchInterval(),
-                    coordinator::recoverFetchedTimeout);
+                                                       OutboxRelayCoordinator coordinator,
+                                                       Environment environment) {
+            return new ClusterTask(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT, properties.getFetchInterval(),
+                    environment, coordinator::recoverFetchedTimeout);
         }
 
         /** 重试发件箱死信（DLQ），清理已成功或无主的死信行 */
         @Bean
-        public ClusterTask eventDlqRetryTask(EventProperties properties, OutboxRelayCoordinator coordinator) {
-            return ClusterTask.of(OutboxRelayCoordinator.TASK_DLQ, properties.getDlqScanInterval(),
+        public ClusterTask eventDlqRetryTask(EventProperties properties, OutboxRelayCoordinator coordinator,
+                                            Environment environment) {
+            return new ClusterTask(OutboxRelayCoordinator.TASK_DLQ, properties.getDlqScanInterval(), environment,
                     coordinator::processDlq);
         }
 
@@ -217,9 +220,10 @@ public class EventAutoConfiguration {
         @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
         public ClusterTask eventOutboxRetentionTask(EventProperties properties,
                                                     @Qualifier("eventOutboxRetentionCleaner")
-                                                    EventRetentionCleaner cleaner) {
-            return ClusterTask.of(EventRetentionCleaner.TASK_NAME_OUTBOX,
-                    properties.getRetention().getScanInterval(), cleaner::cleanOutbox);
+                                                    EventRetentionCleaner cleaner,
+                                                    Environment environment) {
+            return new ClusterTask(EventRetentionCleaner.TASK_NAME_OUTBOX,
+                    properties.getRetention().getScanInterval(), environment, cleaner::cleanOutbox);
         }
     }
 
@@ -272,9 +276,10 @@ public class EventAutoConfiguration {
         @ConditionalOnProperty(value = "yomi.event.retention.inbox-retention-enabled", havingValue = "true")
         public ClusterTask eventInboxRetentionTask(EventProperties properties,
                                                    @Qualifier("eventInboxRetentionCleaner")
-                                                   EventRetentionCleaner cleaner) {
-            return ClusterTask.of(EventRetentionCleaner.TASK_NAME_INBOX,
-                    properties.getRetention().getScanInterval(), cleaner::cleanInbox);
+                                                   EventRetentionCleaner cleaner,
+                                                   Environment environment) {
+            return new ClusterTask(EventRetentionCleaner.TASK_NAME_INBOX,
+                    properties.getRetention().getScanInterval(), environment, cleaner::cleanInbox);
         }
     }
 

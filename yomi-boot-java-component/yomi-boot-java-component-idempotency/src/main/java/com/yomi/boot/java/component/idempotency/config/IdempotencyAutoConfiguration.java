@@ -111,8 +111,10 @@ public class IdempotencyAutoConfiguration {
     @Bean
     @ConditionalOnProperty(value = "yomi.idempotency.stale-cleaner-enabled", havingValue = "true")
     public ClusterTask idempotencyRecordCleanerTask(IdempotencyProperties properties,
-                                                    IdempotencyStaleCleaner cleaner) {
-        return ClusterTask.of(IdempotencyStaleCleaner.TASK_NAME, properties.getScanInterval(), cleaner::clean);
+                                                    IdempotencyStaleCleaner cleaner,
+                                                    Environment environment) {
+        return new ClusterTask(IdempotencyStaleCleaner.TASK_NAME, properties.getScanInterval(), environment,
+                cleaner::clean);
     }
 
     /** 启动期校验依赖并打日志 */

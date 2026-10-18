@@ -359,9 +359,10 @@ public class HttpLogAutoConfiguration {
         /** 保留期清理任务（集群定时任务：同一时刻只有一个实例执行） */
         @Bean
         @ConditionalOnProperty(value = "yomi.httplog.retention.enabled", havingValue = "true", matchIfMissing = true)
-        public ClusterTask httpLogRetentionTask(HttpLogProperties properties, HttpLogRetentionCleaner cleaner) {
-            return ClusterTask.of(HttpLogRetentionCleaner.TASK_NAME,
-                    properties.getRetention().getScanInterval(), cleaner::clean);
+        public ClusterTask httpLogRetentionTask(HttpLogProperties properties, HttpLogRetentionCleaner cleaner,
+                                               Environment environment) {
+            return new ClusterTask(HttpLogRetentionCleaner.TASK_NAME,
+                    properties.getRetention().getScanInterval(), environment, cleaner::clean);
         }
 
     }

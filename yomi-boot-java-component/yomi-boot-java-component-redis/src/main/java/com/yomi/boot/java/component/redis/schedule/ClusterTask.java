@@ -3,7 +3,6 @@ package com.yomi.boot.java.component.redis.schedule;
 import com.yomi.boot.java.component.redis.LockUtils;
 import com.yomi.boot.java.component.redis.RedisUtils;
 import com.yomi.boot.java.component.redis.exception.LockBusyException;
-import com.yomi.boot.java.core.utils.SpringUtils;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -29,7 +28,8 @@ import java.util.Objects;
  * 容器停机时优雅退出：等当前一轮结束（上限 {@link #SHUTDOWN_AWAIT}）、不中断；超时后的残留线程是守护线程，
  * 不阻塞 JVM 退出。
  * <p>
- * 任务名即集群互斥维度，改名等于换键；多应用共用 Redis 时由 {@code spring.application.name} 隔离
+ * {@code environment} 由 Spring 注入（{@code @Bean} 方法参数），键名在构造期解析：缺
+ * {@code spring.application.name} 时 Bean 创建即失败。任务名即集群互斥维度，改名等于换键
  *
  * @author zwei
  */
@@ -38,6 +38,9 @@ public class ClusterTask implements SmartLifecycle {
 
     /** 键前缀：yomi:schedule:{应用}:turn|lock:{任务} */
     private static final String KEY_PREFIX = "yomi:schedule:";
+
+    /** 最小间隔：更小的间隔视为配置错误（Duration 绑定里裸数字按毫秒解析，1ms 级间隔会把 Redis 打成热点） */
+    private static final Duration MIN_INTERVAL = Duration.ofMillis(50);
 
     /** 停机等待当前一轮结束的上限 */
     private static final Duration SHUTDOWN_AWAIT = Duration.ofSeconds(30);
@@ -53,13 +56,13 @@ public class ClusterTask implements SmartLifecycle {
     @Getter
     private final Duration interval;
 
-    /** 轮次名额键；启动时解析（bean 创建期拿不到 Environment：组件装配先于 core 的 SpringUtils） */
+    /** 轮次名额键（构造期按 spring.application.name 解析） */
     @Getter
-    private volatile String turnKey;
+    private final String turnKey;
 
-    /** 执行锁键；启动时解析 */
+    /** 执行锁键（构造期按 spring.application.name 解析） */
     @Getter
-    private volatile String lockKey;
+    private final String lockKey;
 
     /** 单轮执行体 */
     private final Runnable action;
@@ -70,15 +73,20 @@ public class ClusterTask implements SmartLifecycle {
     /** 是否已启动 */
     private volatile boolean running;
 
-    protected ClusterTask(String taskName, Duration interval, Runnable action) {
+    /**
+     * @param taskName    任务名（集群互斥维度与键名的一部分，改名等于换键）
+     * @param interval    调度间隔，不得小于 {@link #MIN_INTERVAL}
+     * @param environment Spring 注入的环境（键名按 {@code spring.application.name} 隔离应用）
+     * @param action      单轮执行体
+     */
+    public ClusterTask(String taskName, Duration interval, Environment environment, Runnable action) {
         this.taskName = requireTaskName(taskName);
         this.interval = requireInterval(interval);
         this.action = Objects.requireNonNull(action, "集群定时任务执行体不能为空（任务: " + taskName + "）");
-    }
-
-    /** 创建集群定时任务：任务名（互斥维度与键名）、调度间隔、单轮执行体；随容器生命周期启停，首轮立即执行 */
-    public static ClusterTask of(String taskName, Duration interval, Runnable action) {
-        return new ClusterTask(taskName, interval, action);
+        String base = KEY_PREFIX + requireApplicationName(
+                Objects.requireNonNull(environment, "集群定时任务 environment 不能为空（由 Spring 注入）")) + ":";
+        this.turnKey = base + "turn:" + taskName;
+        this.lockKey = base + "lock:" + taskName;
     }
 
     @Override
@@ -86,11 +94,6 @@ public class ClusterTask implements SmartLifecycle {
         if (running) {
             return;
         }
-        String base = KEY_PREFIX + requireApplicationName(SpringUtils.getBean(Environment.class)) + ":";
-        String turnKey = base + "turn:" + taskName;
-        String lockKey = base + "lock:" + taskName;
-        this.turnKey = turnKey;
-        this.lockKey = lockKey;
         ThreadPoolTaskScheduler taskScheduler = new ThreadPoolTaskScheduler();
         taskScheduler.setPoolSize(1);
         taskScheduler.setThreadNamePrefix(taskName + "-");
@@ -99,7 +102,7 @@ public class ClusterTask implements SmartLifecycle {
         taskScheduler.setAwaitTerminationSeconds((int) SHUTDOWN_AWAIT.toSeconds());
         taskScheduler.setDaemon(true);
         taskScheduler.initialize();
-        taskScheduler.scheduleWithFixedDelay(() -> runOnce(turnKey, lockKey), interval);
+        taskScheduler.scheduleWithFixedDelay(this::runOnce, interval);
         this.scheduler = taskScheduler;
         this.running = true;
         log.info("[集群定时任务]已启动: task={}, interval={}, turnKey={}, lockKey={}",
@@ -130,7 +133,7 @@ public class ClusterTask implements SmartLifecycle {
     }
 
     /** 单轮：抢名额 → 抢执行锁 → 执行；任一步未通过本轮跳过；失败记 ERROR，下一轮继续 */
-    private void runOnce(String turnKey, String lockKey) {
+    private void runOnce() {
         try {
             if (!tryAcquireTurn(turnKey)) {
                 log.debug("[集群定时任务]本轮跳过，其它实例已拿到本轮名额: task={}", taskName);
@@ -166,15 +169,16 @@ public class ClusterTask implements SmartLifecycle {
         return taskName;
     }
 
-    /** 校验间隔为正 */
+    /** 校验间隔不低于 {@link #MIN_INTERVAL} */
     private static Duration requireInterval(Duration interval) {
-        if (interval == null || interval.isZero() || interval.isNegative()) {
-            throw new IllegalArgumentException("集群定时任务 interval 必须大于 0");
+        if (interval == null || interval.compareTo(MIN_INTERVAL) < 0) {
+            throw new IllegalArgumentException("集群定时任务 interval 不能小于 " + MIN_INTERVAL.toMillis()
+                    + "ms（当前: " + interval + "；yml 裸数字按毫秒解析）");
         }
         return interval;
     }
 
-    /** 解析应用名：键名的隔离维度（与各组件 store-prefix 推导同一口径），缺失即启动失败 */
+    /** 解析应用名：键名的隔离维度（与各组件 store-prefix 推导同一口径），缺失即 Bean 创建失败 */
     private static String requireApplicationName(Environment environment) {
         String applicationName = environment.getProperty("spring.application.name");
         if (StringUtils.isBlank(applicationName)) {
