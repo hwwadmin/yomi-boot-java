@@ -5,8 +5,8 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.ListableBeanFactory;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Method;
@@ -20,16 +20,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 启动期建表：表齐全只探活、缺表按方言（sql/mysql|pgsql）自动执行脚本建表、方言不支持/脚本缺失/脚本失败/建后仍缺都拦启动。
+ * 数据源只认主库（masterDataSource）：主库不在或只有别的名字的数据源都直接失败，不静默跳过。
  * 全程离线：stub 的 DataSource/Connection/Statement 按产品名与表名模拟"存在/不存在"，
  * 建表脚本用 src/test/resources/sql 下的真实脚本（走 Spring ScriptUtils 真实解析）。
  */
@@ -94,8 +93,8 @@ class TableInitializerTest {
         Stub stub = stub("PostgreSQL");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> new TableInitializer(providerOf(dataSource(stub)), "测试组件", "not-exists.sql", List.of("table_init_a"))
-                        .afterSingletonsInstantiated());
+                () -> new TableInitializer(beanFactoryOf(dataSource(stub)), "测试组件", "not-exists.sql",
+                        List.of("table_init_a")).afterSingletonsInstantiated());
 
         assertTrue(ex.getMessage().contains("sql/pgsql/not-exists.sql"), "必须给出缺失的脚本路径: " + ex.getMessage());
         assertTrue(ex.getMessage().contains("PostgreSQL"), "必须说明当前数据库: " + ex.getMessage());
@@ -157,19 +156,33 @@ class TableInitializerTest {
                     }
                     return defaultReturn(proxy, method, args);
                 });
-        TableInitializer initializer = new TableInitializer(providerOf(broken), "测试组件", SCRIPT, List.of("table_init_a"));
+        TableInitializer initializer = new TableInitializer(beanFactoryOf(broken), "测试组件", SCRIPT,
+                List.of("table_init_a"));
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, initializer::afterSingletonsInstantiated);
         assertTrue(ex.getMessage().contains("无法获取数据库连接"), ex.getMessage());
     }
 
+    /** 主库不在（没配 spring.datasource.url）：失败并给出路，不静默跳过（建在哪个库不容含糊） */
     @Test
-    void skipsWhenNoDataSourceResolvable() {
-        // 多候选且无 @Primary：无法判定主库，告警跳过而不是误判失败
-        ObjectProvider<DataSource> ambiguous = new StubProvider<>(List.of(dataSource(stub("MySQL")), dataSource(stub("MySQL"))));
-        TableInitializer initializer = new TableInitializer(ambiguous, "测试组件", SCRIPT, List.of("table_init_a"));
+    void failsFastWhenMasterDataSourceAbsent() {
+        TableInitializer initializer = new TableInitializer(new DefaultListableBeanFactory(), "测试组件", SCRIPT,
+                List.of("table_init_a"));
 
-        initializer.afterSingletonsInstantiated();
+        IllegalStateException ex = assertThrows(IllegalStateException.class, initializer::afterSingletonsInstantiated);
+        assertTrue(ex.getMessage().contains("masterDataSource"), "要点名主库 Bean: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("spring.datasource.url"), "要给出出路: " + ex.getMessage());
+    }
+
+    /** 只认主库名：别的名字的数据源（附加库形态）不会被当成主库 */
+    @Test
+    void otherNamedDataSourceIsNotMaster() {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        beanFactory.registerSingleton("reportDataSource", dataSource(stub("MySQL")));
+        TableInitializer initializer = new TableInitializer(beanFactory, "测试组件", SCRIPT, List.of("table_init_a"));
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, initializer::afterSingletonsInstantiated);
+        assertTrue(ex.getMessage().contains("reportDataSource"), "要列出候选: " + ex.getMessage());
     }
 
     /** 建表脚本中的 CREATE TABLE 表名（含 MySQL 反引号） */
@@ -177,7 +190,7 @@ class TableInitializerTest {
             "create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?[`\"]?(\\w+)[`\"]?", Pattern.CASE_INSENSITIVE);
 
     private static TableInitializer initializer(Stub stub, String... tables) {
-        return new TableInitializer(providerOf(dataSource(stub)), "测试组件", SCRIPT, List.of(tables));
+        return new TableInitializer(beanFactoryOf(dataSource(stub)), "测试组件", SCRIPT, List.of(tables));
     }
 
     /** 桩：方言产品名 + 已存在表集合（缺表时 executeQuery 抛"表不存在"） */
@@ -269,9 +282,11 @@ class TableInitializerTest {
         }
     }
 
-    /** 将单例包装为 ObjectProvider */
-    private static ObjectProvider<DataSource> providerOf(DataSource dataSource) {
-        return new StubProvider<>(List.of(dataSource));
+    /** 主库形态的 BeanFactory：数据源注册成 masterDataSource（组件只认这个名字，不猜唯一/@Primary） */
+    private static ListableBeanFactory beanFactoryOf(DataSource dataSource) {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        beanFactory.registerSingleton(DsMaster.DATASOURCE_BEAN, dataSource);
+        return beanFactory;
     }
 
     /** 桩状态：产品名、已存在表、执行记录、[建表语句是否报错, 是否真的建表] */
@@ -283,51 +298,6 @@ class TableInitializerTest {
 
         void ddlCreatesTables(boolean creates) {
             flags[1] = creates;
-        }
-    }
-
-    /** 最小 ObjectProvider 实现：只支持 getIfUnique 与 stream */
-    private static final class StubProvider<T> implements ObjectProvider<T> {
-
-        private final List<T> beans;
-
-        private StubProvider(List<T> beans) {
-            this.beans = beans;
-        }
-
-        @Override
-        public T getObject() throws BeansException {
-            return getIfUnique();
-        }
-
-        @Override
-        public T getObject(Object... args) throws BeansException {
-            return getIfUnique();
-        }
-
-        @Override
-        public T getIfAvailable() throws BeansException {
-            return beans.isEmpty() ? null : beans.get(0);
-        }
-
-        @Override
-        public T getIfUnique() throws BeansException {
-            return beans.size() == 1 ? beans.get(0) : null;
-        }
-
-        @Override
-        public Stream<T> stream() {
-            return beans.stream();
-        }
-
-        @Override
-        public void forEach(Consumer<? super T> action) {
-            beans.forEach(action);
-        }
-
-        @Override
-        public java.util.Iterator<T> iterator() {
-            return beans.iterator();
         }
     }
 

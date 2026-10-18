@@ -284,31 +284,22 @@ class HttpLogAutoConfigurationTest {
         ((Logger) LoggerFactory.getLogger(HttpLogAutoConfiguration.class)).detachAppender(appender);
     }
 
-    /** 替身：SqlSessionFactory 用真实 Configuration + 空 DataSource（装配测试不触库）；Mapper 由装配类自己扫描 */
+    /** 替身：主库设施按 ds 的固定名字（masterXxx）注册；装配测试不触库，Mapper 由装配类自己扫描 */
     @Configuration(proxyBeanMethods = false)
     static class StubConfiguration {
 
+        /** 主数据源桩：连接可用、表都存在（启动期建表只探活、不建表） */
         @Bean
-        SqlSessionFactory sqlSessionFactory() {
-            DataSource dataSource = (DataSource) Proxy.newProxyInstance(
-                    HttpLogAutoConfigurationTest.class.getClassLoader(), new Class<?>[]{DataSource.class},
-                    (proxy, method, args) -> defaultValue(method.getReturnType()));
-            Environment environment = new Environment("httplog-test", new ManagedTransactionFactory(), dataSource);
-            return new SqlSessionFactoryBuilder()
-                    .build(new org.apache.ibatis.session.Configuration(environment));
+        DataSource masterDataSource() {
+            return ProbeDataSource.allTablesExist();
         }
 
-        private static Object defaultValue(Class<?> type) {
-            if (type == int.class || type == Integer.class) {
-                return 0;
-            }
-            if (type == long.class || type == Long.class) {
-                return 0L;
-            }
-            if (type == boolean.class || type == Boolean.class) {
-                return false;
-            }
-            return null;
+        @Bean
+        SqlSessionFactory masterSqlSessionFactory(DataSource masterDataSource) {
+            Environment environment = new Environment("httplog-test", new ManagedTransactionFactory(),
+                    masterDataSource);
+            return new SqlSessionFactoryBuilder()
+                    .build(new org.apache.ibatis.session.Configuration(environment));
         }
 
     }

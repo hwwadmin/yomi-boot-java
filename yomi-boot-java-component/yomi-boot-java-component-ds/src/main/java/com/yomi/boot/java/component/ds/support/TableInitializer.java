@@ -1,7 +1,7 @@
 package com.yomi.boot.java.component.ds.support;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.support.EncodedResource;
@@ -27,6 +27,9 @@ import java.util.Locale;
  * 脚本缺失、执行失败、方言不支持或建表后仍缺表都阻止启动，错误点名缺失的表与脚本路径。
  * 探活用 {@code SELECT 1 FROM t WHERE 1 = 0}，只验证表可访问、不读取数据行；
  * 在所有单例就绪后执行一次（早于 Web 对外服务）。
+ * <p>
+ * 数据源只认主库（{@link DsMaster#DATASOURCE_BEAN}，由 component-ds 独占装配）：组件表建在主库上，
+ * 主库不在（未配 {@code spring.datasource.url}）即失败——建在哪个库不容含糊，跳过会把问题留到运行期。
  *
  * @author zwei
  */
@@ -36,8 +39,8 @@ public class TableInitializer implements SmartInitializingSingleton {
     /** 建表脚本在 jar 内的目录前缀（末级目录为方言名） */
     private static final String SQL_DIR = "sql/";
 
-    /** 用于执行探活与建表的数据源 */
-    private final ObjectProvider<DataSource> dataSourceProvider;
+    /** 用于解析主数据源（按固定名字，不猜） */
+    private final ListableBeanFactory beanFactory;
 
     /** 组件名称（日志与报错） */
     private final String component;
@@ -48,9 +51,9 @@ public class TableInitializer implements SmartInitializingSingleton {
     /** 待校验的表名列表 */
     private final List<String> tables;
 
-    public TableInitializer(ObjectProvider<DataSource> dataSourceProvider, String component,
+    public TableInitializer(ListableBeanFactory beanFactory, String component,
                             String sqlFile, List<String> tables) {
-        this.dataSourceProvider = dataSourceProvider;
+        this.beanFactory = beanFactory;
         this.component = component;
         this.sqlFile = sqlFile;
         this.tables = List.copyOf(tables);
@@ -59,13 +62,12 @@ public class TableInitializer implements SmartInitializingSingleton {
     /** 单例就绪后逐表探活，缺表则按方言自动建表，仍缺则阻止启动 */
     @Override
     public void afterSingletonsInstantiated() {
-        DataSource dataSource = resolveDataSource();
-        if (dataSource == null) {
-            log.warn("[{}] 未解析到唯一 DataSource，跳过启动期建表检查；表缺失将在运行期报错", component);
-            return;
-        }
-
+        DataSource dataSource = DsMaster.requireDataSource(beanFactory);
         try (Connection connection = dataSource.getConnection()) {
+            if (connection == null) {
+                throw new IllegalStateException("[" + component
+                        + "] 启动期建表检查失败：无法获取数据库连接（DataSource 返回 null）");
+            }
             Probe probe = probe(connection, tables);
             if (probe.missing().isEmpty()) {
                 log.info("[{}] 启动期建表检查通过: {}", component, String.join(", ", tables));
@@ -132,11 +134,6 @@ public class TableInitializer implements SmartInitializingSingleton {
     private IllegalStateException error(List<String> missing, String detail, Throwable cause) {
         String message = "[" + component + "] 启动期建表检查失败，缺少表: " + String.join(", ", missing) + detail;
         return cause == null ? new IllegalStateException(message) : new IllegalStateException(message, cause);
-    }
-
-    /** 解析用于探活与建表的数据源：主库（唯一或 @Primary 的那个） */
-    private DataSource resolveDataSource() {
-        return dataSourceProvider.getIfUnique();
     }
 
     /** 探活结果：缺失表清单 + 首个错误（用于报错留痕） */

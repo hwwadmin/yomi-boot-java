@@ -17,6 +17,7 @@ import com.yomi.boot.java.component.ds.support.DsDatabaseIdProvider;
 import com.yomi.boot.java.component.ds.support.DsMaster;
 import com.yomi.boot.java.component.ds.support.InstantJdbcTypeHandler;
 import com.yomi.boot.java.component.ds.support.MybatisPlusChainChecker;
+import com.yomi.boot.java.component.ds.testsupport.StubDataSource;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.ibatis.mapping.DatabaseIdProvider;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -28,7 +29,6 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
@@ -46,13 +46,33 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * ds 自动装配验证：宿主不扫描 com.yomi 时（仅靠 imports 清单）主库四件套（{@code masterXxx} + {@code @Primary}）
- * 与预热/信息 Bean 也能注册；宿主自带同名 Bean 时以宿主的为准；无数据源宿主不装配主库。
+ * 与预热/信息 Bean 也能注册；主数据源只走 yml 装配、业务声明 {@code masterXxx} 即拦启动；无数据源宿主不装配主库。
  * 全部离线运行（stub DataSource，{@link DsPreheat} 预热失败仅记日志不阻断）。
  */
 class DsAutoConfigurationTest {
 
     private static final String IMPORTS_RESOURCE =
             "META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports";
+
+    /** 桩 URL：能用 MySQL 写法就够（只推导驱动类名，不建连接） */
+    private static final String STUB_URL = "jdbc:mysql://127.0.0.1:3306/stub_ds_test";
+
+    /** 主库只走 yml 装配：用 {@link StubDataSource} 当池实现，装配真跑一遍又不连库 */
+    private static ApplicationContextRunner runner() {
+        return new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
+                .withPropertyValues("spring.datasource.url=" + STUB_URL,
+                        "spring.datasource.type=" + StubDataSource.class.getName());
+    }
+
+    /** 失败链上的全部消息（条件里抛的异常会被容器包一层） */
+    private static String rootMessage(Throwable error) {
+        StringBuilder text = new StringBuilder();
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            text.append(current.getMessage()).append('\n');
+        }
+        return text.toString();
+    }
 
     @Test
     void importsFileDeclaresAutoConfiguration() throws IOException {
@@ -63,9 +83,7 @@ class DsAutoConfigurationTest {
 
     @Test
     void registersPaginationInterceptorAndLifecycleBeans() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .run(context -> {
                     assertNotNull(context.getBean(MybatisPlusInterceptor.class), "应装配分页插件");
                     assertNotNull(context.getBean(DsPreheat.class));
@@ -73,26 +91,23 @@ class DsAutoConfigurationTest {
                 });
     }
 
-    /** 宿主自带 DataSource：主库四件套绑定它，且全部 @Primary（不指定名称的注入都落主库） */
+    /** 主库四件套由组件按 yml 装配，全部 @Primary（不指定名称的注入都落主库） */
     @Test
-    void masterBeansArePrimaryAndBoundToHostDataSource() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+    void masterBeansArePrimaryAndBoundToMasterDataSource() {
+        runner()
                 .run(context -> {
                     assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
-                    assertSame(context.getBean(DsMaster.DATASOURCE_BEAN), context.getBean(DsMaster.SQL_SESSION_FACTORY_BEAN,
+                    DataSource masterDataSource = context.getBean(DsMaster.DATASOURCE_BEAN, DataSource.class);
+                    assertInstanceOf(StubDataSource.class, masterDataSource,
+                            "主数据源按 spring.datasource.type 装配（只走 yml）");
+                    assertSame(masterDataSource, context.getBean(DsMaster.SQL_SESSION_FACTORY_BEAN,
                                     SqlSessionFactory.class).getConfiguration().getEnvironment().getDataSource(),
-                            "主库工厂必须绑宿主的数据源");
-                    assertFalse(context.getBean(DsMaster.DATASOURCE_BEAN) instanceof HikariDataSource,
-                            "宿主提供了同名 Bean，ds 不再声明主数据源（那个 Bean 不是 Hikari 就说明用的是宿主的）");
-                    assertTrue(notPrimary(context, DsMaster.SQL_SESSION_FACTORY_BEAN,
+                            "主库工厂必须绑主数据源");
+                    assertTrue(notPrimary(context, DsMaster.DATASOURCE_BEAN, DsMaster.SQL_SESSION_FACTORY_BEAN,
                                     DsMaster.SQL_SESSION_TEMPLATE_BEAN, DsMaster.TRANSACTION_MANAGER_BEAN).isEmpty(),
-                            "ds 装配的主库 Bean 应全部 @Primary，缺: "
-                                    + notPrimary(context, DsMaster.SQL_SESSION_FACTORY_BEAN,
+                            "主库四件套应全部 @Primary，缺: "
+                                    + notPrimary(context, DsMaster.DATASOURCE_BEAN, DsMaster.SQL_SESSION_FACTORY_BEAN,
                                     DsMaster.SQL_SESSION_TEMPLATE_BEAN, DsMaster.TRANSACTION_MANAGER_BEAN));
-                    assertFalse(context.getBean(DsMaster.DATASOURCE_BEAN) instanceof HikariDataSource,
-                            "宿主提供了同名 Bean，ds 不再声明主数据源（那个 Bean 不是 Hikari 就说明用的是宿主的）");
                     assertNotNull(context.getBean(DsMaster.SQL_SESSION_TEMPLATE_BEAN, SqlSessionTemplate.class));
                     assertNotNull(context.getBean(DsMaster.TRANSACTION_MANAGER_BEAN, PlatformTransactionManager.class));
                 });
@@ -238,35 +253,34 @@ class DsAutoConfigurationTest {
                 });
     }
 
-    /**
-     * 宿主用同名 Bean 提供主库：工厂与事务管理器以宿主那份为准；
-     * 宿主自管的工厂同样要满足"链里有分页 + 防全表"（自检对每个工厂都检查）
-     */
+    /** 主数据源由本组件独占：业务声明 masterXxx 就是"替换主数据源的装配流程"，启动失败并给出路 */
     @Test
-    void hostTakesOverMasterBySameNamedBeans() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+    void hostDeclaredMasterBeansAreRejected() {
+        runner()
                 .withBean(DsMaster.SQL_SESSION_FACTORY_BEAN, SqlSessionFactory.class,
                         () -> stubSqlSessionFactory(stubDataSource(), true))
-                .withBean(DsMaster.TRANSACTION_MANAGER_BEAN, PlatformTransactionManager.class,
-                        () -> new DataSourceTransactionManager(stubDataSource()))
                 .run(context -> {
-                    assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
-                    SqlSessionFactory factory = context.getBean(DsMaster.SQL_SESSION_FACTORY_BEAN, SqlSessionFactory.class);
-                    assertTrue(guardLibraries(factory).isEmpty(),
-                            "同名让位：宿主那份工厂保持原样（ds 装配的工厂会挂跨库守卫）");
-                    assertSame(factory, context.getBean(DsMaster.SQL_SESSION_TEMPLATE_BEAN, SqlSessionTemplate.class)
-                            .getSqlSessionFactory(), "模板仍由本组件装配，绑定宿主接管的工厂");
+                    Throwable failure = context.getStartupFailure();
+                    assertNotNull(failure, "宿主声明 masterSqlSessionFactory 必须拦启动");
+                    String text = rootMessage(failure);
+                    assertTrue(text.contains(DsMaster.SQL_SESSION_FACTORY_BEAN), "要点名占用的 Bean: " + text);
+                    assertTrue(text.contains("spring.datasource.url"), "要给出出路: " + text);
+                });
+
+        runner()
+                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+                .run(context -> {
+                    Throwable failure = context.getStartupFailure();
+                    assertNotNull(failure, "宿主声明 masterDataSource 必须拦启动");
+                    assertTrue(rootMessage(failure).contains(DsMaster.DATASOURCE_BEAN),
+                            "要点名占用的 Bean: " + rootMessage(failure));
                 });
     }
 
     /** 主库四件套必须带分页链：按 Page 取批的语句靠它加 LIMIT */
     @Test
     void masterFactoryCarriesPaginationAndBlockAttack() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .run(context -> {
                     SqlSessionFactory factory = context.getBean("masterSqlSessionFactory", SqlSessionFactory.class);
                     List<String> plugins = factory.getConfiguration().getInterceptors().stream()
@@ -285,9 +299,7 @@ class DsAutoConfigurationTest {
     @Test
     void hostProvidedInnerInterceptorIsCollected() {
         Class<?> hostType = HostInterceptor.class;
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withBean(InnerInterceptor.class, HostInterceptor::new)
                 .run(context -> assertTrue(interceptorClasses(context).contains(hostType.getName()),
                         "宿主自定义拦截器未被装配: " + interceptorClasses(context)));
@@ -296,9 +308,7 @@ class DsAutoConfigurationTest {
     /** 宿主注册了与内置同类的拦截器：跳过并告警，同类只保留一份（重复挂载会双重解析/双重执行） */
     @Test
     void hostInterceptorOfSameBuiltInClassIsSkipped() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withBean(BlockAttackInnerInterceptor.class, BlockAttackInnerInterceptor::new)
                 .run(context -> assertEquals(1,
                         interceptorClasses(context).stream()
@@ -310,9 +320,7 @@ class DsAutoConfigurationTest {
     /** 宿主自管链必须自带分页：缺分页时链自检直接拦启动（组件里按 Page 取批的语句依赖它加 LIMIT） */
     @Test
     void failsFastWhenHostChainMissesPagination() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withBean(MybatisPlusInterceptor.class, MybatisPlusInterceptor::new)
                 .run(context -> {
                     assertNotNull(context.getStartupFailure(), "缺分页必须拦启动");
@@ -324,9 +332,7 @@ class DsAutoConfigurationTest {
     /** 分页与防全表写随 ds 组件强制生效：pagination.enabled=false 也关不掉任何一项 */
     @Test
     void paginationCannotBeDisabledByProperty() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withPropertyValues("yomi.ds.pagination.enabled=false")
                 .run(context -> {
                     assertNotNull(context.getBean(MybatisPlusInterceptor.class), "分页与防全表写无开关，设 false 也必须装配");
@@ -340,18 +346,14 @@ class DsAutoConfigurationTest {
 
     @Test
     void paginationDialectIsAutoDetectedByDefault() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .run(context -> assertNull(paginationDialect(context),
                         "默认必须按连接自动探测方言（多数据源/多方言各自正确），不得写死 MySQL"));
     }
 
     @Test
     void paginationDialectCanBePinnedByProperty() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withPropertyValues("yomi.ds.pagination.db-type=postgre_sql")
                 .run(context -> assertEquals(DbType.POSTGRE_SQL, paginationDialect(context),
                         "显式指定（大小写不敏感）应生效"));
@@ -359,9 +361,7 @@ class DsAutoConfigurationTest {
 
     @Test
     void invalidPaginationDialectFailsFast() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withPropertyValues("yomi.ds.pagination.db-type=mysql8")
                 .run(context -> {
                     Throwable failure = context.getStartupFailure();
@@ -391,9 +391,7 @@ class DsAutoConfigurationTest {
         Logger logger = (Logger) LoggerFactory.getLogger(MybatisPlusConfig.class);
         logger.addAppender(appender);
         try {
-            ApplicationContextRunner runner = new ApplicationContextRunner()
-                    .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                    .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource);
+            ApplicationContextRunner runner = runner();
             if (dbType != null) {
                 runner = runner.withPropertyValues("yomi.ds.pagination.db-type=" + dbType);
             }
@@ -407,21 +405,33 @@ class DsAutoConfigurationTest {
     /** 主数据源公告只打一次（工厂与事务管理器都会解析主数据源，公告不能跟着解析重复） */
     @Test
     void masterDataSourceIsAnnouncedExactlyOnce() {
-        List<String> announcements = announcementsOf(new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource));
+        List<String> announcements = announcementsOf(runner());
         assertEquals(1, announcements.size(), "主数据源公告应只打一次: " + announcements);
         assertTrue(announcements.get(0).contains("masterDataSource（component-ds 装配）"), announcements.get(0));
     }
 
-    /** 宿主提供数据源（唯一候选）时同样只公告一次，并注明"宿主提供" */
+    /** 业务自带的数据源（非主库名）只是附加库：主库仍是组件装配的那套，公告也只认主库 */
     @Test
-    void hostProvidedDataSourceIsAnnouncedExactlyOnce() {
-        List<String> announcements = announcementsOf(new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean("dataSource", DataSource.class, DsAutoConfigurationTest::stubDataSource));
+    void hostProvidedDataSourceIsJustAnAdditionalLibrary() {
+        List<String> announcements = announcementsOf(runner()
+                .withBean("reportDataSource", DataSource.class, DsAutoConfigurationTest::stubDataSource));
         assertEquals(1, announcements.size(), "主数据源公告应只打一次: " + announcements);
-        assertTrue(announcements.get(0).contains("（宿主提供）"), announcements.get(0));
+        assertTrue(announcements.get(0).contains("masterDataSource（component-ds 装配）"), announcements.get(0));
+    }
+
+    /** 附加库那套标了 @Primary：按类型解析会被它抢走（不写 ref 的 Mapper、@Transactional 都落错库）→ 绑定审计拦启动 */
+    @Test
+    void additionalLibraryMustNotBePrimary() {
+        runner()
+                .withBean("reportDataSource", DataSource.class, DsAutoConfigurationTest::stubDataSource,
+                        definition -> definition.setPrimary(true))
+                .run(context -> {
+                    Throwable failure = context.getStartupFailure();
+                    assertNotNull(failure, "附加库标 @Primary 必须拦启动（否则组件静默查错库）");
+                    String text = rootMessage(failure);
+                    assertTrue(text.contains("reportDataSource"), "要点名抢位的 Bean: " + text);
+                    assertTrue(text.contains("@Primary"), "要给出出路: " + text);
+                });
     }
 
     /**
@@ -449,9 +459,7 @@ class DsAutoConfigurationTest {
     /** 防全表更新/删除：默认必须进链（BlockAttack 拦截无有效条件的 UPDATE/DELETE） */
     @Test
     void blockAttackIsAlwaysInChain() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .run(context -> {
                     assertTrue(interceptorClasses(context).contains(BlockAttackInnerInterceptor.class.getName()),
                             "BlockAttack 缺失时一条漏写 WHERE 的 delete 就能清空整表: " + interceptorClasses(context));
@@ -463,15 +471,11 @@ class DsAutoConfigurationTest {
     /** 跨库守卫开关：默认 error（开），非法值启动失败 */
     @Test
     void transactionGuardSwitch() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withPropertyValues("yomi.ds.transaction-guard=off")
                 .run(context -> assertNull(context.getStartupFailure(), "off 是合法值"));
 
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withPropertyValues("yomi.ds.transaction-guard=abort")
                 .run(context -> {
                     assertNotNull(context.getStartupFailure(), "非法值应启动失败");
@@ -482,9 +486,7 @@ class DsAutoConfigurationTest {
 
     @Test
     void preheatCanBeDisabledByProperty() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withPropertyValues("yomi.ds.preheat.enabled=false")
                 .run(context -> {
                     assertFalse(context.containsBean("dsPreheat"));
@@ -498,10 +500,8 @@ class DsAutoConfigurationTest {
      */
     @Test
     void componentScanAndImportsRegisterExactlyOneInstanceOfEachBean() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
+        runner()
                 .withUserConfiguration(ScanBootstrap.class)
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
                 .run(context -> {
                     assertNotNull(context.getBean(MybatisPlusInterceptor.class));
                     assertTrue(context.getBeansOfType(MybatisPlusInterceptor.class).size() == 1,
@@ -525,7 +525,9 @@ class DsAutoConfigurationTest {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class,
                         MybatisPlusAutoConfiguration.class))
-                .withBean("dataSource", DataSource.class, () -> productNameDataSource("MySQL"))
+                .withPropertyValues("spring.datasource.url=" + STUB_URL,
+                        "spring.datasource.type=" + StubDataSource.class.getName(),
+                        "spring.datasource.stub.product-name=MySQL")
                 .run(context -> {
                     assertNull(context.getStartupFailure(), "上下文应启动成功");
                     assertNotNull(context.getBean(DatabaseIdProvider.class), "应装配 DsDatabaseIdProvider");
@@ -543,9 +545,7 @@ class DsAutoConfigurationTest {
     /** 宿主自定义 DatabaseIdProvider 时用宿主那份 */
     @Test
     void hostDatabaseIdProviderWins() {
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(DsAutoConfiguration.class))
-                .withBean(DsMaster.DATASOURCE_BEAN, DataSource.class, DsAutoConfigurationTest::stubDataSource)
+        runner()
                 .withBean(DatabaseIdProvider.class, HostDatabaseIdProvider::new)
                 .run(context -> assertTrue(context.getBean(DatabaseIdProvider.class) instanceof HostDatabaseIdProvider));
     }
@@ -569,15 +569,6 @@ class DsAutoConfigurationTest {
             chain.addInnerInterceptor(new BlockAttackInnerInterceptor());
             return chain;
         }
-    }
-
-    /** 取工厂上挂的跨库守卫库名（空 = 该工厂不是 ds 装配的） */
-    private static List<String> guardLibraries(SqlSessionFactory factory) {
-        return factory.getConfiguration().getInterceptors().stream()
-                .filter(DsCrossDbGuard.class::isInstance)
-                .map(DsCrossDbGuard.class::cast)
-                .map(DsCrossDbGuard::libraryName)
-                .toList();
     }
 
     /** 取给定 Bean 里实际装配了但未标 @Primary 的（空集合 = 已装配的全部 @Primary） */
@@ -634,22 +625,6 @@ class DsAutoConfigurationTest {
                 (proxy, method, args) -> {
                     throw new UnsupportedOperationException("stub datasource");
                 });
-    }
-
-    /** 只回答"数据库产品名"的 DataSource 桩（方言解析用） */
-    private static DataSource productNameDataSource(String productName) {
-        java.sql.DatabaseMetaData metaData = (java.sql.DatabaseMetaData) Proxy.newProxyInstance(
-                DsAutoConfigurationTest.class.getClassLoader(), new Class<?>[]{java.sql.DatabaseMetaData.class},
-                (proxy, method, args) -> "getDatabaseProductName".equals(method.getName())
-                        ? productName : stubDefaults(proxy, method, args));
-        java.sql.Connection connection = (java.sql.Connection) Proxy.newProxyInstance(
-                DsAutoConfigurationTest.class.getClassLoader(), new Class<?>[]{java.sql.Connection.class},
-                (proxy, method, args) -> "getMetaData".equals(method.getName())
-                        ? metaData : stubDefaults(proxy, method, args));
-        return (DataSource) Proxy.newProxyInstance(
-                DsAutoConfigurationTest.class.getClassLoader(), new Class<?>[]{DataSource.class},
-                (proxy, method, args) -> "getConnection".equals(method.getName())
-                        ? connection : stubDefaults(proxy, method, args));
     }
 
     /** 建工厂用的最小 SqlSessionFactory 桩（不连库）；withChain=顺带挂上分页 + 防全表写与 Instant 处理器（主库工厂的硬校验） */

@@ -70,8 +70,10 @@ public class OrderDomainRepositoryImpl extends MyBatisDao<OrderMapper, OrderEnti
 
 ### 4.3 多数据源
 
-- 主库走 `spring.datasource.*`（组件装配出 `masterXxx` 四件套，全 `@Primary`）；**附加库的数据源、`SqlSessionFactory`、事务管理器由业务自建**，不要使用已移除的 `spring.datasource.dynamic.*`。
-- 自建附加库时 `@MapperScan` 必须写齐 `sqlSessionFactoryRef` 与 `sqlSessionTemplateRef`（只写一个会被主库模板/工厂劫持，启动即失败），附加库事务显式指定 `transactionManager`。
+- 主库走 `spring.datasource.*`（组件装配出 `masterXxx` 四件套，全 `@Primary`），且**主库由 `component-ds` 独占装配**：业务只能配 yml（换池用 `spring.datasource.type`），**不得声明 `masterXxx`**（声明即启动失败）；不要使用已移除的 `spring.datasource.dynamic.*`。
+- **需要库操作的组件（rbac / event / idempotency / httplog）默认走主库**：不写 ref 的 Mapper、`@Transactional`、事务模板都锚在主库；启动期有绑定审计，错位（附加库那套标 `@Primary`、事务模板绑别的库、不写 ref 的 Mapper 落在别的工厂）直接拦启动。
+- 自建附加库：数据源、`SqlSessionFactory`、`SqlSessionTemplate`、事务管理器都用业务自己的 Bean 名且不标 `@Primary`；`@MapperScan` 必须写齐 `sqlSessionFactoryRef` 与 `sqlSessionTemplateRef`（只写一个会被主库模板/工厂劫持，启动即失败），附加库事务显式指定 `transactionManager`。
+- 事务模板：组件复用应用自己的 `TransactionTemplate`，但必须绑定主库事务管理器——别的库的模板会让 Boot 的标准 `transactionTemplate` 退让，唯一性不等于正确性。
 - 单请求跨库写：须在 [Java事务与一致性规范](./Java事务与一致性规范.md) 中单独决策（默认避免，无 XA）；组件默认对跨库访问报错（`yomi.ds.transaction-guard=error`）。
 
 ---

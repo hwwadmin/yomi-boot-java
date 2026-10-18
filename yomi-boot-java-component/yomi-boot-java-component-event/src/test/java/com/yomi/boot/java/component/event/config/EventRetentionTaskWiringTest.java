@@ -116,8 +116,8 @@ class EventRetentionTaskWiringTest {
     }
 
     /**
-     * 消费侧最小上下文：组件依赖全用桩（不连 DB/Redis/Kafka）；事务模板由 Boot 从唯一管理器自动注册
-     * （组件不再自建模板）；清理任务的锁桩设为"始终繁忙"（不真正执行）
+     * 消费侧最小上下文：组件依赖全用桩（不连 DB/Redis/Kafka）；主库设施按 ds 的固定名字注入，
+     * 事务模板由 Boot 从唯一管理器自动注册（组件不再自建模板）；清理任务的锁桩设为"始终繁忙"（不真正执行）
      */
     private static ApplicationContextRunner consumerRunner() {
         return new ApplicationContextRunner()
@@ -129,9 +129,11 @@ class EventRetentionTaskWiringTest {
                 .withBean(SpringUtils.class)
                 .withBean("stringRedisTemplate", StringRedisTemplate.class, EventRetentionTaskWiringTest::stubRedisTemplate)
                 .withBean("redissonClient", RedissonClient.class, EventRetentionTaskWiringTest::busyRedissonStub)
-                .withBean("transactionManager", PlatformTransactionManager.class,
+                .withBean("masterDataSource", DataSource.class, ProbeDataSource::allTablesExist)
+                .withBean("masterTransactionManager", PlatformTransactionManager.class,
                         () -> proxy(PlatformTransactionManager.class))
-                .withBean("sqlSessionFactory", SqlSessionFactory.class, EventRetentionTaskWiringTest::stubSqlSessionFactory);
+                .withBean("masterSqlSessionFactory", SqlSessionFactory.class,
+                        EventRetentionTaskWiringTest::stubSqlSessionFactory);
     }
 
     /** 让装配类扫出的 Mapper 能实例化：真实 Configuration + 空 DataSource（不触库） */

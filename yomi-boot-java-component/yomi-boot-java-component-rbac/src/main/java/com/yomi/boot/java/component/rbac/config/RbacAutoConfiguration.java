@@ -26,6 +26,7 @@ import com.yomi.boot.java.component.token.config.TokenAutoConfiguration;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.context.LifecycleProperties;
@@ -39,7 +40,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-import javax.sql.DataSource;
 import java.util.List;
 
 /**
@@ -239,11 +239,11 @@ public class RbacAutoConfiguration {
         return new RbacBootstrap();
     }
 
-    /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_rbac.sql 自动创建
+    /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_rbac.sql 自动创建
      *（含内置超管种子），建表后请求可正常通过鉴权 */
     @Bean
-    public TableInitializer rbacTableInitializer(ObjectProvider<DataSource> dataSourceProvider) {
-        return new TableInitializer(dataSourceProvider, "RBAC", "sys_rbac.sql", List.of(
+    public TableInitializer rbacTableInitializer(ListableBeanFactory beanFactory) {
+        return new TableInitializer(beanFactory, "RBAC", "sys_rbac.sql", List.of(
                 "sys_rbac_perm", "sys_rbac_perm_group", "sys_rbac_role",
                 "sys_rbac_user_role_rel", "sys_rbac_role_group_rel", "sys_rbac_group_perm_rel"));
     }

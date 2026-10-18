@@ -1,6 +1,7 @@
 package com.yomi.boot.java.component.event.config;
 
 import com.yomi.boot.java.component.event.consume.EventInboxGuard;
+import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.apache.ibatis.transaction.managed.ManagedTransactionFactory;
@@ -22,157 +23,222 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
-import java.sql.Connection;
-import java.sql.Statement;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 事务模板解析契约：组件不注册事务模板，只用应用自己的——容器里有
- * （Boot 标准 {@code transactionTemplate} / 宿主自定义）就原样复用，
- * 缺失或候选不唯一时启动失败并点名候选（事务基础设施属于应用，组件不自行创建）
- *
- * @author zwei
+ * 事务模板解析契约：组件不注册事务模板，只用应用自己的——容器里有 （Boot 标准
+ * {@code transactionTemplate} / 宿主自定义）就原样复用，但模板必须<b>绑定主库事务管理器</b>
+ * （唯一性不等于正确性：别的库的模板会顶掉 Boot 的标准模板，唯一性照样命中它）。
+ * 缺失、绑错库、或同一主库 TM 上无法判定用哪个，都启动失败并点名候选（事务基础设施属于应用，组件不自行创建）
  */
 class EventTransactionTemplateWiringTest {
 
-    /** 单库宿主：容器里是 Boot 标准 Bean，组件只复用、不注册自己的模板 */
+    /** 默认应用：守卫复用容器里的 Boot 标准 transactionTemplate，容器里不出现组件注册的模板 Bean */
     @Test
     void bootStandardTemplateIsReused() {
-        DataSource dataSource = stubDataSource();
-        consumerRunner(dataSource).withUserConfiguration(SingleManagerCase.class).run(context -> {
-            assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
+        runner(MasterManagerCase.class).run(context -> {
+            assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
             assertArrayEquals(new String[]{"transactionTemplate"},
                     context.getBeanNamesForType(TransactionTemplate.class),
                     "组件不得注册事务模板：容器里应只有应用/ Boot 的模板");
             TransactionTemplate template = context.getBean(TransactionTemplate.class);
             assertEquals(TransactionDefinition.PROPAGATION_REQUIRED, template.getPropagationBehavior(),
                     "复用的 Boot 模板是默认 REQUIRED");
-            assertSame(context.getBean("transactionManager"), template.getTransactionManager(),
-                    "模板必须绑定应用的事务管理器");
+            assertSame(context.getBean(MASTER_MANAGER), template.getTransactionManager(),
+                    "模板必须绑定应用的主库事务管理器");
             assertSame(template, guardTemplate(context),
                     "EventInboxGuard 必须用容器里的模板（inbox 插入与业务写入同事务）");
         });
     }
 
-    /** 宿主自定义模板（REQUIRES_NEW 等语义）：组件原样复用宿主语义 */
+    /** 宿主自定义模板（REQUIRES_NEW 等语义）：原样复用，不改写、不另建 */
     @Test
     void hostTemplateIsReusedAsIs() {
-        consumerRunner(stubDataSource())
-                .withUserConfiguration(SingleManagerCase.class, HostTemplateCase.class)
-                .run(context -> {
-                    assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
-                    assertArrayEquals(new String[]{"hostTransactionTemplate"},
-                            context.getBeanNamesForType(TransactionTemplate.class),
-                            "宿主模板存在时组件不得再注册自己的模板");
-                    TransactionTemplate host = context.getBean("hostTransactionTemplate", TransactionTemplate.class);
-                    assertSame(host, guardTemplate(context), "宿主模板语义必须原样带到组件");
-                    assertEquals(TransactionDefinition.PROPAGATION_REQUIRES_NEW, host.getPropagationBehavior());
-                });
+        runner(MasterManagerCase.class, HostTemplateCase.class).run(context -> {
+            assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
+            assertArrayEquals(new String[]{"hostTransactionTemplate"},
+                    context.getBeanNamesForType(TransactionTemplate.class),
+                    "宿主模板存在时组件不得再注册自己的模板");
+            TransactionTemplate host = context.getBean("hostTransactionTemplate", TransactionTemplate.class);
+            assertSame(host, guardTemplate(context), "宿主模板语义必须原样带到组件");
+            assertEquals(TransactionDefinition.PROPAGATION_REQUIRES_NEW, host.getPropagationBehavior());
+        });
     }
 
-    /** 多事务管理器 + @Primary（多数据源宿主的正确形态）：组件与 Boot 同口径，使用 @Primary 管理器 */
+    /** 多库宿主：主库管理器（masterTransactionManager）+ 附加库管理器 → 用绑主库的那个模板 */
     @Test
-    void multipleManagersBindToPrimary() {
-        consumerRunner(stubDataSource()).withUserConfiguration(PrimaryManagerCase.class).run(context -> {
-            assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
-            assertSame(context.getBean("primaryTxManager"), context.getBean(TransactionTemplate.class).getTransactionManager(),
-                    "多事务管理器时以 @Primary 为唯一解（宿主应把 @Primary 放在业务库管理器上）");
+    void multiLibraryHostBindsToMasterManager() {
+        runner(MasterManagerCase.class, ReportManagerCase.class).run(context -> {
+            assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
+            assertSame(context.getBean(MASTER_MANAGER),
+                    context.getBean(TransactionTemplate.class).getTransactionManager(),
+                    "多事务管理器时组件必须用主库事务管理器（组件默认走主数据源）");
             assertSame(context.getBean(TransactionTemplate.class), guardTemplate(context));
         });
     }
 
-    /** 多事务管理器无 @Primary：Boot 不会注册模板 → 启动失败，报错点名管理器候选 */
+    /**
+     * 唯一模板但绑附加库：Boot 标准模板被别的库的模板顶掉后唯一性会命中它——
+     * 必须失败（inbox 插入会写在一个不属于业务事务的连接上）
+     */
     @Test
-    void ambiguousManagersFailFastNamingCandidates() {
-        consumerRunner(stubDataSource()).withUserConfiguration(AmbiguousManagerCase.class).run(context -> {
-            assertNotNull(context.getStartupFailure(),
-                    "多事务管理器无 @Primary 必须启动失败：静默挑一个正是'写错库/不进事务'的成因");
+    void templateOffMasterFailsFast() {
+        runner(MasterManagerCase.class, ReportManagerCase.class, ReportTemplateCase.class).run(context -> {
+            assertNotNull(context.getStartupFailure(), "模板绑附加库必须启动失败");
             Throwable root = rootCause(context.getStartupFailure());
             assertInstanceOf(IllegalStateException.class, root,
-                    () -> "必须是组件的事务模板校验失败: " + context.getStartupFailure());
-            assertTrue(root.getMessage().contains("businessDbTxManager")
-                            && root.getMessage().contains("otherDbTxManager"),
-                    "报错必须点名管理器候选: " + root.getMessage());
-            assertTrue(root.getMessage().contains("@Primary"), "报错必须给出加 @Primary 的出路: " + root.getMessage());
+                    () -> "必须是组件的事务模板校验失败: " + failureText(context.getStartupFailure()));
+            assertTrue(root.getMessage().contains("reportTransactionTemplate"),
+                    "要指出是哪个模板绑错库: " + root.getMessage());
+            assertTrue(root.getMessage().contains(MASTER_MANAGER),
+                    "要点名主库事务管理器: " + root.getMessage());
         });
     }
 
-    /** 模板多候选且无 @Primary：启动失败并点名模板候选，不随意挑一个 */
+    /** 主库 + 附加库各一个模板且都不 @Primary：应当取主库那份（旧判据"候选不唯一"会误杀） */
     @Test
-    void ambiguousTemplatesFailFastNamingCandidates() {
-        consumerRunner(stubDataSource())
-                .withUserConfiguration(SingleManagerCase.class, TwoTemplatesCase.class)
+    void masterBoundTemplateIsPickedAmongMany() {
+        runner(MasterManagerCase.class, ReportManagerCase.class, MasterAndReportTemplatesCase.class)
                 .run(context -> {
-                    assertNotNull(context.getStartupFailure(), "模板多候选无 @Primary 必须启动失败");
-                    Throwable root = rootCause(context.getStartupFailure());
-                    assertInstanceOf(IllegalStateException.class, root,
-                            () -> "必须是组件的事务模板校验失败: " + context.getStartupFailure());
-                    assertTrue(root.getMessage().contains("txA") && root.getMessage().contains("txB"),
-                            "报错必须点名模板候选: " + root.getMessage());
+                    assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
+                    assertSame(context.getBean("masterLibraryTemplate"), guardTemplate(context),
+                            "多模板时应按绑定关系取主库那份，而不是因候选不唯一而失败");
                 });
     }
 
-    /** 模板多候选 + @Primary：用 @Primary 那个（与 KafkaTemplate 校验同口径） */
+    /** 同一主库 TM 上多个模板且无 @Primary、也不是标准名：无法判定，失败点名候选 */
+    @Test
+    void ambiguousTemplatesFailFastNamingCandidates() {
+        runner(MasterManagerCase.class, AmbiguousTemplateCase.class).run(context -> {
+            assertNotNull(context.getStartupFailure(), "模板多候选无 @Primary 必须启动失败");
+            Throwable root = rootCause(context.getStartupFailure());
+            assertInstanceOf(IllegalStateException.class, root,
+                    () -> "必须是组件的事务模板校验失败: " + failureText(context.getStartupFailure()));
+            assertTrue(root.getMessage().contains("hostTxA") && root.getMessage().contains("hostTxB"),
+                    "报错必须点名模板候选: " + root.getMessage());
+        });
+    }
+
+    /** 多个模板都绑主库、其中一个 @Primary：用 @Primary 那个 */
     @Test
     void primaryTemplateWinsAmongCandidates() {
-        consumerRunner(stubDataSource())
-                .withUserConfiguration(SingleManagerCase.class, PrimaryTemplateCase.class)
-                .run(context -> {
-                    assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
-                    assertSame(context.getBean("hostPrimaryTemplate"), guardTemplate(context),
-                            "多候选时应取 @Primary，不拒绝");
-                });
+        runner(MasterManagerCase.class, PrimaryTemplateCase.class).run(context -> {
+            assertNull(context.getStartupFailure(), () -> failureText(context.getStartupFailure()));
+            assertSame(context.getBean("hostPrimaryTemplate"), guardTemplate(context),
+                    "多候选时应取 @Primary，不拒绝");
+        });
+    }
+
+    /** 宿主没装配主库事务管理器（只声明了别的名字的管理器）：启动失败点名候选与出路 */
+    @Test
+    void missingMasterManagerFailsFastInsteadOfPickingOne() {
+        runner(NoMasterManagerCase.class).run(context -> {
+            assertNotNull(context.getStartupFailure(), "没有主库事务管理器必须启动失败");
+            Throwable root = rootCause(context.getStartupFailure());
+            assertInstanceOf(IllegalStateException.class, root,
+                    () -> "必须是组件的事务模板校验失败: " + failureText(context.getStartupFailure()));
+            assertTrue(root.getMessage().contains(MASTER_MANAGER), "报错必须点名主库事务管理器: " + root.getMessage());
+            assertTrue(root.getMessage().contains("otherDbTxManager"), "报错必须列出候选: " + root.getMessage());
+            assertTrue(root.getMessage().contains("spring.datasource.url"), "报错必须给出出路: " + root.getMessage());
+        });
     }
 
     /** 没有模板可用（宿主排除事务自动配置等）：组件不自建模板，启动失败并给出出路 */
     @Test
     void missingTemplateFailsFastWithGuidance() {
-        DataSource dataSource = stubDataSource();
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(EventAutoConfiguration.class))
                 .withPropertyValues("yomi.event.consumer-enabled=true", "yomi.event.service-name=tx-wiring-test")
-                .withBean("dataSource", DataSource.class, () -> dataSource)
-                .withBean("sqlSessionFactory", SqlSessionFactory.class, () -> stubSqlSessionFactory(dataSource))
+                .withBean(MASTER_DATASOURCE, DataSource.class, ProbeDataSource::allTablesExist)
+                .withBean(MASTER_FACTORY, SqlSessionFactory.class, EventTransactionTemplateWiringTest::stubSqlSessionFactory)
                 .withBean("stringRedisTemplate", StringRedisTemplate.class, EventTransactionTemplateWiringTest::stubRedisTemplate)
                 .withBean("redissonClient", RedissonClient.class, EventTransactionTemplateWiringTest::stubRedisson)
-                .withUserConfiguration(SingleManagerCase.class)
+                .withUserConfiguration(MasterManagerCase.class)
                 .run(context -> {
                     assertNotNull(context.getStartupFailure(),
                             "容器里没有 TransactionTemplate 时必须启动失败：组件不注册事务基础设施");
                     Throwable root = rootCause(context.getStartupFailure());
                     assertInstanceOf(IllegalStateException.class, root,
-                            () -> "必须是组件的事务模板校验失败: " + context.getStartupFailure());
-                    assertTrue(root.getMessage().contains("PlatformTransactionManager 候选"),
-                            "报错必须带上下文（管理器候选）: " + root.getMessage());
-                    assertTrue(root.getMessage().contains("自行声明 TransactionTemplate Bean"),
-                            "报错必须给出出路: " + root.getMessage());
+                            () -> "必须是组件的事务模板校验失败: " + failureText(context.getStartupFailure()));
+                    assertTrue(root.getMessage().contains("自行声明"), "报错必须给出出路: " + root.getMessage());
+                    assertTrue(root.getMessage().contains("TransactionTemplate"),
+                            "报错必须说清缺的是什么: " + root.getMessage());
                 });
     }
 
-    /** 消费侧最小上下文：组件依赖全用桩（不连 DB/Redis/Kafka），事务管理器由用例注入 */
-    private static ApplicationContextRunner consumerRunner(DataSource dataSource) {
+    /** 消费侧最小上下文：组件依赖全用桩（不连 DB/Redis/Kafka），主库设施按 ds 的固定名字注入 */
+    private static ApplicationContextRunner runner(Class<?>... userConfigurations) {
         return new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(TransactionAutoConfiguration.class, EventAutoConfiguration.class))
+                .withConfiguration(AutoConfigurations.of(TransactionAutoConfiguration.class,
+                        EventAutoConfiguration.class))
                 .withPropertyValues("yomi.event.consumer-enabled=true", "yomi.event.service-name=tx-wiring-test")
-                .withBean("dataSource", DataSource.class, () -> dataSource)
-                .withBean("sqlSessionFactory", SqlSessionFactory.class, () -> stubSqlSessionFactory(dataSource))
+                .withBean(MASTER_DATASOURCE, DataSource.class, ProbeDataSource::allTablesExist)
+                .withBean(MASTER_FACTORY, SqlSessionFactory.class, EventTransactionTemplateWiringTest::stubSqlSessionFactory)
                 .withBean("stringRedisTemplate", StringRedisTemplate.class, EventTransactionTemplateWiringTest::stubRedisTemplate)
-                .withBean("redissonClient", RedissonClient.class, EventTransactionTemplateWiringTest::stubRedisson);
+                .withBean("redissonClient", RedissonClient.class, EventTransactionTemplateWiringTest::stubRedisson)
+                .withUserConfiguration(userConfigurations);
     }
+
+    /** 主库设施的名字即契约（component-ds 装配的那套） */
+    private static final String MASTER_DATASOURCE = "masterDataSource";
+    private static final String MASTER_FACTORY = "masterSqlSessionFactory";
+    private static final String MASTER_MANAGER = "masterTransactionManager";
 
     /** 从 EventInboxGuard 上取实际注入的事务模板 */
     private static Object guardTemplate(org.springframework.context.ApplicationContext context) {
         return ReflectionTestUtils.getField(context.getBean(EventInboxGuard.class), "transactionTemplate");
     }
 
-    /** 单事务管理器（单库宿主） */
+    /** 主库事务管理器（单库宿主；多库宿主的业务库也用它） */
     @Configuration(proxyBeanMethods = false)
-    static class SingleManagerCase {
+    static class MasterManagerCase {
 
-        @Bean
-        PlatformTransactionManager transactionManager(DataSource dataSource) {
-            return new DataSourceTransactionManager(dataSource);
+        @Bean(MASTER_MANAGER)
+        @Primary
+        PlatformTransactionManager masterTransactionManager() {
+            return new DataSourceTransactionManager(stubDataSource());
+        }
+    }
+
+    /** 附加库事务管理器：有自己的名字，不标 @Primary */
+    @Configuration(proxyBeanMethods = false)
+    static class ReportManagerCase {
+
+        @Bean("reportTransactionManager")
+        PlatformTransactionManager reportTransactionManager() {
+            return new DataSourceTransactionManager(stubDataSource());
+        }
+    }
+
+    /** 附加库模板：绑附加库事务管理器（宿主为别的库声明的模板会让 Boot 标准模板退让） */
+    @Configuration(proxyBeanMethods = false)
+    static class ReportTemplateCase {
+
+        @Bean("reportTransactionTemplate")
+        TransactionTemplate reportTransactionTemplate(
+                @org.springframework.beans.factory.annotation.Qualifier("reportTransactionManager")
+                PlatformTransactionManager reportTransactionManager) {
+            return new TransactionTemplate(reportTransactionManager);
+        }
+    }
+
+    /** 主库与附加库各一个模板，都不标 @Primary：按绑定关系取主库那份 */
+    @Configuration(proxyBeanMethods = false)
+    static class MasterAndReportTemplatesCase {
+
+        @Bean("masterLibraryTemplate")
+        TransactionTemplate masterLibraryTemplate(
+                @org.springframework.beans.factory.annotation.Qualifier(MASTER_MANAGER)
+                PlatformTransactionManager masterTransactionManager) {
+            return new TransactionTemplate(masterTransactionManager);
+        }
+
+        @Bean("reportLibraryTemplate")
+        TransactionTemplate reportLibraryTemplate(
+                @org.springframework.beans.factory.annotation.Qualifier("reportTransactionManager")
+                PlatformTransactionManager reportTransactionManager) {
+            return new TransactionTemplate(reportTransactionManager);
         }
     }
 
@@ -181,98 +247,72 @@ class EventTransactionTemplateWiringTest {
     static class HostTemplateCase {
 
         @Bean
-        TransactionTemplate hostTransactionTemplate(PlatformTransactionManager transactionManager) {
-            TransactionTemplate template = new TransactionTemplate(transactionManager);
+        TransactionTemplate hostTransactionTemplate(
+                @org.springframework.beans.factory.annotation.Qualifier(MASTER_MANAGER)
+                PlatformTransactionManager masterTransactionManager) {
+            TransactionTemplate template = new TransactionTemplate(masterTransactionManager);
             template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
             return template;
         }
     }
 
-    /** 多库宿主：业务库管理器 @Primary，另有一个次库管理器 */
+    /** 同一主库 TM 上多个模板都无 @Primary：歧义必须变成启动失败 */
     @Configuration(proxyBeanMethods = false)
-    static class PrimaryManagerCase {
+    static class AmbiguousTemplateCase {
 
         @Bean
-        @Primary
-        PlatformTransactionManager primaryTxManager(DataSource dataSource) {
-            return new DataSourceTransactionManager(dataSource);
+        TransactionTemplate hostTxA(@org.springframework.beans.factory.annotation.Qualifier(MASTER_MANAGER)
+                                    PlatformTransactionManager masterTransactionManager) {
+            return new TransactionTemplate(masterTransactionManager);
         }
 
         @Bean
-        PlatformTransactionManager otherTxManager() {
-            return new DataSourceTransactionManager(stubDataSource());
+        TransactionTemplate hostTxB(@org.springframework.beans.factory.annotation.Qualifier(MASTER_MANAGER)
+                                    PlatformTransactionManager masterTransactionManager) {
+            return new TransactionTemplate(masterTransactionManager);
         }
     }
 
-    /** 多库宿主但没标 @Primary：歧义按启动失败处理 */
+    /** 多个模板、其中一个 @Primary：取 @Primary */
     @Configuration(proxyBeanMethods = false)
-    static class AmbiguousManagerCase {
+    static class PrimaryTemplateCase {
 
         @Bean
-        PlatformTransactionManager businessDbTxManager(DataSource dataSource) {
-            return new DataSourceTransactionManager(dataSource);
+        @Primary
+        TransactionTemplate hostPrimaryTemplate(
+                @org.springframework.beans.factory.annotation.Qualifier(MASTER_MANAGER)
+                PlatformTransactionManager masterTransactionManager) {
+            return new TransactionTemplate(masterTransactionManager);
         }
 
-        /** 次库通常由宿主自持连接池、不注册 DataSource Bean */
+        @Bean
+        TransactionTemplate hostOtherTemplate(
+                @org.springframework.beans.factory.annotation.Qualifier(MASTER_MANAGER)
+                PlatformTransactionManager masterTransactionManager) {
+            return new TransactionTemplate(masterTransactionManager);
+        }
+    }
+
+    /** 宿主只声明了别的名字的事务管理器（没有主库那套）：失败并点名候选 */
+    @Configuration(proxyBeanMethods = false)
+    static class NoMasterManagerCase {
+
         @Bean
         PlatformTransactionManager otherDbTxManager() {
             return new DataSourceTransactionManager(stubDataSource());
         }
     }
 
-    /** 两个模板且都没标 @Primary：歧义按启动失败处理 */
-    @Configuration(proxyBeanMethods = false)
-    static class TwoTemplatesCase {
-
-        @Bean
-        TransactionTemplate txA(PlatformTransactionManager transactionManager) {
-            return new TransactionTemplate(transactionManager);
-        }
-
-        @Bean
-        TransactionTemplate txB(PlatformTransactionManager transactionManager) {
-            return new TransactionTemplate(transactionManager);
-        }
-    }
-
-    /** 两个模板、其中一个 @Primary：取 @Primary */
-    @Configuration(proxyBeanMethods = false)
-    static class PrimaryTemplateCase {
-
-        @Bean
-        @Primary
-        TransactionTemplate hostPrimaryTemplate(PlatformTransactionManager transactionManager) {
-            return new TransactionTemplate(transactionManager);
-        }
-
-        @Bean
-        TransactionTemplate hostOtherTemplate(PlatformTransactionManager transactionManager) {
-            return new TransactionTemplate(transactionManager);
-        }
-    }
-
-    /** 数据源桩："所有表都存在"，不连任何库 */
+    /** 数据源桩：不连任何库（守卫与模板只做绑定，不会真正开事务） */
     private static DataSource stubDataSource() {
         return (DataSource) Proxy.newProxyInstance(EventTransactionTemplateWiringTest.class.getClassLoader(),
-                new Class<?>[]{DataSource.class}, (proxy, method, args) -> {
-                    if (!"getConnection".equals(method.getName())) {
-                        return null;
-                    }
-                    return Proxy.newProxyInstance(EventTransactionTemplateWiringTest.class.getClassLoader(),
-                            new Class<?>[]{Connection.class}, (connection, connectionMethod, connectionArgs) -> {
-                                if (!"createStatement".equals(connectionMethod.getName())) {
-                                    return null;
-                                }
-                                return Proxy.newProxyInstance(EventTransactionTemplateWiringTest.class.getClassLoader(),
-                                        new Class<?>[]{Statement.class}, (statement, statementMethod, statementArgs) -> null);
-                            });
-                });
+                new Class<?>[]{DataSource.class}, (proxy, method, args) -> null);
     }
 
     /** SqlSessionFactory 桩：MapperFactoryBean 只需要能建 SqlSessionTemplate 的真实工厂，不触库 */
-    private static SqlSessionFactory stubSqlSessionFactory(DataSource dataSource) {
+    private static SqlSessionFactory stubSqlSessionFactory() {
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration(
-                new org.apache.ibatis.mapping.Environment("wiring-test", new ManagedTransactionFactory(), dataSource));
+                new Environment("tx-wiring-test", new ManagedTransactionFactory(), stubDataSource()));
         return new SqlSessionFactoryBuilder().build(configuration);
     }
 
@@ -297,6 +337,18 @@ class EventTransactionTemplateWiringTest {
             current = current.getCause();
         }
         return current;
+    }
+
+    /** 拼接启动失败的完整文案（含 cause 链），用于断言报错指向组件 */
+    private static String failureText(Throwable failure) {
+        if (failure == null) {
+            return "<null>";
+        }
+        StringBuilder text = new StringBuilder();
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            text.append(current.getClass().getSimpleName()).append(": ").append(current.getMessage()).append(" | ");
+        }
+        return text.toString();
     }
 
 }

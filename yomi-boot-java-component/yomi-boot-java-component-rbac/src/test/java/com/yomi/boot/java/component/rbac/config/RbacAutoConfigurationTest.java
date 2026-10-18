@@ -45,16 +45,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RbacAutoConfigurationTest {
 
     private static ApplicationContextRunner runner() {
-        // 关闭投影：本用例只关心仓储/Mapper 接线，不引入 Redis
+        // 关闭投影：本用例只关心仓储/Mapper 接线，不引入 Redis；主库设施按 ds 的固定名字注入
         return new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(RbacAutoConfiguration.class))
                 .withPropertyValues("spring.application.name=rbac-test",
-                        "yomi.rbac.enabled=true", "yomi.rbac.projection-enabled=false");
+                        "yomi.rbac.enabled=true", "yomi.rbac.projection-enabled=false")
+                .withBean("masterDataSource", DataSource.class, ProbeDataSource::allTablesExist);
     }
 
     @Test
     void repositoriesAndMappersWiredWithoutHostMapperScan() {
-        runner().withBean(SqlSessionFactory.class, RbacAutoConfigurationTest::sqlSessionFactoryStub)
+        runner().withBean("masterSqlSessionFactory", SqlSessionFactory.class,
+                        RbacAutoConfigurationTest::sqlSessionFactoryStub)
                 .run(context -> {
                     assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
                     assertInstanceOf(RbacPermRepository.class, context.getBean(IRbacPermRepository.class));
@@ -83,7 +85,8 @@ class RbacAutoConfigurationTest {
     /** 放行路径带首尾空格：Spring 的 excludePathPatterns 不报错也永不命中（全量 403），装配期报错拦下 */
     @Test
     void whitespaceSkipAuthorizePathFailsFastAtStartup() {
-        runner().withBean(SqlSessionFactory.class, RbacAutoConfigurationTest::sqlSessionFactoryStub)
+        runner().withBean("masterSqlSessionFactory", SqlSessionFactory.class,
+                        RbacAutoConfigurationTest::sqlSessionFactoryStub)
                 .withInitializer(context -> context.getEnvironment().getPropertySources()
                         .addFirst(rawPropertySource("whitespace-skip", "yomi.rbac.skip-authorize-paths[0]", " /api/public ")))
                 .run(context -> {

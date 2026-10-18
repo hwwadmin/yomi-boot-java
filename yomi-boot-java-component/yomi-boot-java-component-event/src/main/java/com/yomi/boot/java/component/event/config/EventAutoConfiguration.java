@@ -1,5 +1,6 @@
 package com.yomi.boot.java.component.event.config;
 
+import com.yomi.boot.java.component.ds.support.DsMaster;
 import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.event.IEventService;
 import com.yomi.boot.java.component.event.consume.EventInboxGuard;
@@ -25,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.context.LifecycleProperties;
@@ -41,17 +43,15 @@ import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
-import javax.sql.DataSource;
 import java.util.List;
 import java.util.Map;
 
 /**
  * 发件箱/收件箱事件组件自动装配
- * <p>发布侧依赖：数据源、Redis、Kafka；消费侧依赖：数据源、Redis；中继与清理由集群定时任务驱动；
- * 本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描，宿主无需关心依赖 jar
+ * <p>发布侧依赖：主数据源（component-ds 装配）、Redis、Kafka；消费侧依赖：主数据源、Redis；
+ * 中继与清理由集群定时任务驱动；本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描（不写 ref，按类型落主库），
+ * 宿主无需关心依赖 jar
  *
  * @author zwei
  */
@@ -74,14 +74,13 @@ public class EventAutoConfiguration {
     public EventBootstrap eventBootstrap(EventProperties properties,
                                          EventKeys keys,
                                          ApplicationContext applicationContext,
-                                         ObjectProvider<TransactionTemplate> transactionTemplateProvider,
                                          ObjectProvider<EventOutboxMapper> outboxMapperProvider,
                                          ObjectProvider<EventInboxMapper> inboxMapperProvider,
                                          ObjectProvider<StringRedisTemplate> redisProvider,
                                          ObjectProvider<RedissonClient> redissonProvider,
                                          ObjectProvider<KafkaTemplate<String, Object>> kafkaTemplateProvider) {
         properties.validate();
-        requireTransactionTemplate(applicationContext, transactionTemplateProvider);
+        requireTransactionTemplate(applicationContext);
         if (properties.isPublisherEnabled()) {
             requirePublisherDeps(outboxMapperProvider, redisProvider, redissonProvider);
             requireKafkaTemplate(properties, applicationContext, kafkaTemplateProvider);
@@ -104,8 +103,9 @@ public class EventAutoConfiguration {
                                       ObjectProvider<IEventOutboxDlqRepository> dlqProvider,
                                       ObjectProvider<IEventInboxRepository> inboxProvider,
                                       EventKeys eventKeys,
-                                      TransactionTemplate transactionTemplate) {
-        return new EventService(outboxProvider, dlqProvider, inboxProvider, eventKeys, transactionTemplate);
+                                      ListableBeanFactory beanFactory) {
+        return new EventService(outboxProvider, dlqProvider, inboxProvider, eventKeys,
+                DsMaster.requireTransactionTemplate(beanFactory));
     }
 
     /** retention 开关打开却不会装配对应清理任务时留痕（清理任务分别随发布侧/消费侧装配） */
@@ -125,24 +125,15 @@ public class EventAutoConfiguration {
     }
 
     /**
-     * 事务模板启动期校验：组件只复用应用自己的模板——Boot 在存在唯一事务管理器时自动注册
-     * {@code transactionTemplate}，宿主也可自行声明；缺失或候选不唯一即启动失败并点名候选。
-     * <p>组件不注册事务模板：事务基础设施属于应用，消费侧 inbox 插入与业务写入必须同事务，
-     * 沉默自建会把"写错库/不进业务事务"变成运行时故障。</p>
+     * 事务模板启动期校验：组件只复用应用自己的模板（不注册事务基础设施）
+     * <p>
+     * 判据是"绑定主库事务管理器"，不是"候选唯一"：宿主为别的库声明 TransactionTemplate 时，Boot 的
+     * 标准模板会因 {@code @ConditionalOnMissingBean(TransactionOperations)} 退让，唯一性照样能命中一个
+     * 绑错库的模板——那样 inbox 插入与业务写入不在同一个事务里。判定与报错见
+     * {@link DsMaster#requireTransactionTemplate(org.springframework.beans.factory.ListableBeanFactory)}
      */
-    static void requireTransactionTemplate(ApplicationContext context,
-                                          ObjectProvider<TransactionTemplate> templateProvider) {
-        if (templateProvider.getIfUnique() != null) {
-            return;
-        }
-        throw new IllegalStateException("事件组件需要唯一的 TransactionTemplate（消费侧 inbox 插入必须与业务写入同事务）："
-                + "现有 TransactionTemplate 候选 "
-                + java.util.Arrays.toString(context.getBeanNamesForType(TransactionTemplate.class))
-                + "，PlatformTransactionManager 候选 "
-                + java.util.Arrays.toString(context.getBeanNamesForType(PlatformTransactionManager.class))
-                + "；组件不注册事务模板，请确保存在唯一的事务管理器"
-                + "（Boot 由此自动注册 transactionTemplate，多管理器时给应用使用的那个加 @Primary），"
-                + "或自行声明 TransactionTemplate Bean");
+    static void requireTransactionTemplate(ApplicationContext context) {
+        DsMaster.requireTransactionTemplate(context);
     }
 
     /** 发布端：`yomi.event.publisher-enabled=true` 时装配 */
@@ -150,10 +141,10 @@ public class EventAutoConfiguration {
     @ConditionalOnProperty(value = "yomi.event.publisher-enabled", havingValue = "true")
     static class PublisherConfiguration {
 
-        /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_event.sql 自动创建 */
+        /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_event.sql 自动创建 */
         @Bean
-        public TableInitializer eventOutboxTableInitializer(ObjectProvider<DataSource> dataSourceProvider) {
-            return new TableInitializer(dataSourceProvider, "事件发件箱", "sys_event.sql",
+        public TableInitializer eventOutboxTableInitializer(ListableBeanFactory beanFactory) {
+            return new TableInitializer(beanFactory, "事件发件箱", "sys_event.sql",
                     List.of("sys_event_outbox", "sys_event_outbox_dlq"));
         }
 
@@ -182,8 +173,9 @@ public class EventAutoConfiguration {
         public OutboxDispatcher outboxDispatcher(EventProperties properties,
                                                  IEventOutboxRepository outboxRepository,
                                                  IEventOutboxDlqRepository dlqRepository,
-                                                 TransactionTemplate transactionTemplate) {
-            return new OutboxDispatcher(properties, outboxRepository, dlqRepository, transactionTemplate);
+                                                 ListableBeanFactory beanFactory) {
+            return new OutboxDispatcher(properties, outboxRepository, dlqRepository,
+                    DsMaster.requireTransactionTemplate(beanFactory));
         }
 
         @Bean
@@ -253,10 +245,10 @@ public class EventAutoConfiguration {
     @ConditionalOnProperty(value = "yomi.event.consumer-enabled", havingValue = "true")
     static class ConsumerConfiguration {
 
-        /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_event.sql 自动创建 */
+        /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_event.sql 自动创建 */
         @Bean
-        public TableInitializer eventInboxTableInitializer(ObjectProvider<DataSource> dataSourceProvider) {
-            return new TableInitializer(dataSourceProvider, "事件收件箱", "sys_event.sql",
+        public TableInitializer eventInboxTableInitializer(ListableBeanFactory beanFactory) {
+            return new TableInitializer(beanFactory, "事件收件箱", "sys_event.sql",
                     List.of("sys_event_inbox"));
         }
 
@@ -272,8 +264,8 @@ public class EventAutoConfiguration {
         public EventInboxGuard eventInboxGuard(IEventInboxRepository repository,
                                                EventKeys keys,
                                                EventProperties properties,
-                                               TransactionTemplate transactionTemplate) {
-            return new EventInboxGuard(repository, keys, properties, transactionTemplate);
+                                               ListableBeanFactory beanFactory) {
+            return new EventInboxGuard(repository, keys, properties, DsMaster.requireTransactionTemplate(beanFactory));
         }
 
         /**

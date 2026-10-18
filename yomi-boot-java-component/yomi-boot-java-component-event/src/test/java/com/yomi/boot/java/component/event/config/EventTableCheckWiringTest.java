@@ -1,9 +1,10 @@
 package com.yomi.boot.java.component.event.config;
 
+import com.yomi.boot.java.component.ds.support.DsMaster;
 import com.yomi.boot.java.component.ds.support.TableInitializer;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.ListableBeanFactory;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
@@ -18,7 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * event 启动期建表检查的接线验证：发件箱侧覆盖 outbox + dlq，收件箱侧覆盖 inbox。
  * <p>轻量反射式（不启动整个上下文）：直接调用装配类的 @Bean 方法并执行检查，
- * 从 stub DataSource 上记录实际执行过的表名（stub 全部表都存在 → 只探活、不建表）。
+ * 数据源按主库名（masterDataSource）注册，从 stub DataSource 上记录实际执行过的表名
+ * （stub 全部表都存在 → 只探活、不建表）。
  */
 class EventTableCheckWiringTest {
 
@@ -26,7 +28,7 @@ class EventTableCheckWiringTest {
     void publisherInitializerCoversOutboxTables() {
         List<String> executedSql = new ArrayList<>();
         TableInitializer initializer = new EventAutoConfiguration.PublisherConfiguration()
-                .eventOutboxTableInitializer(providerOf(recordingDataSource(executedSql)));
+                .eventOutboxTableInitializer(beanFactoryOf(recordingDataSource(executedSql)));
 
         initializer.afterSingletonsInstantiated();
 
@@ -38,7 +40,7 @@ class EventTableCheckWiringTest {
     void consumerInitializerCoversInboxTable() {
         List<String> executedSql = new ArrayList<>();
         TableInitializer initializer = new EventAutoConfiguration.ConsumerConfiguration()
-                .eventInboxTableInitializer(providerOf(recordingDataSource(executedSql)));
+                .eventInboxTableInitializer(beanFactoryOf(recordingDataSource(executedSql)));
 
         initializer.afterSingletonsInstantiated();
 
@@ -77,44 +79,11 @@ class EventTableCheckWiringTest {
                 });
     }
 
-    /** 将单例包装为 ObjectProvider */
-    private static ObjectProvider<DataSource> providerOf(DataSource dataSource) {
-        return new ObjectProvider<>() {
-            @Override
-            public DataSource getObject() throws BeansException {
-                return dataSource;
-            }
-
-            @Override
-            public DataSource getObject(Object... args) throws BeansException {
-                return dataSource;
-            }
-
-            @Override
-            public DataSource getIfAvailable() throws BeansException {
-                return dataSource;
-            }
-
-            @Override
-            public DataSource getIfUnique() throws BeansException {
-                return dataSource;
-            }
-
-            @Override
-            public java.util.stream.Stream<DataSource> stream() {
-                return java.util.stream.Stream.of(dataSource);
-            }
-
-            @Override
-            public void forEach(java.util.function.Consumer<? super DataSource> action) {
-                action.accept(dataSource);
-            }
-
-            @Override
-            public java.util.Iterator<DataSource> iterator() {
-                return List.of(dataSource).iterator();
-            }
-        };
+    /** 主库形态的 BeanFactory：数据源注册成 masterDataSource（建表只认主库名） */
+    private static ListableBeanFactory beanFactoryOf(DataSource dataSource) {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        beanFactory.registerSingleton(DsMaster.DATASOURCE_BEAN, dataSource);
+        return beanFactory;
     }
 
 }

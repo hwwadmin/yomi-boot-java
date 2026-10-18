@@ -7,16 +7,22 @@ import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerIntercept
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.plugin.Interceptor;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.mybatis.spring.mapper.MapperFactoryBean;
 import org.springframework.beans.PropertyValues;
+import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.config.RuntimeBeanReference;
 import org.springframework.context.ApplicationContext;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import javax.sql.DataSource;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -31,8 +37,12 @@ import java.util.stream.Collectors;
  * <p>
  * 主库工厂另外校验 {@code InstantJdbcTypeHandler} 与 {@code databaseId} 是否就位（主库由本组件装配，
  * 缺了就是装配 bug）；业务自建的附加库工厂缺这两项只 WARN，并给出模板指引。
- * 跨库守卫（{@link DsCrossDbGuard}）缺失同样只 WARN：它是诊断能力，不会改变 SQL 语义；
- * 另外校验"只写一半 ref"的附加库绑定（详见 {@link #checkMapperRefs}）。
+ * 跨库守卫（{@link DsCrossDbGuard}）缺失同样只 WARN：它是诊断能力，不会改变 SQL 语义。
+ * <p>
+ * 绑定审计（组件默认走主库的兜底）：主库装配出来的那套必须就是"按类型注入会拿到的那套"——
+ * 不写 ref 的 Mapper 实际别落在别的工厂、{@code DataSource}/{@code SqlSessionFactory}/
+ * {@code SqlSessionTemplate}/{@code PlatformTransactionManager} 按类型解析不能落到附加库上
+ * （典型成因：业务给附加库那套标了 {@code @Primary}）；只写一半 ref 的绑定同样拦下。
  *
  * @author zwei
  */
@@ -49,27 +59,30 @@ public class MybatisPlusChainChecker implements SmartInitializingSingleton {
         this.context = context;
     }
 
-    /** 单例就绪后校验：链 Bean 在位 + 每个工厂的链里都有分页与防全表 + Mapper 绑定没有"只写一半 ref" */
+    /** 单例就绪后校验：链 Bean 在位 + 每个工厂的链里都有分页与防全表 + Mapper/主库绑定没有错位 */
     @Override
     public void afterSingletonsInstantiated() {
         checkChainBean();
         List<String> problems = new ArrayList<>();
         if (context.getAutowireCapableBeanFactory() instanceof ConfigurableListableBeanFactory beanFactory) {
             checkMapperRefs(beanFactory, problems);
+            checkMasterBindings(beanFactory, problems);
         }
         Map<String, SqlSessionFactory> factories = context.getBeansOfType(SqlSessionFactory.class);
         factories.forEach((beanName, factory) -> checkFactory(beanName, factory, problems));
         if (!problems.isEmpty()) {
-            throw new IllegalStateException("MyBatis-Plus 拦截器链自检失败：\n- " + String.join("\n- ", problems));
+            throw new IllegalStateException("MyBatis-Plus/ds 启动自检失败：\n- " + String.join("\n- ", problems));
         }
     }
 
     /**
-     * 只写一半 ref 的附加库绑定：{@link MapperFactoryBean} 的 {@code sqlSessionFactory} 与
+     * Mapper 绑定：只写一半 ref 的拦下（{@link MapperFactoryBean} 的 {@code sqlSessionFactory} 与
      * {@code sqlSessionTemplate} 两个属性都会被按类型自动装配，缺的那半会拿到容器里的主库 Bean，
-     * 该 Mapper 实际落到主库执行（已显式写的那半也一起被覆盖）。
+     * 该 Mapper 实际落到主库执行）；不写 ref 的核对真的落在主库工厂上。
      */
     private void checkMapperRefs(ConfigurableListableBeanFactory beanFactory, List<String> problems) {
+        SqlSessionFactory masterFactory = beanFactory.containsBean(DsMaster.SQL_SESSION_FACTORY_BEAN)
+                ? beanFactory.getBean(DsMaster.SQL_SESSION_FACTORY_BEAN, SqlSessionFactory.class) : null;
         for (String beanName : beanFactory.getBeanDefinitionNames()) {
             BeanDefinition definition = beanFactory.getBeanDefinition(beanName);
             if (!MapperFactoryBean.class.getName().equals(definition.getBeanClassName())) {
@@ -78,17 +91,116 @@ public class MybatisPlusChainChecker implements SmartInitializingSingleton {
             PropertyValues values = definition.getPropertyValues();
             boolean factoryRef = values.contains("sqlSessionFactory");
             boolean templateRef = values.contains("sqlSessionTemplate");
-            if (factoryRef == templateRef || refersToMaster(values, factoryRef)) {
-                // 都写 = 显式绑定；都不写 = 按 @Primary 走主库；指向主库时写一半无害（容器里的模板就是主库的）
+            if (factoryRef && templateRef) {
+                // 都写 = 显式绑定（附加库形态）
                 continue;
             }
-            problems.add("Mapper 绑定 [" + beanName + "] 只写了 "
-                    + (factoryRef ? "sqlSessionFactoryRef" : "sqlSessionTemplateRef") + "，缺 "
-                    + (factoryRef ? "sqlSessionTemplateRef" : "sqlSessionFactoryRef")
-                    + "：MapperFactoryBean 的两个属性都会被按类型装配，缺的那半会注入容器里的主库 Bean，"
-                    + "把这个 Mapper 静默劫持到主库去执行。附加库绑定请把两个 ref 一起写上"
-                    + "（见《组件使用说明》『多数据源使用规范』）");
+            if (factoryRef || templateRef) {
+                if (refersToMaster(values, factoryRef)) {
+                    // 指向主库时写一半无害（容器里的工厂/模板就是主库那套）
+                    continue;
+                }
+                problems.add("Mapper 绑定 [" + beanName + "] 只写了 "
+                        + (factoryRef ? "sqlSessionFactoryRef" : "sqlSessionTemplateRef") + "，缺 "
+                        + (factoryRef ? "sqlSessionTemplateRef" : "sqlSessionFactoryRef")
+                        + "：MapperFactoryBean 的两个属性都会被按类型装配，缺的那半会注入容器里的主库 Bean，"
+                        + "把这个 Mapper 静默劫持到主库去执行。附加库绑定请把两个 ref 一起写上"
+                        + "（见《组件使用说明》『多数据源使用规范』）");
+                continue;
+            }
+            if (masterFactory == null) {
+                continue;
+            }
+            // 都不写 = 约定落主库：核对实际绑定（附加库那套被标了 @Primary 会把它静默带走）
+            SqlSessionFactory bound = mapperFactory(beanName);
+            if (bound != masterFactory) {
+                problems.add("Mapper [" + beanName + "] 不写 ref，却没有落在主库工厂 " + DsMaster.SQL_SESSION_FACTORY_BEAN
+                        + " 上，实际注入的是 "
+                        + nameOf(beanFactory, SqlSessionFactory.class, bound, beanName)
+                        + "：不写 ref 的 Mapper 约定只落主库，落别处会静默查错库。"
+                        + "常见成因是业务给附加库那套标了 @Primary（按类型解析的唯一解会被它抢走）；"
+                        + "请去掉附加库那套的 @Primary，附加库 Mapper 请写齐两个 ref");
+            }
         }
+    }
+
+    /** 取某个 Mapper 实际装配到的工厂（该 Bean 已是单例，直接读回） */
+    private SqlSessionFactory mapperFactory(String beanName) {
+        return context.getBean("&" + beanName, MapperFactoryBean.class).getSqlSessionFactory();
+    }
+
+    /**
+     * 主库绑定审计：按类型解析（不指定名称的注入）与主库装配必须是同一套
+     * <p>
+     * 两边不一致时，不写 ref 的 Mapper、{@code @Transactional}、组件里按类型注入的库设施都会落到
+     * 另一个库上，而组件表与状态都在主库——这种错位只会在运行期以"查错库/不在事务里"的形式暴露，所以启动即拦。
+     */
+    private void checkMasterBindings(ConfigurableListableBeanFactory beanFactory, List<String> problems) {
+        if (!beanFactory.containsBean(DsMaster.SQL_SESSION_FACTORY_BEAN)) {
+            if (beanFactory.getBeanNamesForType(SqlSessionFactory.class, false, false).length > 0) {
+                log.warn("[ds] 容器里有 SqlSessionFactory 但没有主库那套（{}）：主数据源由 component-ds 独占装配，"
+                                + "请配置 spring.datasource.url；组件与不写 ref 的 Mapper 都锚在主库上，"
+                                + "业务自建库请按附加库形态装配（自己的 Bean 名 + 两个 ref）",
+                        DsMaster.SQL_SESSION_FACTORY_BEAN);
+            }
+            return;
+        }
+        checkTypeBinding(beanFactory, DataSource.class, DsMaster.DATASOURCE_BEAN, problems);
+        checkTypeBinding(beanFactory, SqlSessionFactory.class, DsMaster.SQL_SESSION_FACTORY_BEAN, problems);
+        checkTypeBinding(beanFactory, SqlSessionTemplate.class, DsMaster.SQL_SESSION_TEMPLATE_BEAN, problems);
+        checkTypeBinding(beanFactory, PlatformTransactionManager.class, DsMaster.TRANSACTION_MANAGER_BEAN, problems);
+        warnTemplatesOffMaster(beanFactory);
+    }
+
+    /** 单个类型：按类型解析到的必须是主库那份 */
+    private <T> void checkTypeBinding(ConfigurableListableBeanFactory beanFactory, Class<T> type,
+                                      String masterBeanName, List<String> problems) {
+        Object master = beanFactory.getBean(masterBeanName);
+        T byType;
+        try {
+            byType = beanFactory.getBeanProvider(type).getIfUnique();
+        } catch (NoUniqueBeanDefinitionException e) {
+            problems.add("按类型解析 " + type.getSimpleName() + " 命中了多个 @Primary（主库是 " + masterBeanName
+                    + "）：附加库那套不要标 @Primary，注入附加库 Bean 请用 @Qualifier 指定名称（候选: "
+                    + Arrays.toString(beanFactory.getBeanNamesForType(type, false, false)) + "）");
+            return;
+        }
+        if (byType == null) {
+            problems.add("按类型解析 " + type.getSimpleName() + " 无解（多候选且没有 @Primary，主库是 " + masterBeanName
+                    + "）：请给主库那套保留 @Primary（由 component-ds 装配），附加库那套不要占用它");
+            return;
+        }
+        if (byType != master) {
+            problems.add("按类型注入 " + type.getSimpleName() + " 会拿到 "
+                    + nameOf(beanFactory, type, byType, masterBeanName) + "，不是主库的 " + masterBeanName
+                    + "：不写 ref 的 Mapper、@Transactional、组件里按类型注入的库设施都会落到那个 Bean 上（组件默认走主库）。"
+                    + "出路：去掉附加库那套的 @Primary（主库那套由 component-ds 装配并占位），附加库注入请用 @Qualifier 指定名称");
+        }
+    }
+
+    /** 事务模板都绑在别的库时点一句：组件（事件/幂等）需要绑定主库事务管理器的模板 */
+    private void warnTemplatesOffMaster(ConfigurableListableBeanFactory beanFactory) {
+        PlatformTransactionManager master = beanFactory.getBean(DsMaster.TRANSACTION_MANAGER_BEAN,
+                PlatformTransactionManager.class);
+        Map<String, TransactionTemplate> templates = beanFactory.getBeansOfType(TransactionTemplate.class);
+        if (templates.isEmpty() || templates.values().stream().anyMatch(t -> t.getTransactionManager() == master)) {
+            return;
+        }
+        log.warn("[ds] 容器里的事务模板 {} 都不绑定主库事务管理器（{}）：组件（事件/幂等）不会使用它们，"
+                        + "需要组件与业务同事务时请给一个绑定主库事务管理器的 TransactionTemplate",
+                templates.keySet(), DsMaster.TRANSACTION_MANAGER_BEAN);
+    }
+
+    /** Bean 实例 → 容器里的名字（报错点名用；查不到时回退到过滤掉主库名后的候选清单） */
+    private <T> String nameOf(ConfigurableListableBeanFactory beanFactory, Class<T> type, Object instance,
+                              String fallback) {
+        for (Map.Entry<String, T> entry : beanFactory.getBeansOfType(type).entrySet()) {
+            if (entry.getValue() == instance) {
+                return entry.getKey();
+            }
+        }
+        return Arrays.toString(Arrays.stream(beanFactory.getBeanNamesForType(type, false, false))
+                .filter(name -> !name.equals(fallback)).toArray());
     }
 
     /** 该 Mapper 唯一写了的那个 ref 是否指向主库那套 Bean（指向主库时写一半无害） */

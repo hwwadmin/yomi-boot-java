@@ -61,7 +61,7 @@ class IdempotencyStaleCleanerWiringTest {
 
     /**
      * 构造带测试 Bean 的 ApplicationContextRunner（与建表检查测试同款桩；Mapper 由装配类自己的 @MapperScan 扫出）；
-     * 事务模板由 Boot 从唯一管理器自动注册（组件不再自建模板）
+     * 主库设施按 ds 的固定名字注入，事务模板由 Boot 从唯一管理器自动注册（组件不再自建模板）
      */
     private ApplicationContextRunner runner() {
         return new ApplicationContextRunner()
@@ -71,8 +71,11 @@ class IdempotencyStaleCleanerWiringTest {
                 .withBean(SpringUtils.class)
                 .withBean(StringRedisTemplate.class, () -> new StringRedisTemplate(proxy(RedisConnectionFactory.class)))
                 .withBean(RedissonClient.class, IdempotencyStaleCleanerWiringTest::busyRedissonStub)
-                .withBean(SqlSessionFactory.class, IdempotencyStaleCleanerWiringTest::sqlSessionFactoryStub)
-                .withBean(PlatformTransactionManager.class, () -> proxy(PlatformTransactionManager.class));
+                .withBean("masterDataSource", DataSource.class, ProbeDataSource::allTablesExist)
+                .withBean("masterSqlSessionFactory", SqlSessionFactory.class,
+                        IdempotencyStaleCleanerWiringTest::sqlSessionFactoryStub)
+                .withBean("masterTransactionManager", PlatformTransactionManager.class,
+                        () -> proxy(PlatformTransactionManager.class));
     }
 
     /** 让装配类扫出的 Mapper 能实例化：真实 Configuration + 空 DataSource（不触库） */

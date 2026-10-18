@@ -3,6 +3,7 @@ package com.yomi.boot.java.component.httplog.config;
 import com.yomi.boot.java.component.desensitize.IDesensitizeService;
 import com.yomi.boot.java.component.desensitize.DesensitizeStrategyRegistry;
 import com.yomi.boot.java.component.desensitize.config.DesensitizeAutoConfiguration;
+import com.yomi.boot.java.component.ds.support.DsMaster;
 import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.httplog.IHttpLogService;
 import com.yomi.boot.java.component.httplog.collect.HttpLogContextEnricher;
@@ -32,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -50,7 +52,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 
-import javax.sql.DataSource;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +61,8 @@ import java.util.Set;
  * HTTP 请求日志组件自动装配
  * <p>采集全量（请求/响应头、请求/响应体，默认开）+ 可插拔传输（memory/redis/kafka）+ 共享批量落库；
  * 脱敏编排对接 component-desensitize（词表全配置，零内置词表）；保留期清理由集群定时任务（Redis 锁互斥）驱动；
- * 本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描，宿主无需关心依赖 jar
+ * 落库与建表只走主数据源（component-ds 装配），本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描
+ * （不写 ref，按类型落主库），宿主无需关心依赖 jar
  *
  * @author zwei
  */
@@ -110,14 +112,10 @@ public class HttpLogAutoConfiguration {
     /** 仓储（端口）：持久化唯一出入口；Mapper 仅注入此处，宿主自行实现 IHttpLogRepository 并注册 Bean 后以宿主的实现为准 */
     @Bean
     @ConditionalOnMissingBean(IHttpLogRepository.class)
-    public IHttpLogRepository httpLogRepository(HttpLogMapper httpLogMapper,
-                                                ObjectProvider<SqlSessionFactory> sqlSessionFactoryProvider) {
-        SqlSessionFactory sqlSessionFactory = sqlSessionFactoryProvider.getIfAvailable();
-        if (sqlSessionFactory == null) {
-            throw new IllegalStateException("yomi.httplog 需要 SqlSessionFactory：请引入 component-ds；"
-                    + "Mapper 由 component-httplog 自动配置扫描，无需宿主配置 @MapperScan");
-        }
-        return new HttpLogRepository(httpLogMapper, sqlSessionFactory);
+    public IHttpLogRepository httpLogRepository(HttpLogMapper httpLogMapper, ListableBeanFactory beanFactory) {
+        // 批量会话与 Mapper 都走主库（component-ds 装配的那套）：组件默认使用主数据源，缺了即启动失败
+        return new HttpLogRepository(httpLogMapper, DsMaster.require(beanFactory, SqlSessionFactory.class,
+                DsMaster.SQL_SESSION_FACTORY_BEAN, "主库 SqlSessionFactory"));
     }
 
     @Bean
@@ -134,11 +132,10 @@ public class HttpLogAutoConfiguration {
         return new HttpLogService(httpLogRepository, httpLogKeys);
     }
 
-    /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_http_log.sql 自动创建 */
+    /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_http_log.sql 自动创建 */
     @Bean
-    public TableInitializer httpLogTableInitializer(ObjectProvider<DataSource> dataSourceProvider) {
-        return new TableInitializer(dataSourceProvider, "HTTP请求日志", "sys_http_log.sql",
-                List.of("sys_http_log"));
+    public TableInitializer httpLogTableInitializer(ListableBeanFactory beanFactory) {
+        return new TableInitializer(beanFactory, "HTTP请求日志", "sys_http_log.sql", List.of("sys_http_log"));
     }
 
     @Bean

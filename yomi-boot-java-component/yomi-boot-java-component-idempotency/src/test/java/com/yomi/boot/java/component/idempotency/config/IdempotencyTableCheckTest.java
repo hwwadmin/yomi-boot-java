@@ -79,7 +79,7 @@ class IdempotencyTableCheckTest {
 
     /**
      * 构造带测试 Bean 的 ApplicationContextRunner（Mapper 由装配类自己的 @MapperScan 扫出）；
-     * 事务模板由 Boot 从唯一管理器自动注册（组件不再自建模板）
+     * 主库设施按 ds 的固定名字注入，事务模板由 Boot 从唯一管理器自动注册（组件不再自建模板）
      */
     private ApplicationContextRunner runner(String productName, boolean tableExists, boolean ddlEffective,
                                            List<String> executedSql) {
@@ -89,9 +89,12 @@ class IdempotencyTableCheckTest {
                 .withPropertyValues("yomi.idempotency.enabled=true", "spring.application.name=idem-table-check")
                 .withBean(StringRedisTemplate.class, () -> new StringRedisTemplate(redisConnectionFactoryStub()))
                 .withBean(RedissonClient.class, () -> proxy(RedissonClient.class))
-                .withBean(SqlSessionFactory.class, IdempotencyTableCheckTest::sqlSessionFactoryStub)
-                .withBean(PlatformTransactionManager.class, () -> proxy(PlatformTransactionManager.class))
-                .withBean(DataSource.class, () -> dataSourceStub(productName, tableExists, ddlEffective, executedSql));
+                .withBean("masterSqlSessionFactory", SqlSessionFactory.class,
+                        IdempotencyTableCheckTest::sqlSessionFactoryStub)
+                .withBean("masterTransactionManager", PlatformTransactionManager.class,
+                        () -> proxy(PlatformTransactionManager.class))
+                .withBean("masterDataSource", DataSource.class,
+                        () -> dataSourceStub(productName, tableExists, ddlEffective, executedSql));
     }
 
     /** 让装配类扫出的 Mapper 能实例化：真实 Configuration + 空 DataSource（不触库） */

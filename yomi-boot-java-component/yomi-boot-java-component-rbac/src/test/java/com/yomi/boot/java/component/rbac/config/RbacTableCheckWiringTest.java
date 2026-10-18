@@ -1,9 +1,10 @@
 package com.yomi.boot.java.component.rbac.config;
 
+import com.yomi.boot.java.component.ds.support.DsMaster;
 import com.yomi.boot.java.component.ds.support.TableInitializer;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.ListableBeanFactory;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Proxy;
@@ -12,15 +13,14 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * rbac 启动期建表检查的接线验证：检查器必须覆盖全部 6 张表。
  * <p>轻量反射式（不启动整个上下文）：直接调用装配类的 @Bean 方法并执行检查，
- * 从 stub DataSource 上记录实际执行过的表名（stub 全部表都存在 → 只探活、不建表）。
+ * 数据源按主库名（masterDataSource）注册，从 stub DataSource 上记录实际执行过的表名
+ * （stub 全部表都存在 → 只探活、不建表）。
  */
 class RbacTableCheckWiringTest {
 
@@ -28,7 +28,7 @@ class RbacTableCheckWiringTest {
     void initializerCoversAllSixRbacTables() {
         List<String> executedSql = new ArrayList<>();
         TableInitializer initializer = new RbacAutoConfiguration()
-                .rbacTableInitializer(providerOf(recordingDataSource(executedSql)));
+                .rbacTableInitializer(beanFactoryOf(recordingDataSource(executedSql)));
 
         initializer.afterSingletonsInstantiated();
 
@@ -64,44 +64,11 @@ class RbacTableCheckWiringTest {
                 });
     }
 
-    /** 将单例包装为 ObjectProvider */
-    private static ObjectProvider<DataSource> providerOf(DataSource dataSource) {
-        return new ObjectProvider<>() {
-            @Override
-            public DataSource getObject() throws BeansException {
-                return dataSource;
-            }
-
-            @Override
-            public DataSource getObject(Object... args) throws BeansException {
-                return dataSource;
-            }
-
-            @Override
-            public DataSource getIfAvailable() throws BeansException {
-                return dataSource;
-            }
-
-            @Override
-            public DataSource getIfUnique() throws BeansException {
-                return dataSource;
-            }
-
-            @Override
-            public Stream<DataSource> stream() {
-                return Stream.of(dataSource);
-            }
-
-            @Override
-            public void forEach(Consumer<? super DataSource> action) {
-                action.accept(dataSource);
-            }
-
-            @Override
-            public java.util.Iterator<DataSource> iterator() {
-                return List.of(dataSource).iterator();
-            }
-        };
+    /** 主库形态的 BeanFactory：数据源注册成 masterDataSource（建表只认主库名） */
+    private static ListableBeanFactory beanFactoryOf(DataSource dataSource) {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        beanFactory.registerSingleton(DsMaster.DATASOURCE_BEAN, dataSource);
+        return beanFactory;
     }
 
 }

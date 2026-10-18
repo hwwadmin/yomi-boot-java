@@ -1,9 +1,9 @@
 package com.yomi.boot.java.component.ds.config;
 
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusProperties;
-import com.yomi.boot.java.component.ds.support.ConditionalOnMissingBeanNames;
 import com.yomi.boot.java.component.ds.support.DsCrossDbGuard;
 import com.yomi.boot.java.component.ds.support.DsMaster;
+import com.yomi.boot.java.component.ds.support.DsMasterExclusiveCondition;
 import com.yomi.boot.java.component.ds.support.DsSqlSessionFactoryBuilder;
 import com.yomi.boot.java.component.ds.support.MasterDataSourceConfiguredCondition;
 import com.zaxxer.hikari.HikariDataSource;
@@ -15,7 +15,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceProperties;
@@ -33,14 +32,18 @@ import org.springframework.core.env.Environment;
 /**
  * 主库（master）装配：数据源 + 工厂 + 模板 + 事务管理器，四件套全部 {@code @Primary}
  * <p>
- * 所有不指定名称的按类型注入都落在主库：组件与业务的 {@code @MapperScan}（不写
- * {@code sqlSessionFactoryRef}）、{@code @Transactional}（不写 {@code transactionManager}）、
- * {@code TransactionTemplate}、{@code JdbcTemplate} 都无需配置。附加库由业务系统自行定义与装配，
- * 用 {@code @MapperScan(basePackages = ..., sqlSessionFactoryRef = ..., sqlSessionTemplateRef = ...)}
- * 显式绑定（两个 ref 都要写，见 {@code MybatisPlusChainChecker} 的自检）。
+ * <b>主数据源由本组件独占装配</b>：业务只能在 yml 里配（{@code spring.datasource.*}），不得声明
+ * {@code masterXxx}（声明即启动失败，见 {@link DsMasterExclusiveCondition}），也不得用自建 DataSource 顶主库。
+ * 所有不指定名称的按类型注入都落在主库：{@code @MapperScan}（不写 {@code sqlSessionFactoryRef}）、
+ * {@code @Transactional}（不写 {@code transactionManager}）、{@code TransactionTemplate}、
+ * {@code JdbcTemplate} 都无需配置；不写 ref 的 Mapper 落在别的工厂、附加库那套标了 {@code @Primary}
+ * 之类的错位由启动期绑定审计（{@code MybatisPlusChainChecker}）拦下。
  * <p>
- * 装配条件：配了 {@code spring.datasource.url} 才声明主数据源；宿主提供了同名 Bean（{@code masterXxx}）
- * 时以宿主的为准（只按 Bean 名判断，附加库的同类型 Bean 不影响主库装配）。
+ * 附加库由业务系统自行定义与装配，用
+ * {@code @MapperScan(basePackages = ..., sqlSessionFactoryRef = ..., sqlSessionTemplateRef = ...)}
+ * 显式绑定（两个 ref 都要写），且不要给附加库那套标 {@code @Primary}。
+ * <p>
+ * 装配条件：配了 {@code spring.datasource.url} 才声明主库（不接数据库的宿主照常启动，主库设施要用时才失败）。
  * 独立成类：内嵌在 {@link DsAutoConfiguration} 里时，宿主的 {@code @ComponentScan} 会扫到自动配置类本身，
  * 内嵌类会与"成员类处理"通道重复注册同一个 Bean 名。
  *
@@ -48,21 +51,18 @@ import org.springframework.core.env.Environment;
  */
 @Slf4j
 @Configuration(proxyBeanMethods = false)
-@Conditional(MasterDataSourceConfiguredCondition.class)
+@Conditional({DsMasterExclusiveCondition.class, MasterDataSourceConfiguredCondition.class})
 @Import(DsSqlSessionFactoryBuilder.class)
 public class MasterDataSourceConfiguration {
 
     /**
-     * 主数据源：Boot 标准键 {@code spring.datasource.*}；连接池类型可换——
+     * 主数据源：只走 yml（Boot 标准键 {@code spring.datasource.*}）；连接池类型可换——
      * {@code spring.datasource.type} 指定实现（缺省 Hikari），池参数按类型推导前缀绑定，规则见
      * {@link #poolPropertiesPrefix}（{@code HikariDataSource}→{@code spring.datasource.hikari.*}、
-     * {@code DruidDataSource}→{@code spring.datasource.druid.*}）；自定义池、JNDI、逻辑数据源等
-     * 特殊构造自己声明同名 {@code masterDataSource} Bean，本组件以宿主的为准（解析顺序见 {@link DsMaster}）
+     * {@code DruidDataSource}→{@code spring.datasource.druid.*}）
      */
     @Bean
     @Primary
-    @ConditionalOnMissingBeanNames(DsMaster.DATASOURCE_BEAN)
-    @ConditionalOnProperty(prefix = "spring.datasource", name = "url")
     public DataSource masterDataSource(DataSourceProperties properties, Environment environment) {
         DataSource dataSource = properties.initializeDataSourceBuilder().build();
         String prefix = poolPropertiesPrefix(dataSource.getClass());
@@ -90,38 +90,27 @@ public class MasterDataSourceConfiguration {
         return "spring.datasource." + Character.toLowerCase(name.charAt(0)) + name.substring(1);
     }
 
-    /** 主数据源公告：只在这里打一次（事务管理器同样解析主数据源，不重复公告） */
-    private static void announceMasterDataSource(DsMaster.Resolved<DataSource> resolved) {
-        if (DsMaster.DATASOURCE_BEAN.equals(resolved.beanName())) {
-            log.info("[ds] 主数据源 = {}（component-ds 装配）", DsMaster.DATASOURCE_BEAN);
-        } else {
-            log.info("[ds] 主数据源 = 容器里唯一/@Primary 的 {}（宿主提供）", resolved.bean().getClass().getName());
-        }
-    }
-
     /** 主库工厂：装配口径逐条对齐 MP 的自动配置（见 {@link DsSqlSessionFactoryBuilder}） */
     @Bean
     @Primary
-    @ConditionalOnMissingBeanNames(DsMaster.SQL_SESSION_FACTORY_BEAN)
     public SqlSessionFactory masterSqlSessionFactory(DsSqlSessionFactoryBuilder builder,
                                                      ListableBeanFactory beanFactory,
                                                      ObjectProvider<DatabaseIdProvider> databaseIdProvider,
                                                      @Value("${yomi.ds.transaction-guard:error}") String transactionGuard)
             throws Exception {
         DsCrossDbGuard.setEnabled(DsCrossDbGuard.parseEnabled(transactionGuard));
-        DsMaster.Resolved<DataSource> resolved = DsMaster.resolveDataSource(beanFactory);
-        announceMasterDataSource(resolved);
-        return builder.build(DsMaster.LIBRARY_NAME, resolved.bean(), databaseIdProvider.getIfAvailable());
+        DataSource dataSource = DsMaster.requireDataSource(beanFactory);
+        log.info("[ds] 主数据源 = {}（component-ds 装配）", DsMaster.DATASOURCE_BEAN);
+        return builder.build(DsMaster.LIBRARY_NAME, dataSource, databaseIdProvider.getIfAvailable());
     }
 
     /** 主库模板：尊重 {@code mybatis-plus.executor-type}；不指定名称注入 SqlSessionTemplate 的组件/业务都取它 */
     @Bean
     @Primary
-    @ConditionalOnMissingBeanNames(DsMaster.SQL_SESSION_TEMPLATE_BEAN)
     public SqlSessionTemplate masterSqlSessionTemplate(ListableBeanFactory beanFactory,
                                                        MybatisPlusProperties properties) {
-        SqlSessionFactory factory = DsMaster.resolve(beanFactory, SqlSessionFactory.class,
-                DsMaster.SQL_SESSION_FACTORY_BEAN, "主库 SqlSessionFactory").bean();
+        SqlSessionFactory factory = DsMaster.require(beanFactory, SqlSessionFactory.class,
+                DsMaster.SQL_SESSION_FACTORY_BEAN, "主库 SqlSessionFactory");
         ExecutorType executorType = properties.getExecutorType();
         return executorType == null ? new SqlSessionTemplate(factory)
                 : new SqlSessionTemplate(factory, executorType);
@@ -133,10 +122,8 @@ public class MasterDataSourceConfiguration {
      */
     @Bean
     @Primary
-    @ConditionalOnMissingBeanNames(DsMaster.TRANSACTION_MANAGER_BEAN)
     public PlatformTransactionManager masterTransactionManager(ListableBeanFactory beanFactory) {
-        DataSource dataSource = DsMaster.resolveDataSource(beanFactory).bean();
-        return new DataSourceTransactionManager(dataSource);
+        return new DataSourceTransactionManager(DsMaster.requireDataSource(beanFactory));
     }
 
 }

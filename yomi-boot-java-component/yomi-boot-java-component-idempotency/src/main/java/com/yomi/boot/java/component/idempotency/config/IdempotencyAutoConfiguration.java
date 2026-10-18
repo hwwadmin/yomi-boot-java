@@ -1,5 +1,6 @@
 package com.yomi.boot.java.component.idempotency.config;
 
+import com.yomi.boot.java.component.ds.support.DsMaster;
 import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.idempotency.annotation.IdempotentAop;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyGuard;
@@ -15,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -27,17 +29,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
-import javax.sql.DataSource;
 import java.util.List;
 
 /**
  * 幂等组件自动装配；需 {@code yomi.idempotency.enabled=true}
  * <p>
- * 依赖：Redis/Redisson、数据源与事务、IdempotencyRecordMapper（resources/mapper/IdempotencyRecordMapper.xml）
- * <p>本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描，宿主无需关心依赖 jar
+ * 依赖：Redis/Redisson、主数据源（component-ds 装配，Mapper 与建表都锚在主库）、绑定主库事务管理器的事务模板、
+ * IdempotencyRecordMapper（resources/mapper/IdempotencyRecordMapper.xml）
+ * <p>本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描（不写 ref，按类型落主库），宿主无需关心依赖 jar
  *
  * @author zwei
  */
@@ -64,8 +64,8 @@ public class IdempotencyAutoConfiguration {
     }
 
     /**
-     * 幂等守卫：占位记录与结果写回必须与业务同事务，事务模板只复用应用自己的
-     * （Boot 标准 {@code transactionTemplate} 或宿主自定义，校验见 {@link #requireTransactionTemplate}）
+     * 幂等守卫：占位记录与结果写回必须与业务同事务，事务模板只复用应用自己的、且必须绑定主库事务管理器
+     * （判据见 {@link DsMaster#requireTransactionTemplate(org.springframework.beans.factory.ListableBeanFactory)}）
      */
     @Bean
     @ConditionalOnMissingBean
@@ -75,8 +75,9 @@ public class IdempotencyAutoConfiguration {
                                              IdempotencyRedisStore redisStore,
                                              IdempotencyKeys keys,
                                              IdempotencyProperties properties,
-                                             TransactionTemplate transactionTemplate) {
-        return new IdempotencyGuard(repository, redisStore, keys, transactionTemplate, properties);
+                                             ListableBeanFactory beanFactory) {
+        return new IdempotencyGuard(repository, redisStore, keys,
+                DsMaster.requireTransactionTemplate(beanFactory), properties);
     }
 
     @Bean
@@ -117,12 +118,11 @@ public class IdempotencyAutoConfiguration {
     public IdempotencyBootstrap idempotencyBootstrap(IdempotencyProperties properties,
                                                      IdempotencyKeys keys,
                                                      ApplicationContext applicationContext,
-                                                     ObjectProvider<TransactionTemplate> transactionTemplateProvider,
                                                      ObjectProvider<StringRedisTemplate> redisTemplateProvider,
                                                      ObjectProvider<RedissonClient> redissonClientProvider,
                                                      ObjectProvider<IdempotencyRecordMapper> mapperProvider) {
         properties.validate();
-        requireTransactionTemplate(applicationContext, transactionTemplateProvider);
+        requireTransactionTemplate(applicationContext);
         if (redisTemplateProvider.getIfAvailable() == null || redissonClientProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
                     "yomi.idempotency.enabled=true 需要 Redis/Redisson：请配置 spring.data.redis.host");
@@ -140,29 +140,21 @@ public class IdempotencyAutoConfiguration {
     }
 
     /**
-     * 事务模板启动期校验：组件只复用应用自己的模板——Boot 在存在唯一事务管理器时自动注册
-     * {@code transactionTemplate}，宿主也可自行声明；缺失或候选不唯一即启动失败并点名候选。
-     * <p>组件不注册事务模板：事务基础设施属于应用，沉默自建会把"写错库/不进业务事务"变成运行时故障。</p>
+     * 事务模板启动期校验：组件只复用应用自己的模板（不注册事务基础设施）
+     * <p>
+     * 判据是"绑定主库事务管理器"，不是"候选唯一"：宿主为别的库声明 TransactionTemplate 时，Boot 的
+     * 标准模板会因 {@code @ConditionalOnMissingBean(TransactionOperations)} 退让，唯一性照样能命中一个
+     * 绑错库的模板——那样占位记录与业务写入不在同一个事务里。判定与报错见
+     * {@link DsMaster#requireTransactionTemplate(org.springframework.beans.factory.ListableBeanFactory)}
      */
-    static void requireTransactionTemplate(ApplicationContext context,
-                                           ObjectProvider<TransactionTemplate> templateProvider) {
-        if (templateProvider.getIfUnique() != null) {
-            return;
-        }
-        throw new IllegalStateException("幂等组件需要唯一的 TransactionTemplate（占位记录与结果写回必须与业务同事务）："
-                + "现有 TransactionTemplate 候选 "
-                + java.util.Arrays.toString(context.getBeanNamesForType(TransactionTemplate.class))
-                + "，PlatformTransactionManager 候选 "
-                + java.util.Arrays.toString(context.getBeanNamesForType(PlatformTransactionManager.class))
-                + "；组件不注册事务模板，请确保存在唯一的事务管理器"
-                + "（Boot 由此自动注册 transactionTemplate，多管理器时给应用使用的那个加 @Primary），"
-                + "或自行声明 TransactionTemplate Bean");
+    static void requireTransactionTemplate(ApplicationContext context) {
+        DsMaster.requireTransactionTemplate(context);
     }
 
-    /** 启动期建表：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_idempotency_record.sql 自动创建 */
+    /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_idempotency_record.sql 自动创建 */
     @Bean
-    public TableInitializer idempotencyTableInitializer(ObjectProvider<DataSource> dataSourceProvider) {
-        return new TableInitializer(dataSourceProvider, "幂等", "sys_idempotency_record.sql",
+    public TableInitializer idempotencyTableInitializer(ListableBeanFactory beanFactory) {
+        return new TableInitializer(beanFactory, "幂等", "sys_idempotency_record.sql",
                 List.of("sys_idempotency_record"));
     }
 
