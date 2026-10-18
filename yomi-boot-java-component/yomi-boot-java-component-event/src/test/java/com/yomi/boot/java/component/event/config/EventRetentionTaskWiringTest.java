@@ -31,19 +31,18 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 保留期清理任务的装配与留痕：开关齐备才装配清理任务（集群定时任务），
- * retention 打开却不会装配任何清理任务时留 WARN
+ * 保留期清理任务的装配与留痕：各侧开关（outbox/inbox-retention-enabled）独立生效，
+ * 开关打开却不会装配对应清理任务时留 WARN
  *
  * @author zwei
  */
 class EventRetentionTaskWiringTest {
 
-    /** 消费侧 + retention + 收件箱清理齐备：装配一个收件箱清理任务 */
+    /** 消费侧只开收件箱清理开关即装配（与发件箱开关互不依赖） */
     @Test
-    void inboxRetentionTaskWiredWhenBothFlagsOn() {
+    void inboxRetentionTaskWiredByInboxFlagAlone() {
         consumerRunner()
-                .withPropertyValues("yomi.event.retention.enabled=true",
-                        "yomi.event.retention.inbox-retention-enabled=true")
+                .withPropertyValues("yomi.event.retention.inbox-retention-enabled=true")
                 .run(context -> {
                     assertNull(context.getStartupFailure(), () -> "装配失败: " + context.getStartupFailure());
                     Map<String, ClusterTask> tasks = context.getBeansOfType(ClusterTask.class);
@@ -63,12 +62,12 @@ class EventRetentionTaskWiringTest {
         });
     }
 
-    /** 仅消费侧 + retention 开启 + 未开收件箱清理：不会有任何清理任务，此时留 WARN */
+    /** 开了发件箱清理开关但未启用发布侧：清理任务不会装配，此时留 WARN */
     @Test
-    void consumerOnlyRetentionWithoutInboxFlagWarns() {
+    void outboxFlagWithoutPublisherWarns() {
         EventProperties properties = new EventProperties();
         properties.setConsumerEnabled(true);
-        properties.getRetention().setEnabled(true);
+        properties.getRetention().setOutboxRetentionEnabled(true);
 
         ListAppender<ILoggingEvent> logs = attachLogs();
         try {
@@ -77,11 +76,29 @@ class EventRetentionTaskWiringTest {
             detachLogs(logs);
         }
 
-        assertTrue(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("不会装配任何清理任务")),
-                "开了 retention 却没有任何清理任务必须留痕: " + messages(logs));
+        assertTrue(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("发件箱保留期清理不会装配")),
+                "开了开关却没有清理任务必须留痕: " + messages(logs));
     }
 
-    /** retention 关闭时校验完全不动（不产生噪声） */
+    /** 开了收件箱清理开关但未启用消费侧：对称地留 WARN */
+    @Test
+    void inboxFlagWithoutConsumerWarns() {
+        EventProperties properties = new EventProperties();
+        properties.setPublisherEnabled(true);
+        properties.getRetention().setInboxRetentionEnabled(true);
+
+        ListAppender<ILoggingEvent> logs = attachLogs();
+        try {
+            assertDoesNotThrow(() -> EventAutoConfiguration.warnIfRetentionRegistersNothing(properties));
+        } finally {
+            detachLogs(logs);
+        }
+
+        assertTrue(logs.list.stream().anyMatch(e -> e.getFormattedMessage().contains("收件箱保留期清理不会装配")),
+                "开了开关却没有清理任务必须留痕: " + messages(logs));
+    }
+
+    /** 开关关着时校验完全不动（不产生噪声） */
     @Test
     void validationSkipsWhenRetentionDisabled() {
         EventProperties properties = new EventProperties();

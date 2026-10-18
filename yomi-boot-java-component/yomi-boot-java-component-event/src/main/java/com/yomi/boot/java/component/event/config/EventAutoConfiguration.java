@@ -104,17 +104,19 @@ public class EventAutoConfiguration {
         return new EventBootstrap();
     }
 
-    /** retention 开关打开却不会装配任何清理任务时留痕（仅消费侧启用且未开收件箱清理） */
+    /** retention 开关打开却不会装配对应清理任务时留痕（清理任务分别随发布侧/消费侧装配） */
     static void warnIfRetentionRegistersNothing(EventProperties properties) {
         EventProperties.Retention retention = properties.getRetention();
-        if (retention == null || !retention.isEnabled()) {
+        if (retention == null) {
             return;
         }
-        if (properties.isConsumerEnabled() && !properties.isPublisherEnabled()
-                && !retention.isInboxRetentionEnabled()) {
-            log.warn("[事件]yomi.event.retention.enabled=true 但仅消费侧启用且 "
-                    + "yomi.event.retention.inbox-retention-enabled=false：不会装配任何清理任务"
-                    + "（发件箱清理随 publisher 生效，收件箱清理需再开 inbox-retention-enabled）");
+        if (retention.isOutboxRetentionEnabled() && !properties.isPublisherEnabled()) {
+            log.warn("[事件]yomi.event.retention.outbox-retention-enabled=true 但 "
+                    + "yomi.event.publisher-enabled=false：发件箱保留期清理不会装配（随发布侧生效）");
+        }
+        if (retention.isInboxRetentionEnabled() && !properties.isConsumerEnabled()) {
+            log.warn("[事件]yomi.event.retention.inbox-retention-enabled=true 但 "
+                    + "yomi.event.consumer-enabled=false：收件箱保留期清理不会装配（随消费侧生效）");
         }
     }
 
@@ -211,7 +213,7 @@ public class EventAutoConfiguration {
 
         /** 保留期清理（默认关闭）：仅删 SENT_SUCCESS 且超过保留期的行 */
         @Bean
-        @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
+        @ConditionalOnProperty(value = "yomi.event.retention.outbox-retention-enabled", havingValue = "true")
         public EventRetentionCleaner eventOutboxRetentionCleaner(EventProperties properties, EventKeys keys,
                                                                  IEventOutboxRepository outboxRepository) {
             log.info("[事件]发件箱保留期清理已启用: outboxRetention={}, scanInterval={}",
@@ -221,7 +223,7 @@ public class EventAutoConfiguration {
 
         /** 发件箱保留期清理任务 */
         @Bean
-        @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
+        @ConditionalOnProperty(value = "yomi.event.retention.outbox-retention-enabled", havingValue = "true")
         public ClusterTask eventOutboxRetentionTask(EventProperties properties,
                                                     @Qualifier("eventOutboxRetentionCleaner")
                                                     EventRetentionCleaner cleaner,
@@ -261,12 +263,11 @@ public class EventAutoConfiguration {
         }
 
         /**
-         * 收件箱保留期清理（默认关闭，需额外开启 inbox-retention-enabled）。
+         * 收件箱保留期清理（默认关闭，开 {@code inbox-retention-enabled} 即装配，不依赖发件箱开关）。
          * <p>收件箱行是"只消费一次"的依据：保留期必须 ≥ 事件可能被重投的最长时间（Kafka topic retention），
          * 保留期短于这个窗口时，超期重投的事件会被当作新消息再消费一次</p>
          */
         @Bean
-        @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
         @ConditionalOnProperty(value = "yomi.event.retention.inbox-retention-enabled", havingValue = "true")
         public EventRetentionCleaner eventInboxRetentionCleaner(EventProperties properties,
                                                                 EventKeys keys,
@@ -278,7 +279,6 @@ public class EventAutoConfiguration {
 
         /** 收件箱保留期清理任务 */
         @Bean
-        @ConditionalOnProperty(value = "yomi.event.retention.enabled", havingValue = "true")
         @ConditionalOnProperty(value = "yomi.event.retention.inbox-retention-enabled", havingValue = "true")
         public ClusterTask eventInboxRetentionTask(EventProperties properties,
                                                    @Qualifier("eventInboxRetentionCleaner")

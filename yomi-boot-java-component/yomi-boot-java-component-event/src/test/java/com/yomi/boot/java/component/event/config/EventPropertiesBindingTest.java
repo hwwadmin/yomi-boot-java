@@ -19,7 +19,7 @@ class EventPropertiesBindingTest {
     @Test
     void bindsRetentionPropertiesFromQuickStarterConfig() {
         Map<String, Object> source = Map.of(
-                "yomi.event.retention.enabled", "true",
+                "yomi.event.retention.outbox-retention-enabled", "true",
                 "yomi.event.retention.outbox-retention", "14d",
                 "yomi.event.retention.inbox-retention-enabled", "false",
                 "yomi.event.retention.inbox-retention", "14d",
@@ -33,7 +33,7 @@ class EventPropertiesBindingTest {
 
         EventProperties.Retention retention = properties.getRetention();
         assertNotNull(retention);
-        assertTrue(retention.isEnabled());
+        assertTrue(retention.isOutboxRetentionEnabled());
         assertEquals(Duration.ofDays(14), retention.getOutboxRetention());
         assertFalse(retention.isInboxRetentionEnabled());
         assertEquals(Duration.ofDays(14), retention.getInboxRetention());
@@ -50,7 +50,7 @@ class EventPropertiesBindingTest {
                 .bind("yomi.event", Bindable.of(EventProperties.class))
                 .orElseThrow(() -> new AssertionError("yomi.event 绑定失败"));
 
-        assertFalse(properties.getRetention().isEnabled(), "缺省必须关闭清理（表保持只增不删）");
+        assertFalse(properties.getRetention().isOutboxRetentionEnabled(), "缺省必须关闭清理（表保持只增不删）");
         assertFalse(properties.getRetention().isInboxRetentionEnabled());
         assertEquals(Duration.ofDays(14), properties.getRetention().getOutboxRetention());
         assertEquals(Duration.ofHours(1), properties.getRetention().getScanInterval());

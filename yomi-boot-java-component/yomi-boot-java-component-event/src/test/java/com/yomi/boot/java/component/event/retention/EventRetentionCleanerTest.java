@@ -114,21 +114,20 @@ class EventRetentionCleanerTest {
         assertDoesNotThrow(() -> cleaner.cleanInbox(), "未传收件箱仓储时不应有动作/报错");
     }
 
+    /** 收件箱清理独立开关：不要求发件箱开关同时打开 */
     @Test
-    void inboxRetentionRequiresMasterSwitch() {
+    void inboxRetentionSwitchIsIndependentOfOutbox() {
         EventProperties properties = new EventProperties();
-        properties.setPublisherEnabled(true);
+        properties.setConsumerEnabled(true);
         properties.getRetention().setInboxRetentionEnabled(true);
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
-        assertTrue(ex.getMessage().contains("retention.enabled"), ex.getMessage());
+        assertDoesNotThrow(properties::validate, "只开收件箱清理也是合法配置");
     }
 
     @Test
     void inboxRetentionBelowOneDayIsRejected() {
         EventProperties properties = new EventProperties();
         properties.setPublisherEnabled(true);
-        properties.getRetention().setEnabled(true);
         properties.getRetention().setInboxRetentionEnabled(true);
         properties.getRetention().setInboxRetention(Duration.ofHours(12));
 
@@ -140,7 +139,6 @@ class EventRetentionCleanerTest {
     void inboxRetentionBelowSevenDaysWarnsButPasses() {
         EventProperties properties = new EventProperties();
         properties.setPublisherEnabled(true);
-        properties.getRetention().setEnabled(true);
         properties.getRetention().setInboxRetentionEnabled(true);
         properties.getRetention().setInboxRetention(Duration.ofDays(3));
 
@@ -151,7 +149,7 @@ class EventRetentionCleanerTest {
     void retentionNumericGuards() {
         EventProperties properties = new EventProperties();
         properties.setPublisherEnabled(true);
-        properties.getRetention().setEnabled(true);
+        properties.getRetention().setOutboxRetentionEnabled(true);
 
         properties.getRetention().setScanInterval(Duration.ofSeconds(30));
         assertThrows(IllegalStateException.class, properties::validate);
@@ -174,7 +172,7 @@ class EventRetentionCleanerTest {
         EventProperties properties = new EventProperties();
         properties.setPublisherEnabled(true);
         EventProperties.Retention retention = properties.getRetention();
-        retention.setEnabled(true);
+        retention.setOutboxRetentionEnabled(true);
         retention.setMaxDeletePerRun(1000);
         customizer.accept(retention);
         return properties;

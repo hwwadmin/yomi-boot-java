@@ -181,12 +181,12 @@ yomi:
     dlq-in-flight-lease: 90s
     # 保留期清理（默认关闭）：开启后按保留期物理删除历史行，表不再只增不删
     retention:
-      # 总开关
-      enabled: true
+      # 发件箱清理开关（需发布侧）
+      outbox-retention-enabled: true
       # 发件箱已成功行保留期：SENT_SUCCESS 且 sent_time 超期即删除（PENDING/FETCHED/SENT_FAIL 与 DLQ 在途行不删）
       outbox-retention: 14d
-      # 收件箱清理需另行开启；保留期必须 >= 事件可能被重投的最长时间（Kafka topic retention，默认 7 天），
-      # 否则超期重投的事件会被当作新消息再消费一次——演示环境保持关闭
+      # 收件箱清理开关（需消费侧），与发件箱开关互不依赖；保留期必须 >= 事件可能被重投的最长时间
+      # （Kafka topic retention，默认 7 天），否则超期重投的事件会被当作新消息再消费一次——演示环境保持关闭
       inbox-retention-enabled: false
       inbox-retention: 14d
       # 扫描间隔 / 每批删除行数 / 单轮删除上限

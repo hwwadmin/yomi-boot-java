@@ -74,29 +74,29 @@ public class EventProperties {
     /** 持锁租期；0 表示 Redisson 看门狗 */
     private Duration consumeLockLease = Duration.ZERO;
 
-    /** 过期数据清理配置（默认关闭） */
+    /** 过期数据清理配置（两侧开关默认关闭） */
     private Retention retention = new Retention();
 
     /**
-     * 保留期清理配置（{@code yomi.event.retention.*}）
+     * 保留期清理配置（{@code yomi.event.retention.*}）：发件箱/收件箱两侧各有开关与保留期，互不依赖
      */
     @Data
     public static class Retention {
 
-        /** 是否启用过期清理 */
-        private boolean enabled = false;
+        /** 发件箱过期清理开关（需发布侧，即 publisher-enabled=true）；默认关闭 */
+        private boolean outboxRetentionEnabled = false;
 
         /** 发件箱已成功行保留期：SENT_SUCCESS 且 sent_time 早于该值的行被物理删除 */
         private Duration outboxRetention = Duration.ofDays(14);
 
         /**
-         * 收件箱清理开关；默认关闭。
+         * 收件箱过期清理开关（需消费侧，即 consumer-enabled=true）；默认关闭。
          * <p>收件箱行是"只消费一次"的依据：保留期必须不短于事件可能被重投的最长时间
          * （Kafka topic retention，默认 7 天）；保留期短于这个窗口时，超期重投的事件会被当作新消息再消费一次</p>
          */
         private boolean inboxRetentionEnabled = false;
 
-        /** 收件箱行保留期（需同时开启 inbox-retention-enabled） */
+        /** 收件箱行保留期（需开启 inbox-retention-enabled） */
         private Duration inboxRetention = Duration.ofDays(14);
 
         /** 扫描间隔 */
@@ -158,16 +158,12 @@ public class EventProperties {
         }
     }
 
-    /** 保留期清理配置自检 */
+    /** 保留期清理配置自检：只校验已开启一侧的参数 */
     private void validateRetention() {
-        if (retention == null || !retention.isEnabled()) {
-            if (retention != null && retention.isInboxRetentionEnabled()) {
-                throw new IllegalStateException(
-                        "yomi.event.retention.inbox-retention-enabled=true 需要同时开启 yomi.event.retention.enabled=true");
-            }
+        if (retention == null
+                || (!retention.isOutboxRetentionEnabled() && !retention.isInboxRetentionEnabled())) {
             return;
         }
-        requirePositive(retention.getOutboxRetention(), "yomi.event.retention.outbox-retention");
         requirePositive(retention.getScanInterval(), "yomi.event.retention.scan-interval");
         if (retention.getScanInterval().compareTo(Duration.ofMinutes(1)) < 0) {
             throw new IllegalStateException("yomi.event.retention.scan-interval 必须大于等于 1 分钟");
@@ -177,6 +173,9 @@ public class EventProperties {
         }
         if (retention.getMaxDeletePerRun() <= 0) {
             throw new IllegalStateException("yomi.event.retention.max-delete-per-run 必须大于 0");
+        }
+        if (retention.isOutboxRetentionEnabled()) {
+            requirePositive(retention.getOutboxRetention(), "yomi.event.retention.outbox-retention");
         }
         if (!retention.isInboxRetentionEnabled()) {
             return;

@@ -130,7 +130,7 @@ yomi:
     dispatch-queue-capacity: 64
     dlq-in-flight-lease: 90s
     retention:
-      enabled: false
+      outbox-retention-enabled: false
       outbox-retention: 14d
       inbox-retention-enabled: false
       inbox-retention: 14d

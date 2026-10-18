@@ -15,7 +15,7 @@ import java.util.function.IntSupplier;
  * <p>发布侧只删 {@code sys_event_outbox} 中 {@code SENT_SUCCESS} 且发送时间超过保留期的行——
  * PENDING/FETCHED/SENT_FAIL 以及 DLQ 仍在引用的行不受影响；
  * 消费侧删 {@code sys_event_inbox} 中创建时间超过保留期的行，会缩短"只消费一次"的判重窗口，
- * 需单独开启 {@code inbox-retention-enabled} 并自行保证保留期 ≥ 事件可能被重投的最长时间。</p>
+ * 需开启 {@code inbox-retention-enabled} 并自行保证保留期 ≥ 事件可能被重投的最长时间。</p>
  * 两侧各自实例化：发布侧只传发件箱仓储、消费侧只传收件箱仓储，未传入的一侧不清理。
  *
  * @author zwei
