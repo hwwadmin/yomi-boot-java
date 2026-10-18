@@ -6,14 +6,13 @@ import com.yomi.boot.java.component.redis.exception.LockBusyException;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.boot.convert.DurationStyle;
+import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 
 /**
@@ -33,8 +32,8 @@ import java.util.Objects;
  * {@code environment} 由 Spring 注入（{@code @Bean} 方法参数），键名与停机等待都在构造期算定：缺
  * {@code spring.application.name}、或阶段停机超时配成负值时 Bean 创建即失败。任务名即集群互斥维度，改名等于换键。
  * <p>
- * 停机等待按 {@code spring.lifecycle.timeout-per-shutdown-phase}（Boot 属性，缺省取其默认 30s）推算；
- * 宿主若替换 {@code lifecycleProcessor} Bean 或用 {@code LifecycleProcessor#setTimeoutForShutdownPhase}
+ * 停机等待按 Boot 的 {@link LifecycleProperties#getTimeoutPerShutdownPhase()}（阶段停机超时，与容器真正生效的值同源）
+ * 推算；宿主若替换 {@code lifecycleProcessor} Bean 或用 {@code LifecycleProcessor#setTimeoutForShutdownPhase}
  * 给本阶段单独设了更短超时，请自行保证该值不小于本等待值
  *
  * @author zwei
@@ -47,12 +46,6 @@ public class ClusterTask implements SmartLifecycle {
 
     /** 最小间隔：更小的间隔视为配置错误（Duration 绑定里裸数字按毫秒解析，1ms 级间隔会把 Redis 打成热点） */
     private static final Duration MIN_INTERVAL = Duration.ofMillis(50);
-
-    /** 容器每阶段停机超时的配置键（Boot 属性；Spring 内部默认 10s，Boot 覆盖为 30s） */
-    private static final String PHASE_TIMEOUT_KEY = "spring.lifecycle.timeout-per-shutdown-phase";
-
-    /** {@link #PHASE_TIMEOUT_KEY} 缺省时的取值（Boot 默认 30s） */
-    private static final Duration DEFAULT_PHASE_TIMEOUT = Duration.ofSeconds(30);
 
     /** 自身停机等待上限：宿主把阶段超时配得很大时也不无限等 */
     private static final Duration SHUTDOWN_AWAIT_CAP = Duration.ofSeconds(30);
@@ -90,12 +83,14 @@ public class ClusterTask implements SmartLifecycle {
     private volatile boolean running;
 
     /**
-     * @param taskName    任务名（集群互斥维度与键名的一部分，改名等于换键）
-     * @param interval    调度间隔，不得小于 {@link #MIN_INTERVAL}
-     * @param environment Spring 注入的环境（键名按 {@code spring.application.name} 隔离应用）
-     * @param action      单轮执行体
+     * @param taskName          任务名（集群互斥维度与键名的一部分，改名等于换键）
+     * @param interval          调度间隔，不得小于 {@link #MIN_INTERVAL}
+     * @param environment       Spring 注入的环境（键名按 {@code spring.application.name} 隔离应用）
+     * @param lifecycleProperties Spring 注入的阶段停机配置（Boot 自带；停机等待按它的取值推算）
+     * @param action            单轮执行体
      */
-    public ClusterTask(String taskName, Duration interval, Environment environment, Runnable action) {
+    public ClusterTask(String taskName, Duration interval, Environment environment,
+                       LifecycleProperties lifecycleProperties, Runnable action) {
         this.taskName = requireTaskName(taskName);
         this.interval = requireInterval(interval);
         this.action = Objects.requireNonNull(action, "集群定时任务执行体不能为空（任务: " + taskName + "）");
@@ -103,7 +98,8 @@ public class ClusterTask implements SmartLifecycle {
         String base = KEY_PREFIX + requireApplicationName(env) + ":";
         this.turnKey = base + "turn:" + taskName;
         this.lockKey = base + "lock:" + taskName;
-        this.shutdownAwait = resolveShutdownAwait(env);
+        this.shutdownAwait = resolveShutdownAwait(Objects.requireNonNull(lifecycleProperties,
+                "集群定时任务 lifecycleProperties 不能为空（Boot 应用自带；非 Boot 宿主请自行注册）"));
     }
 
     @Override
@@ -207,15 +203,14 @@ public class ClusterTask implements SmartLifecycle {
 
     /**
      * 算定停机等待：{@code min(自身上限, 阶段停机超时 × 0.8)}——不得大于容器给的阶段超时，
-     * 留 20% 余量给同阶段其它 Bean 与容器自身开销；属性缺省按 Boot 默认 30s。
-     * <p>取值字符串自行解析（与 Boot 的 yml Duration 绑定同口径），不走 Environment 的转换服务：
-     * 非 Boot 宿主的环境没有 String→Duration 转换器，靠 {@code getProperty(key, Duration.class)} 会报 ConverterNotFound
+     * 留 20% 余量给同阶段其它 Bean 与容器自身开销。
+     * <p>阶段超时取自 Boot 的 {@link LifecycleProperties}（Boot 会把它应用到 LifecycleProcessor，
+     * 所以这就是真正生效的值；未显式配置时即其默认值，注意该默认值不在 Environment 里，读属性会得到 null）
      */
-    private static Duration resolveShutdownAwait(Environment environment) {
-        String raw = environment.getProperty(PHASE_TIMEOUT_KEY);
-        Duration phaseTimeout = StringUtils.isBlank(raw) ? DEFAULT_PHASE_TIMEOUT : parsePhaseTimeout(raw.trim());
-        if (phaseTimeout.isNegative()) {
-            throw new IllegalStateException(PHASE_TIMEOUT_KEY + " 不能为负（当前: [" + raw + "]）："
+    private static Duration resolveShutdownAwait(LifecycleProperties lifecycleProperties) {
+        Duration phaseTimeout = lifecycleProperties.getTimeoutPerShutdownPhase();
+        if (phaseTimeout == null || phaseTimeout.isNegative()) {
+            throw new IllegalStateException("spring.lifecycle.timeout-per-shutdown-phase 不能为负（当前: " + phaseTimeout + "）："
                     + "集群定时任务的停机等待按它推算，且 Spring 未定义负值语义，请改为非负值");
         }
         // 阶段超时 ≥ 2×上限 时 80% 必然超过上限，直接封顶（也避免超大 Duration 乘法溢出）
@@ -224,16 +219,6 @@ public class ClusterTask implements SmartLifecycle {
         }
         Duration bounded = phaseTimeout.multipliedBy(4).dividedBy(5);
         return bounded.compareTo(SHUTDOWN_AWAIT_CAP) < 0 ? bounded : SHUTDOWN_AWAIT_CAP;
-    }
-
-    /** 解析阶段停机超时（ISO-8601 / 15s / 裸数字=毫秒），格式非法即失败 */
-    private static Duration parsePhaseTimeout(String raw) {
-        try {
-            return DurationStyle.detectAndParse(raw, ChronoUnit.MILLIS);
-        } catch (RuntimeException e) {
-            throw new IllegalStateException(PHASE_TIMEOUT_KEY + " 取值非法: [" + raw + "]，"
-                    + "支持 ISO-8601（PT15S）、简写（15s/500ms）或裸数字（毫秒）", e);
-        }
     }
 
 }

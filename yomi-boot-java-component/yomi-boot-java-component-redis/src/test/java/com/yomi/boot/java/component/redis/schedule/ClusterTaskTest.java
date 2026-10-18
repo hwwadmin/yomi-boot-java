@@ -5,6 +5,7 @@ import com.yomi.boot.java.core.utils.SpringUtils;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.Environment;
 import org.springframework.mock.env.MockEnvironment;
@@ -20,7 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 集群定时任务：键名约定（应用名隔离）、没抢到名额/执行锁忙时静默跳过、执行失败不断调度、停机后不再执行。
+ * 集群定时任务：键名约定（应用名隔离）、停机等待跟随宿主阶段超时、没抢到名额/执行锁忙时静默跳过、
+ * 执行失败不断调度、停机后不再执行。
  * <p>名额与执行锁都注入结果（{@link ClusterTask#tryAcquireTurn} 覆写 + Redisson 桩），离线运行；
  * {@code SpringUtils} 是运行期取 RedissonClient 的必经链路（生产由 core 自动配置提供），桩上下文里要显式注册
  */
@@ -29,6 +31,9 @@ class ClusterTaskTest {
     /** 构造用环境：键名只看 spring.application.name（生产由 @Bean 方法注入容器的 Environment） */
     private static final Environment APP_ENV =
             new MockEnvironment().withProperty("spring.application.name", "cluster-task-test");
+
+    /** 阶段停机配置：默认即 Boot 默认 30s（生产由 @Bean 方法注入 Boot 的 LifecycleProperties） */
+    private static final LifecycleProperties PHASE_PROPERTIES = new LifecycleProperties();
 
     /** 键名 = yomi:schedule:{spring.application.name}:{turn|lock}:{任务名}；停机等待按 Boot 默认阶段超时推算 */
     @Test
@@ -50,11 +55,12 @@ class ClusterTaskTest {
     /** 停机等待跟随宿主的阶段停机超时：取 80%，不超过自身上限；负值=未定义语义，构造期失败 */
     @Test
     void shutdownAwaitFollowsPhaseTimeout() {
-        assertEquals(Duration.ofSeconds(12), awaitFor("15s"), "宿主配 15s → 12s");
-        assertEquals(Duration.ofSeconds(4).plusMillis(800), awaitFor("6s"));
-        assertEquals(Duration.ofSeconds(30), awaitFor("5m"), "宿主的阶段超时很大时受自身上限约束");
-        assertEquals(Duration.ZERO, awaitFor("0s"), "0 = 不留等待，随宿主");
-        assertThrows(IllegalStateException.class, () -> awaitFor("-1s"), "负值属未定义语义，配错即失败");
+        assertEquals(Duration.ofSeconds(12), awaitFor(Duration.ofSeconds(15)), "宿主配 15s → 12s");
+        assertEquals(Duration.ofSeconds(4).plusMillis(800), awaitFor(Duration.ofSeconds(6)));
+        assertEquals(Duration.ofSeconds(30), awaitFor(Duration.ofMinutes(5)), "阶段超时很大时受自身上限约束");
+        assertEquals(Duration.ZERO, awaitFor(Duration.ZERO), "0 = 不留等待，随宿主");
+        assertThrows(IllegalStateException.class, () -> awaitFor(Duration.ofSeconds(-1)),
+                "负值属未定义语义，配错即失败");
     }
 
     /** 周期执行：达到多轮后停机，停机后不再开新一轮 */
@@ -79,7 +85,7 @@ class ClusterTaskTest {
     void skipsQuietlyWhenTurnTaken() throws Exception {
         AtomicInteger runs = new AtomicInteger();
         LockStub lock = new LockStub(true);
-        ClusterTask neverTurns = new ClusterTask("demoTask", Duration.ofMillis(50), APP_ENV,
+        ClusterTask neverTurns = new ClusterTask("demoTask", Duration.ofMillis(50), APP_ENV, PHASE_PROPERTIES,
                 runs::incrementAndGet) {
             @Override
             protected boolean tryAcquireTurn(String turnKey) {
@@ -124,49 +130,53 @@ class ClusterTaskTest {
                 "首次失败后应继续尝试，实际尝试: " + attempts.get()));
     }
 
-    /** 参数校验：任务名、间隔下限、执行体、环境在构造期拦住（不依赖容器） */
+    /** 参数校验：任务名、间隔下限、环境、阶段停机配置、执行体都在构造期拦住（不依赖容器） */
     @Test
     void rejectsInvalidArguments() {
         assertThrows(IllegalArgumentException.class,
-                () -> new ClusterTask(" ", Duration.ofSeconds(1), APP_ENV, () -> {
+                () -> new ClusterTask(" ", Duration.ofSeconds(1), APP_ENV, PHASE_PROPERTIES, () -> {
                 }));
         assertThrows(IllegalArgumentException.class,
-                () -> new ClusterTask("demoTask", Duration.ofMillis(49), APP_ENV, () -> {
+                () -> new ClusterTask("demoTask", Duration.ofMillis(49), APP_ENV, PHASE_PROPERTIES, () -> {
                 }), "低于最小间隔（50ms）必须构造期拒绝");
         assertThrows(NullPointerException.class,
-                () -> new ClusterTask("demoTask", Duration.ofSeconds(1), APP_ENV, null));
+                () -> new ClusterTask("demoTask", Duration.ofSeconds(1), APP_ENV, PHASE_PROPERTIES, null));
         assertThrows(NullPointerException.class,
-                () -> new ClusterTask("demoTask", Duration.ofSeconds(1), null, () -> {
+                () -> new ClusterTask("demoTask", Duration.ofSeconds(1), null, PHASE_PROPERTIES, () -> {
                 }));
-        assertDoesNotThrow(() -> new ClusterTask("demoTask", Duration.ofMillis(50), APP_ENV, () -> {
-        }), "最小间隔边界值（50ms）应放行");
+        assertThrows(NullPointerException.class,
+                () -> new ClusterTask("demoTask", Duration.ofSeconds(1), APP_ENV, null, () -> {
+                }));
+        assertDoesNotThrow(() -> new ClusterTask("demoTask", Duration.ofMillis(50), APP_ENV, PHASE_PROPERTIES,
+                () -> {
+                }), "最小间隔边界值（50ms）应放行");
     }
 
     /** 缺 spring.application.name：构造期即失败（Bean 创建被拦下，不等到调度线程起跑） */
     @Test
     void rejectsMissingApplicationName() {
         assertThrows(IllegalStateException.class,
-                () -> new ClusterTask("demoTask", Duration.ofSeconds(1), new MockEnvironment(), () -> {
-                }));
-    }
-
-    /** 指定阶段停机超时构造的任务：返回其算定的停机等待 */
-    private static Duration awaitFor(String phaseTimeout) {
-        MockEnvironment env = new MockEnvironment()
-                .withProperty("spring.application.name", "cluster-task-test")
-                .withProperty("spring.lifecycle.timeout-per-shutdown-phase", phaseTimeout);
-        return new ClusterTask("demoTask", Duration.ofSeconds(1), env, () -> {
-        }).getShutdownAwait();
+                () -> new ClusterTask("demoTask", Duration.ofSeconds(1), new MockEnvironment(), PHASE_PROPERTIES,
+                        () -> {
+                        }));
     }
 
     /** 演示任务：名额恒能抢到（绕开 Redis），执行体是给定逻辑 */
     private static ClusterTask taskWithTurn(String name, Runnable action) {
-        return new ClusterTask(name, Duration.ofMillis(50), APP_ENV, action) {
+        return new ClusterTask(name, Duration.ofMillis(50), APP_ENV, PHASE_PROPERTIES, action) {
             @Override
             protected boolean tryAcquireTurn(String turnKey) {
                 return true;
             }
         };
+    }
+
+    /** 指定阶段停机超时构造的任务：返回其算定的停机等待 */
+    private static Duration awaitFor(Duration phaseTimeout) {
+        LifecycleProperties properties = new LifecycleProperties();
+        properties.setTimeoutPerShutdownPhase(phaseTimeout);
+        return new ClusterTask("demoTask", Duration.ofSeconds(1), APP_ENV, properties, () -> {
+        }).getShutdownAwait();
     }
 
     private static ApplicationContextRunner runner(ClusterTask task, LockStub lock) {

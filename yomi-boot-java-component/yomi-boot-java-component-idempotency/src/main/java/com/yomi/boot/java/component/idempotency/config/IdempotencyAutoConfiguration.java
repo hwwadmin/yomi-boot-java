@@ -16,6 +16,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -112,9 +113,10 @@ public class IdempotencyAutoConfiguration {
     @ConditionalOnProperty(value = "yomi.idempotency.stale-cleaner-enabled", havingValue = "true")
     public ClusterTask idempotencyRecordCleanerTask(IdempotencyProperties properties,
                                                     IdempotencyStaleCleaner cleaner,
-                                                    Environment environment) {
+                                                    Environment environment,
+                                                    LifecycleProperties lifecycleProperties) {
         return new ClusterTask(IdempotencyStaleCleaner.TASK_NAME, properties.getScanInterval(), environment,
-                cleaner::clean);
+                lifecycleProperties, cleaner::clean);
     }
 
     /** 启动期校验依赖并打日志 */

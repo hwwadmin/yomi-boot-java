@@ -27,6 +27,7 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -183,26 +184,29 @@ public class EventAutoConfiguration {
         /** 抓取发件箱 PENDING 记录并投递 MQ（集群定时任务：同一时刻只有一个实例执行） */
         @Bean
         public ClusterTask eventOutboxFetchTask(EventProperties properties, OutboxRelayCoordinator coordinator,
-                                               Environment environment) {
+                                               Environment environment,
+                                               LifecycleProperties lifecycleProperties) {
             return new ClusterTask(OutboxRelayCoordinator.TASK_FETCH, properties.getFetchInterval(), environment,
-                    coordinator::fetchAndDispatch);
+                    lifecycleProperties, coordinator::fetchAndDispatch);
         }
 
         /** 回收长时间停留在 FETCHED 的发件箱记录（重置为 PENDING） */
         @Bean
         public ClusterTask eventOutboxFetchTimeoutTask(EventProperties properties,
                                                        OutboxRelayCoordinator coordinator,
-                                                       Environment environment) {
+                                                       Environment environment,
+                                                       LifecycleProperties lifecycleProperties) {
             return new ClusterTask(OutboxRelayCoordinator.TASK_FETCH_TIMEOUT, properties.getFetchInterval(),
-                    environment, coordinator::recoverFetchedTimeout);
+                    environment, lifecycleProperties, coordinator::recoverFetchedTimeout);
         }
 
         /** 重试发件箱死信（DLQ），清理已成功或无主的死信行 */
         @Bean
         public ClusterTask eventDlqRetryTask(EventProperties properties, OutboxRelayCoordinator coordinator,
-                                            Environment environment) {
+                                            Environment environment,
+                                            LifecycleProperties lifecycleProperties) {
             return new ClusterTask(OutboxRelayCoordinator.TASK_DLQ, properties.getDlqScanInterval(), environment,
-                    coordinator::processDlq);
+                    lifecycleProperties, coordinator::processDlq);
         }
 
         /** 保留期清理（默认关闭）：仅删 SENT_SUCCESS 且超过保留期的行 */
@@ -221,9 +225,11 @@ public class EventAutoConfiguration {
         public ClusterTask eventOutboxRetentionTask(EventProperties properties,
                                                     @Qualifier("eventOutboxRetentionCleaner")
                                                     EventRetentionCleaner cleaner,
-                                                    Environment environment) {
+                                                    Environment environment,
+                                                    LifecycleProperties lifecycleProperties) {
             return new ClusterTask(EventRetentionCleaner.TASK_NAME_OUTBOX,
-                    properties.getRetention().getScanInterval(), environment, cleaner::cleanOutbox);
+                    properties.getRetention().getScanInterval(), environment, lifecycleProperties,
+                    cleaner::cleanOutbox);
         }
     }
 
@@ -277,9 +283,11 @@ public class EventAutoConfiguration {
         public ClusterTask eventInboxRetentionTask(EventProperties properties,
                                                    @Qualifier("eventInboxRetentionCleaner")
                                                    EventRetentionCleaner cleaner,
-                                                   Environment environment) {
+                                                   Environment environment,
+                                                   LifecycleProperties lifecycleProperties) {
             return new ClusterTask(EventRetentionCleaner.TASK_NAME_INBOX,
-                    properties.getRetention().getScanInterval(), environment, cleaner::cleanInbox);
+                    properties.getRetention().getScanInterval(), environment, lifecycleProperties,
+                    cleaner::cleanInbox);
         }
     }
 

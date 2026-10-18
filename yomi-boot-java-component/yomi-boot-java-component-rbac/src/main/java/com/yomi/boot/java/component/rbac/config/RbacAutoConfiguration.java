@@ -28,6 +28,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -196,9 +197,10 @@ public class RbacAutoConfiguration {
     @ConditionalOnProperty(value = "yomi.rbac.scheduled-refresh-enabled", havingValue = "true")
     @ConditionalOnProperty(value = "yomi.rbac.projection-enabled", havingValue = "true", matchIfMissing = true)
     public ClusterTask rbacProjectionRefreshTask(RbacProperties properties, RbacProjectionRefresher refresher,
-                                                 Environment environment) {
+                                                 Environment environment,
+                                                 LifecycleProperties lifecycleProperties) {
         return new ClusterTask(RbacProjectionRefresher.TASK_NAME,
-                properties.getScheduledRefreshInterval(), environment, refresher::refresh);
+                properties.getScheduledRefreshInterval(), environment, lifecycleProperties, refresher::refresh);
     }
 
     @Bean

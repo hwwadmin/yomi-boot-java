@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.context.LifecycleAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -49,7 +50,7 @@ class HttpLogAutoConfigurationTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(HttpLogAutoConfiguration.class,
-                    DesensitizeAutoConfiguration.class))
+                    DesensitizeAutoConfiguration.class, LifecycleAutoConfiguration.class))
             .withUserConfiguration(StubConfiguration.class);
 
     @Test

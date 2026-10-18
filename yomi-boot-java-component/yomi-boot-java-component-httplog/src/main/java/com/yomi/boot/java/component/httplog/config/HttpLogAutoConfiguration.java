@@ -33,6 +33,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -360,9 +361,10 @@ public class HttpLogAutoConfiguration {
         @Bean
         @ConditionalOnProperty(value = "yomi.httplog.retention.enabled", havingValue = "true", matchIfMissing = true)
         public ClusterTask httpLogRetentionTask(HttpLogProperties properties, HttpLogRetentionCleaner cleaner,
-                                               Environment environment) {
+                                               Environment environment,
+                                               LifecycleProperties lifecycleProperties) {
             return new ClusterTask(HttpLogRetentionCleaner.TASK_NAME,
-                    properties.getRetention().getScanInterval(), environment, cleaner::clean);
+                    properties.getRetention().getScanInterval(), environment, lifecycleProperties, cleaner::clean);
         }
 
     }

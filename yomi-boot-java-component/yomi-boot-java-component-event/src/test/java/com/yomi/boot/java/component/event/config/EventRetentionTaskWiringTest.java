@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.context.LifecycleAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -99,7 +100,8 @@ class EventRetentionTaskWiringTest {
     /** 消费侧最小上下文：组件依赖全用桩（不连 DB/Redis/Kafka），清理任务的锁桩设为"始终繁忙"（不真正执行） */
     private static ApplicationContextRunner consumerRunner() {
         return new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(EventAutoConfiguration.class))
+                .withConfiguration(AutoConfigurations.of(EventAutoConfiguration.class,
+                        LifecycleAutoConfiguration.class))
                 .withPropertyValues("yomi.event.consumer-enabled=true",
                         "yomi.event.service-name=retention-wiring-test",
                         "spring.application.name=event-retention-wiring")

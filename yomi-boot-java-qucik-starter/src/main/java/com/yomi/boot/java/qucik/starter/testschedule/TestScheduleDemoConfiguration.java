@@ -3,6 +3,7 @@ package com.yomi.boot.java.qucik.starter.testschedule;
 import com.yomi.boot.java.component.redis.RedisUtils;
 import com.yomi.boot.java.component.redis.schedule.ClusterTask;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -21,8 +22,8 @@ public class TestScheduleDemoConfiguration {
     public static final String TASK_NAME = "quickStarterDemoTick";
 
     @Bean
-    public ClusterTask testScheduleDemoTick(Environment environment) {
-        return new ClusterTask(TASK_NAME, Duration.ofMillis(500), environment, () -> {
+    public ClusterTask testScheduleDemoTick(Environment environment, LifecycleProperties lifecycleProperties) {
+        return new ClusterTask(TASK_NAME, Duration.ofMillis(500), environment, lifecycleProperties, () -> {
             Long value = RedisUtils.stringRedisTemplate().opsForValue()
                     .increment(TestScheduleDemoKeys.TICK_COUNTER);
             log.debug("[集群定时任务测试] tick count={}", value);

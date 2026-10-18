@@ -5,6 +5,7 @@ import com.yomi.boot.java.component.event.retention.EventRetentionCleaner;
 import com.yomi.boot.java.component.event.support.EventKeys;
 import com.yomi.boot.java.component.redis.schedule.ClusterTask;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.Environment;
 
@@ -29,6 +30,7 @@ class EventTaskNamingTest {
                 .withPropertyValues("spring.application.name=event-task-naming")
                 .run(context -> {
                     Environment environment = context.getEnvironment();
+                    LifecycleProperties lifecycleProperties = new LifecycleProperties();
                     EventProperties properties = new EventProperties();
                     properties.setFetchInterval(Duration.ofMillis(500));
                     properties.setDlqScanInterval(Duration.ofMillis(700));
@@ -43,17 +45,22 @@ class EventTaskNamingTest {
 
                     Map<String, ClusterTask> tasks = Map.of(
                             OutboxRelayCoordinator.TASK_FETCH,
-                            publisher.eventOutboxFetchTask(properties, coordinator, environment),
+                            publisher.eventOutboxFetchTask(properties, coordinator, environment,
+                                    lifecycleProperties),
                             OutboxRelayCoordinator.TASK_FETCH_TIMEOUT,
-                            publisher.eventOutboxFetchTimeoutTask(properties, coordinator, environment),
+                            publisher.eventOutboxFetchTimeoutTask(properties, coordinator, environment,
+                                    lifecycleProperties),
                             OutboxRelayCoordinator.TASK_DLQ,
-                            publisher.eventDlqRetryTask(properties, coordinator, environment),
+                            publisher.eventDlqRetryTask(properties, coordinator, environment,
+                                    lifecycleProperties),
                             EventRetentionCleaner.TASK_NAME_OUTBOX,
                             publisher.eventOutboxRetentionTask(properties,
-                                    publisher.eventOutboxRetentionCleaner(properties, keys, null), environment),
+                                    publisher.eventOutboxRetentionCleaner(properties, keys, null), environment,
+                                    lifecycleProperties),
                             EventRetentionCleaner.TASK_NAME_INBOX,
                             consumer.eventInboxRetentionTask(properties,
-                                    consumer.eventInboxRetentionCleaner(properties, keys, null), environment));
+                                    consumer.eventInboxRetentionCleaner(properties, keys, null), environment,
+                                    lifecycleProperties));
 
                     tasks.forEach((name, task) -> {
                         assertEquals(name, task.getTaskName(), "任务名必须是任务类上的常量本身");
@@ -61,6 +68,8 @@ class EventTaskNamingTest {
                                 name + " 不应含分隔符或服务名后缀");
                         assertEquals("yomi:schedule:event-task-naming:turn:" + name, task.getTurnKey());
                         assertEquals("yomi:schedule:event-task-naming:lock:" + name, task.getLockKey());
+                        assertEquals(Duration.ofSeconds(24), task.getShutdownAwait(),
+                                "未配阶段超时 → Boot 默认 30s 取 80%");
                     });
                     assertEquals(Duration.ofMillis(500), tasks.get(OutboxRelayCoordinator.TASK_FETCH).getInterval());
                     assertEquals(Duration.ofMillis(500),
