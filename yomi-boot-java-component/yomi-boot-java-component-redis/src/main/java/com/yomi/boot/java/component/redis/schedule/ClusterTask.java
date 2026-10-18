@@ -20,8 +20,8 @@ import java.util.Objects;
  * <p>
  * 每任务独占一个单线程调度器，任务之间不互相阻塞。两把键分工：
  * <ul>
- *   <li><b>频率占位</b> {@code yomi:schedule:{应用}:claim:{任务}}：{@code SET NX}、TTL = 间隔，
- *       拿到占位的实例才执行本轮——集群每间隔只放行一台；持有方挂死也不用干预，占位到期自动放行</li>
+ *   <li><b>轮次名额</b> {@code yomi:schedule:{应用}:turn:{任务}}：{@code SET NX}、TTL = 间隔，
+ *       拿到名额的实例才执行本轮——集群每间隔只放行一台；持有方挂死也不用干预，名额到期自动放行</li>
  *   <li><b>执行锁</b> {@code yomi:schedule:{应用}:lock:{任务}}：Redisson 看门狗租期，
  *       上一轮仍在执行时下一轮跳过，长任务不会与下一轮并发</li>
  * </ul>
@@ -36,13 +36,13 @@ import java.util.Objects;
 @Slf4j
 public class ClusterTask implements SmartLifecycle {
 
-    /** 键前缀：yomi:schedule:{应用}:claim|lock:{任务} */
+    /** 键前缀：yomi:schedule:{应用}:turn|lock:{任务} */
     private static final String KEY_PREFIX = "yomi:schedule:";
 
     /** 停机等待当前一轮结束的上限 */
     private static final Duration SHUTDOWN_AWAIT = Duration.ofSeconds(30);
 
-    /** 频率占位的持有者标识（pid@host），仅用于排查谁占着本轮 */
+    /** 轮次名额的持有者标识（pid@host），仅用于排查谁占着本轮 */
     private static final String INSTANCE_ID = ManagementFactory.getRuntimeMXBean().getName();
 
     /** 任务名：日志标识与键名的一部分 */
@@ -53,9 +53,9 @@ public class ClusterTask implements SmartLifecycle {
     @Getter
     private final Duration interval;
 
-    /** 频率占位键；启动时解析（bean 创建期拿不到 Environment：组件装配先于 core 的 SpringUtils） */
+    /** 轮次名额键；启动时解析（bean 创建期拿不到 Environment：组件装配先于 core 的 SpringUtils） */
     @Getter
-    private volatile String claimKey;
+    private volatile String turnKey;
 
     /** 执行锁键；启动时解析 */
     @Getter
@@ -87,9 +87,9 @@ public class ClusterTask implements SmartLifecycle {
             return;
         }
         String base = KEY_PREFIX + requireApplicationName(SpringUtils.getBean(Environment.class)) + ":";
-        String claimKey = base + "claim:" + taskName;
+        String turnKey = base + "turn:" + taskName;
         String lockKey = base + "lock:" + taskName;
-        this.claimKey = claimKey;
+        this.turnKey = turnKey;
         this.lockKey = lockKey;
         ThreadPoolTaskScheduler taskScheduler = new ThreadPoolTaskScheduler();
         taskScheduler.setPoolSize(1);
@@ -99,11 +99,11 @@ public class ClusterTask implements SmartLifecycle {
         taskScheduler.setAwaitTerminationSeconds((int) SHUTDOWN_AWAIT.toSeconds());
         taskScheduler.setDaemon(true);
         taskScheduler.initialize();
-        taskScheduler.scheduleWithFixedDelay(() -> runOnce(claimKey, lockKey), interval);
+        taskScheduler.scheduleWithFixedDelay(() -> runOnce(turnKey, lockKey), interval);
         this.scheduler = taskScheduler;
         this.running = true;
-        log.info("[集群定时任务]已启动: task={}, interval={}, claimKey={}, lockKey={}",
-                taskName, interval, claimKey, lockKey);
+        log.info("[集群定时任务]已启动: task={}, interval={}, turnKey={}, lockKey={}",
+                taskName, interval, turnKey, lockKey);
     }
 
     @Override
@@ -129,11 +129,11 @@ public class ClusterTask implements SmartLifecycle {
         return Integer.MAX_VALUE - 200;
     }
 
-    /** 单轮：占位 → 抢执行锁 → 执行；任一步未通过本轮跳过；失败记 ERROR，下一轮继续 */
-    private void runOnce(String claimKey, String lockKey) {
+    /** 单轮：抢名额 → 抢执行锁 → 执行；任一步未通过本轮跳过；失败记 ERROR，下一轮继续 */
+    private void runOnce(String turnKey, String lockKey) {
         try {
-            if (!tryClaim(claimKey)) {
-                log.debug("[集群定时任务]本轮跳过，其它实例已占本轮: task={}", taskName);
+            if (!tryAcquireTurn(turnKey)) {
+                log.debug("[集群定时任务]本轮跳过，其它实例已拿到本轮名额: task={}", taskName);
                 return;
             }
             LockUtils.tryLock(lockKey, () -> {
@@ -148,13 +148,13 @@ public class ClusterTask implements SmartLifecycle {
     }
 
     /**
-     * 频率占位（{@code SET NX}，TTL = 间隔）：占位在集群内每间隔只放行一个实例；
-     * 持有方挂死无需干预——占位到期自动放行，长任务由执行锁看门狗兜底
-     * <p>可覆写方法：测试注入占位结果（沿用任务参数的注入缝做法），生产走 Redis
+     * 抢轮次名额（{@code SET NX}，TTL = 间隔）：名额在集群内每间隔只放行一个实例；
+     * 持有方挂死无需干预——名额到期自动放行，长任务由执行锁看门狗兜底
+     * <p>可覆写方法：测试注入名额结果（沿用任务参数的注入缝做法），生产走 Redis
      */
-    protected boolean tryClaim(String claimKey) {
+    protected boolean tryAcquireTurn(String turnKey) {
         return Boolean.TRUE.equals(RedisUtils.stringRedisTemplate().opsForValue()
-                .setIfAbsent(claimKey, INSTANCE_ID, interval));
+                .setIfAbsent(turnKey, INSTANCE_ID, interval));
     }
 
     /** 校验任务名非空（日志标识与键名的一部分） */

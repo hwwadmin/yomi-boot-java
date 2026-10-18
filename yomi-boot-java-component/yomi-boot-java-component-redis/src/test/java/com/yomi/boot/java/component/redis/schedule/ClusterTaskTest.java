@@ -17,20 +17,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 集群定时任务：键名约定（应用名隔离）、占位丢了/执行锁忙时静默跳过、执行失败不断调度、停机后不再执行。
- * <p>占位与执行锁都注入结果（{@link ClusterTask#tryClaim} 覆写 + Redisson 桩），离线运行
+ * 集群定时任务：键名约定（应用名隔离）、没抢到名额/执行锁忙时静默跳过、执行失败不断调度、停机后不再执行。
+ * <p>名额与执行锁都注入结果（{@link ClusterTask#tryAcquireTurn} 覆写 + Redisson 桩），离线运行
  */
 class ClusterTaskTest {
 
-    /** 键名 = yomi:schedule:{spring.application.name}:{claim|lock}:{任务名} */
+    /** 键名 = yomi:schedule:{spring.application.name}:{turn|lock}:{任务名} */
     @Test
     void keysIsolateByApplicationName() {
         AtomicInteger runs = new AtomicInteger();
-        runner(claimedTask("demoTask", runs::incrementAndGet), true).run(context -> {
+        runner(taskWithTurn("demoTask", runs::incrementAndGet), true).run(context -> {
             ClusterTask task = context.getBean(ClusterTask.class);
             assertEquals("demoTask", task.getTaskName());
             assertEquals(Duration.ofMillis(50), task.getInterval());
-            assertEquals("yomi:schedule:cluster-task-test:claim:demoTask", task.getClaimKey());
+            assertEquals("yomi:schedule:cluster-task-test:turn:demoTask", task.getTurnKey());
             assertEquals("yomi:schedule:cluster-task-test:lock:demoTask", task.getLockKey());
             assertTrue(task.isRunning(), "容器 refresh 后任务应已启动");
         });
@@ -40,7 +40,7 @@ class ClusterTaskTest {
     @Test
     void executesRepeatedlyAndStopsOnShutdown() throws Exception {
         AtomicInteger runs = new AtomicInteger();
-        runner(claimedTask("demoTask", runs::incrementAndGet), true).run(context -> {
+        runner(taskWithTurn("demoTask", runs::incrementAndGet), true).run(context -> {
             ClusterTask task = context.getBean(ClusterTask.class);
             assertTrue(SpinBarrier.spin(() -> runs.get() >= 2, 3_000), "应在超时内执行多轮，实际: " + runs.get());
 
@@ -52,30 +52,30 @@ class ClusterTaskTest {
         });
     }
 
-    /** 没抢到频率占位（别的实例跑本轮）：静默跳过，不执行、不中断调度 */
+    /** 没抢到轮次名额（别的实例跑本轮）：静默跳过，不执行、不中断调度 */
     @Test
-    void skipsQuietlyWhenClaimLost() throws Exception {
+    void skipsQuietlyWhenTurnTaken() throws Exception {
         AtomicInteger runs = new AtomicInteger();
-        ClusterTask neverClaimed = new ClusterTask("demoTask", Duration.ofMillis(50),
+        ClusterTask neverTurns = new ClusterTask("demoTask", Duration.ofMillis(50),
                 runs::incrementAndGet) {
             @Override
-            protected boolean tryClaim(String claimKey) {
+            protected boolean tryAcquireTurn(String turnKey) {
                 return false;
             }
         };
-        runner(neverClaimed, true).run(context -> {
+        runner(neverTurns, true).run(context -> {
             ClusterTask task = context.getBean(ClusterTask.class);
             Thread.sleep(300);
-            assertEquals(0, runs.get(), "占位丢了不得执行任务体");
+            assertEquals(0, runs.get(), "名额没抢到不得执行任务体");
             assertTrue(task.isRunning(), "跳过不是故障，调度应保持运行");
         });
     }
 
-    /** 拿到占位但执行锁被上一轮占着：跳过（长任务不与下一轮并发） */
+    /** 拿到名额但执行锁被上一轮占着：跳过（长任务不与下一轮并发） */
     @Test
     void skipsQuietlyWhenExecutionLockBusy() throws Exception {
         AtomicInteger runs = new AtomicInteger();
-        runner(claimedTask("demoTask", runs::incrementAndGet), false).run(context -> {
+        runner(taskWithTurn("demoTask", runs::incrementAndGet), false).run(context -> {
             ClusterTask task = context.getBean(ClusterTask.class);
             Thread.sleep(300);
             assertEquals(0, runs.get(), "执行锁忙时不得执行任务体");
@@ -92,7 +92,7 @@ class ClusterTaskTest {
                 throw new IllegalStateException("第一次执行失败");
             }
         };
-        runner(claimedTask("demoTask", failingAction), true).run(context -> assertTrue(
+        runner(taskWithTurn("demoTask", failingAction), true).run(context -> assertTrue(
                 SpinBarrier.spin(() -> attempts.get() >= 2, 3_000),
                 "首次失败后应继续调度，实际尝试: " + attempts.get()));
     }
@@ -107,11 +107,11 @@ class ClusterTaskTest {
         assertThrows(NullPointerException.class, () -> ClusterTask.of("demoTask", Duration.ofSeconds(1), null));
     }
 
-    /** 演示任务：占位恒成功（绕开 Redis），执行体递增计数 */
-    private static ClusterTask claimedTask(String name, Runnable action) {
+    /** 演示任务：名额恒能抢到（绕开 Redis），执行体递增计数 */
+    private static ClusterTask taskWithTurn(String name, Runnable action) {
         return new ClusterTask(name, Duration.ofMillis(50), action) {
             @Override
-            protected boolean tryClaim(String claimKey) {
+            protected boolean tryAcquireTurn(String turnKey) {
                 return true;
             }
         };
