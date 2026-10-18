@@ -142,8 +142,9 @@ public class ClusterTask implements SmartLifecycle {
             }, "集群定时任务抢执行锁失败");
         } catch (LockBusyException e) {
             log.debug("[集群定时任务]本轮跳过，上一轮仍在执行: task={}", taskName);
-        } catch (Throwable t) {
-            log.error("[集群定时任务]执行失败，{} 后重试: task={}", interval, taskName, t);
+        } catch (Exception t) {
+            // 通常来说异常应该在action任务中就捕获并处理，这里只做兜底记录
+            log.error("[集群定时任务]执行失败: task={}", taskName, t);
         }
     }
 
