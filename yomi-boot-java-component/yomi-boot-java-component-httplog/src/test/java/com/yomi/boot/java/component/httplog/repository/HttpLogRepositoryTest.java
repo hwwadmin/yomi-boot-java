@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 仓储测试：条件组装（概要列/参数/方法归一/分页收敛）、批量会话、两阶段删除（假 Mapper/假会话）
+ * 仓储测试：条件组装（概要列/参数/方法归一/分页收敛）、批量会话、保留期限额删除参数透传（假 Mapper/假会话）
  *
  * @author zwei
  */
@@ -103,18 +103,30 @@ class HttpLogRepositoryTest {
     }
 
     @Test
-    void selectExpiredIds_andDeleteByIds() {
+    void deleteExpiredLimited_passesLimitThroughToMapper() {
         CapturingMapper capturing = new CapturingMapper();
-        capturing.rows = List.of(entity(1L), entity(2L));
-        capturing.deleteRows = 2;
+        capturing.deletedRows = 1000;
+        HttpLogRepository repository = new HttpLogRepository(capturing.mapper(), null);
+        Instant cutoff = Instant.parse("2026-10-12T00:00:00Z");
+
+        int deleted = repository.deleteExpiredLimited("svc-a", cutoff, 5000);
+
+        // 清理块大小必须原样下传：仓储夹取会让"单轮上限/chunk-size"配置说谎（历史缺陷）
+        assertEquals(5000, capturing.limit);
+        assertEquals("svc-a", capturing.serviceName);
+        assertEquals(cutoff, capturing.createTimeBefore);
+        assertEquals(1000, deleted);
+    }
+
+    @Test
+    void findOldestCreateTime_delegatesToMapper() {
+        CapturingMapper capturing = new CapturingMapper();
+        Instant oldest = Instant.parse("2026-10-01T00:00:00Z");
+        capturing.oldest = oldest;
         HttpLogRepository repository = new HttpLogRepository(capturing.mapper(), null);
 
-        List<Long> ids = repository.selectExpiredIds("svc", Instant.now(), 100);
-        assertEquals(List.of(1L, 2L), ids);
-        // 清理只要一批 id：分页不带 count，count 会使每批多扫一遍整个过期区间
-        assertFalse(capturing.page.searchCount(), "保留期清理取 id 不应触发 count 查询");
-        assertEquals(100, capturing.page.getSize());
-        assertEquals(2, repository.deleteByIds(ids));
+        assertEquals(oldest, repository.findOldestCreateTime("svc-a"));
+        assertEquals("svc-a", capturing.serviceName);
     }
 
     private static HttpLogEntity entity(long id) {
@@ -172,7 +184,7 @@ class HttpLogRepositoryTest {
         return null;
     }
 
-    /** 假 Mapper：捕获分页参数与条件，返回预设数据 */
+    /** 假 Mapper：捕获分页参数与条件、清理参数，返回预设数据 */
     static class CapturingMapper {
 
         Page<HttpLogEntity> page;
@@ -183,7 +195,15 @@ class HttpLogRepositoryTest {
 
         long total;
 
-        int deleteRows;
+        int deletedRows;
+
+        Instant oldest;
+
+        String serviceName;
+
+        Instant createTimeBefore;
+
+        Integer limit;
 
         @SuppressWarnings("unchecked")
         HttpLogMapper mapper() {
@@ -196,8 +216,15 @@ class HttpLogRepositoryTest {
                             page.setTotal(total);
                             return page;
                         }
-                        if ("delete".equals(method.getName())) {
-                            return deleteRows;
+                        if ("deleteExpiredLimited".equals(method.getName())) {
+                            serviceName = (String) args[0];
+                            createTimeBefore = (Instant) args[1];
+                            limit = (Integer) args[2];
+                            return deletedRows;
+                        }
+                        if ("selectOldestCreateTime".equals(method.getName())) {
+                            serviceName = (String) args[0];
+                            return oldest;
                         }
                         return defaultValue(method.getReturnType());
                     });

@@ -9,6 +9,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.time.Duration;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 
 /**
  * 组件指标与限流日志：written / dropped / failed + 队列深度
@@ -46,6 +47,28 @@ public class HttpLogMetrics {
         if (warnThrottled(lastDropWarnAt)) {
             log.warn("[httplog]日志丢弃 count={}, reason={}（持续丢弃通常为落库能力不足：检查 DB 批插耗时/批量参数）",
                     n, reason);
+        }
+    }
+
+    /** 保留期清理删除 n 行 */
+    public void retentionDeleted(int n) {
+        counter("yomi.httplog.retention.deleted", null).increment(n);
+    }
+
+    /**
+     * 注册保留期落后时长（秒）指标
+     * <p>取值由清理每轮刷新（{@code lag = now - 最旧一行}），指标拉取不打库；{@code lag > days} 即清理追不上
+     */
+    public void registerRetentionLag(String serviceName, LongSupplier lagSeconds) {
+        if (registry == null) {
+            return;
+        }
+        try {
+            Gauge.builder("yomi.httplog.retention.lag", lagSeconds, supplier -> supplier.getAsLong())
+                    .tag("service", serviceName)
+                    .register(registry);
+        } catch (Exception e) {
+            log.debug("[httplog]注册保留期落后指标失败: {}", e.getMessage());
         }
     }
 

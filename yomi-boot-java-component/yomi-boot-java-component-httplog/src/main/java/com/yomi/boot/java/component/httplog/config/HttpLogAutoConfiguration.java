@@ -52,6 +52,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -245,7 +246,6 @@ public class HttpLogAutoConfiguration {
     /** 启动时输出队列/存储等装配摘要 */
     private static void logSummary(HttpLogProperties properties, HttpLogKeys keys, HttpLogDesensitizer desensitizer) {
         HttpLogProperties.Collect collect = properties.getCollect();
-        HttpLogProperties.Retention retention = properties.getRetention();
         log.info("[httplog]已启用 service={}, mode={}, 采集[请求头={},请求体={},响应头={},响应体={}], "
                         + "截断[请求={}B,响应={}B], 缓冲[容量={},批量={}], 脱敏[键={},body={}], 保留={}",
                 keys.getServiceName(), properties.getMode(),
@@ -254,9 +254,24 @@ public class HttpLogAutoConfiguration {
                 collect.getMaxRequestBodyBytes(), collect.getMaxResponseBodyBytes(),
                 properties.getBuffer().getCapacity(), properties.getBuffer().getBatchSize(),
                 desensitizer.active() ? properties.getDesensitize().getKeyTypes().size() : 0,
-                desensitizer.bodyEnabled(), retention.isEnabled() ? retention.getDays() + "天" : "关闭");
+                desensitizer.bodyEnabled(),
+                properties.getRetention().isEnabled() ? properties.getRetention().getDays() + "天" : "关闭");
         log.info("[httplog]磁盘提示: 全量采集下行宽约含头/体（上限 {}B+{}B），磁盘 ≈ QPS × 行宽 × 86400 × 保留天数，上线前请评估",
                 collect.getMaxRequestBodyBytes(), collect.getMaxResponseBodyBytes());
+        if (properties.getRetention().isEnabled()) {
+            log.info("[httplog]清理能力: days={}, {} 行/轮（上限）× {} 轮/天 = 约 {} 行/天；"
+                            + "写入行/天（QPS×86400）超过该值、或 lag 指标持续大于 days 时需调大 max-delete-per-run 或调小 scan-interval",
+                    properties.getRetention().getDays(), properties.getRetention().getMaxDeletePerRun(),
+                    runsPerDay(properties.getRetention().getScanInterval()),
+                    properties.getRetention().getMaxDeletePerRun()
+                            * runsPerDay(properties.getRetention().getScanInterval()));
+        }
+    }
+
+    /** 每天的清理轮数（间隔大于一天时按 1 轮计） */
+    private static long runsPerDay(Duration scanInterval) {
+        long millis = Math.max(1L, scanInterval.toMillis());
+        return Math.max(1L, Duration.ofDays(1).toMillis() / millis);
     }
 
     /** 仅触发启动校验，无业务逻辑 */
@@ -348,10 +363,14 @@ public class HttpLogAutoConfiguration {
         @ConditionalOnMissingBean
         @ConditionalOnProperty(value = "yomi.httplog.retention.enabled", havingValue = "true", matchIfMissing = true)
         public HttpLogRetentionCleaner httpLogRetentionCleaner(HttpLogProperties properties, HttpLogKeys keys,
-                                                               IHttpLogRepository httpLogRepository) {
-            log.info("[httplog]保留期清理已启用: days={}, scanInterval={}",
-                    properties.getRetention().getDays(), properties.getRetention().getScanInterval());
-            return new HttpLogRetentionCleaner(properties, keys, httpLogRepository);
+                                                               IHttpLogRepository httpLogRepository,
+                                                               HttpLogMetrics metrics) {
+            log.info("[httplog]保留期清理已启用: days={}, scanInterval={}, chunkSize={}, maxDeletePerRun={}",
+                    properties.getRetention().getDays(), properties.getRetention().getScanInterval(),
+                    properties.getRetention().getChunkSize(), properties.getRetention().getMaxDeletePerRun());
+            HttpLogRetentionCleaner cleaner = new HttpLogRetentionCleaner(properties, keys, httpLogRepository, metrics);
+            metrics.registerRetentionLag(keys.getServiceName(), cleaner::getLagSeconds);
+            return cleaner;
         }
 
         /** 保留期清理任务（集群定时任务：同一时刻只有一个实例执行） */

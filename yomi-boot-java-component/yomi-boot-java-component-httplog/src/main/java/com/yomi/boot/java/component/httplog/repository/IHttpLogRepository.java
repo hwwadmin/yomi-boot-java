@@ -33,10 +33,15 @@ public interface IHttpLogRepository {
     /** 单条插入（完整性冲突逐条隔离场景） */
     void insert(HttpLogEntity entity);
 
-    /** 过期行 id 取样（保留期清理第一阶段；删除按 id 逐批执行，SQL 保持跨库通用） */
-    List<Long> selectExpiredIds(String serviceName, Instant before, int limit);
+    /**
+     * 保留期清理：限额物理删除该服务 {@code create_time} 早于阈值的行
+     *
+     * @param limit 单条 DELETE 的行数上限（原样下传，实现不得夹取/取小）
+     * @return 实际删除行数
+     */
+    int deleteExpiredLimited(String serviceName, Instant createTimeBefore, int limit);
 
-    /** 按 id 删除（保留期清理第二阶段） */
-    int deleteByIds(List<Long> ids);
+    /** 该服务最旧一行的 {@code create_time}（表空返回 null）；落后度量用 */
+    Instant findOldestCreateTime(String serviceName);
 
 }

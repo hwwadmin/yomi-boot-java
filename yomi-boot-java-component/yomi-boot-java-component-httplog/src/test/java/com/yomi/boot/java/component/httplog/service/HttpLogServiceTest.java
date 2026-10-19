@@ -159,13 +159,13 @@ class HttpLogServiceTest {
         }
 
         @Override
-        public List<Long> selectExpiredIds(String serviceName, Instant before, int limit) {
-            return List.of();
+        public int deleteExpiredLimited(String serviceName, Instant createTimeBefore, int limit) {
+            return 0;
         }
 
         @Override
-        public int deleteByIds(List<Long> ids) {
-            return 0;
+        public Instant findOldestCreateTime(String serviceName) {
+            return null;
         }
 
     }

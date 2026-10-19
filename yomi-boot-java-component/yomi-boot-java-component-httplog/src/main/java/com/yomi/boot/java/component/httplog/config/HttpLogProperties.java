@@ -22,6 +22,9 @@ public class HttpLogProperties {
     /** body 截断上限的硬上限：sys_http_log 的 body 列为 text（64KB），留少量余量 */
     private static final int MAX_BODY_BYTES_LIMIT = 60_000;
 
+    /** 单条 DELETE 行数的硬上限：块越大单语句持锁越久（吞吐收益在 5000 附近已基本拿满） */
+    private static final int MAX_CHUNK_SIZE = 10_000;
+
     /** 单条日志除 body 外的元数据估算开销（URL/头/JSON 包装），用于队列内存估算 */
     private static final long PER_RECORD_OVERHEAD_BYTES = 2 * 1024L;
 
@@ -266,11 +269,11 @@ public class HttpLogProperties {
         /** 扫描间隔 */
         private Duration scanInterval = Duration.ofHours(1);
 
-        /** 每批删除行数 */
-        private int batchSize = 1000;
+        /** 单条 DELETE 删除的行数（限额删除的块大小）：越大清理吞吐越高、单语句持锁越久 */
+        private int chunkSize = 1000;
 
         /** 单轮最多删除行数（防止一次清理长时间占用数据库） */
-        private int maxDeletePerRun = 50_000;
+        private int maxDeletePerRun = 200_000;
 
     }
 
@@ -347,11 +350,13 @@ public class HttpLogProperties {
             throw new IllegalStateException("yomi.httplog.retention.days 必须大于等于 1");
         }
         requirePositive(r.getScanInterval(), "yomi.httplog.retention.scan-interval");
-        if (r.getBatchSize() <= 0) {
-            throw new IllegalStateException("yomi.httplog.retention.batch-size 必须大于 0");
+        if (r.getChunkSize() < 1 || r.getChunkSize() > MAX_CHUNK_SIZE) {
+            throw new IllegalStateException("yomi.httplog.retention.chunk-size 必须在 [1," + MAX_CHUNK_SIZE
+                    + "]（单条 DELETE 的行数）");
         }
-        if (r.getMaxDeletePerRun() <= 0) {
-            throw new IllegalStateException("yomi.httplog.retention.max-delete-per-run 必须大于 0");
+        if (r.getMaxDeletePerRun() < r.getChunkSize()) {
+            throw new IllegalStateException("yomi.httplog.retention.max-delete-per-run(" + r.getMaxDeletePerRun()
+                    + ") 不能小于 chunk-size(" + r.getChunkSize() + ")：一轮连一块都删不完");
         }
     }
 

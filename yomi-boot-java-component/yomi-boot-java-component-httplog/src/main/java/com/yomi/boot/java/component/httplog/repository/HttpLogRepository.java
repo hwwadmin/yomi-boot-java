@@ -16,8 +16,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 仓储默认实现（{@link IHttpLogRepository}）：列选择、条件组装、批量会话、两阶段删除等持久化细节收口
- * <p>参数化构造器（零拼接 SQL），批量插入走 JDBC batch（跨库安全）。
+ * 仓储默认实现（{@link IHttpLogRepository}）：列选择、条件组装、批量会话等持久化细节收口
+ * <p>参数化构造器（零拼接 SQL），批量插入走 JDBC batch（跨库安全）；
+ * 保留期限额删除走 Mapper XML 的方言两条（MySQL 原生 LIMIT / PG ctid 子查询）。
  *
  * @author zwei
  */
@@ -67,23 +68,16 @@ public class HttpLogRepository implements IHttpLogRepository {
         mapper.insert(entity);
     }
 
-    /** 查询超过保留期的 id 列表（只要一批 id：关掉 count，count 会使每批多扫一遍整个过期区间） */
+    /** 限额物理删除（limit 原样下传；谓词命中"全部过期行"，删哪一批都对） */
     @Override
-    public List<Long> selectExpiredIds(String serviceName, Instant before, int limit) {
-        Page<HttpLogEntity> page = new Page<>(1, Math.min(Math.max(limit, 1), PageRequest.MAX_PAGE_SIZE));
-        page.setSearchCount(false);
-        return mapper.selectPage(page, new LambdaQueryWrapper<HttpLogEntity>()
-                        .select(HttpLogEntity::getId)
-                        .eq(HttpLogEntity::getServiceName, serviceName)
-                        .lt(HttpLogEntity::getCreateTime, before)
-                        .orderByAsc(HttpLogEntity::getCreateTime))
-                .getRecords().stream().map(HttpLogEntity::getId).toList();
+    public int deleteExpiredLimited(String serviceName, Instant createTimeBefore, int limit) {
+        return mapper.deleteExpiredLimited(serviceName, createTimeBefore, limit);
     }
 
-    /** 按 id 批量物理删除 */
+    /** 最旧一行时间（索引取 min，与过期行数无关） */
     @Override
-    public int deleteByIds(List<Long> ids) {
-        return mapper.delete(new LambdaQueryWrapper<HttpLogEntity>().in(HttpLogEntity::getId, ids));
+    public Instant findOldestCreateTime(String serviceName) {
+        return mapper.selectOldestCreateTime(serviceName);
     }
 
     /** 概要列 + 条件组装（列名等持久化细节收在仓储内） */

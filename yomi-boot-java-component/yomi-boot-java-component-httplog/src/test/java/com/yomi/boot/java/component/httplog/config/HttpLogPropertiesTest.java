@@ -30,6 +30,8 @@ class HttpLogPropertiesTest {
         assertEquals(Duration.ofMillis(500), properties.getBuffer().getFlushInterval());
         assertEquals(7, properties.getRetention().getDays());
         assertTrue(properties.getRetention().isEnabled());
+        assertEquals(1000, properties.getRetention().getChunkSize());
+        assertEquals(200_000, properties.getRetention().getMaxDeletePerRun());
         assertEquals(1.0, properties.getCollect().getSampleRate());
         assertEquals(8192, properties.getCollect().getMaxRequestBodyBytes());
         assertEquals(8192, properties.getCollect().getMaxResponseBodyBytes());
@@ -39,12 +41,35 @@ class HttpLogPropertiesTest {
     }
 
     @Test
-    void validate_invalidBatchSize_failsFast() {
+    void validate_invalidBufferBatchSize_failsFast() {
         HttpLogProperties properties = new HttpLogProperties();
         properties.setEnabled(true);
         properties.getBuffer().setBatchSize(0);
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
         assertTrue(ex.getMessage().contains("batch-size"), ex.getMessage());
+    }
+
+    @Test
+    void validate_chunkSizeOutOfRange_failsFast() {
+        HttpLogProperties properties = new HttpLogProperties();
+        properties.setEnabled(true);
+        properties.getRetention().setChunkSize(0);
+        IllegalStateException zero = assertThrows(IllegalStateException.class, properties::validate);
+        assertTrue(zero.getMessage().contains("chunk-size"), zero.getMessage());
+
+        properties.getRetention().setChunkSize(10_001);
+        IllegalStateException tooLarge = assertThrows(IllegalStateException.class, properties::validate);
+        assertTrue(tooLarge.getMessage().contains("chunk-size"), tooLarge.getMessage());
+    }
+
+    @Test
+    void validate_maxDeletePerRunSmallerThanChunk_failsFast() {
+        HttpLogProperties properties = new HttpLogProperties();
+        properties.setEnabled(true);
+        properties.getRetention().setChunkSize(5000);
+        properties.getRetention().setMaxDeletePerRun(1000);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
+        assertTrue(ex.getMessage().contains("max-delete-per-run"), ex.getMessage());
     }
 
     @Test
