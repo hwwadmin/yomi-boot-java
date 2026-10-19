@@ -280,7 +280,7 @@ public class CreateOrderController {
 public class CreateOrderUseCase {
     private final OrderDomainService orderDomainService;
 
-    /** 幂等边界在编排层：IdempotencyUtils 闭包包住写逻辑，见 component-idempotency */
+    /** 幂等边界在编排层：IdempotencyUtils 闭包包住写逻辑；事务边界由用例给（组件不自建事务），见 component-idempotency */
     @Transactional(rollbackFor = Exception.class)
     public CreateOrderResponse execute(CreateOrderRequest request) {
         return IdempotencyUtils.execute("order:create", request.getIdempotencyKey(), CreateOrderResponse.class,

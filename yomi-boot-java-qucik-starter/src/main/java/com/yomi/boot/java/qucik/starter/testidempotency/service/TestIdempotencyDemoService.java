@@ -4,6 +4,7 @@ import com.yomi.boot.java.base.utils.IdUtils;
 import com.yomi.boot.java.component.idempotency.IdempotencyUtils;
 import com.yomi.boot.java.qucik.starter.testidempotency.dto.TestIdempotencyInvokeResult;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -12,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 幂等演示业务：标准入口 {@link IdempotencyUtils} 包住带副作用的写逻辑，供测试接口调用
+ * <p>事务边界在用例入口（组件不自建事务）：这里用 {@code @Transactional}，守卫会沿用它
  *
  * @author zwei
  */
@@ -35,6 +37,7 @@ public class TestIdempotencyDemoService {
             });
 
     /** 幂等写入口：同一命名空间 + 幂等键只产生一次副作用，重放返回首次结果 */
+    @Transactional(rollbackFor = Exception.class)
     public TestIdempotencyInvokeResult create(String idempotencyKey) {
         return IdempotencyUtils.execute(NAMESPACE, idempotencyKey, TestIdempotencyInvokeResult.class,
                 () -> recordSideEffect(idempotencyKey));

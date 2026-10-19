@@ -144,7 +144,7 @@ public class EventAutoConfiguration {
         /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_event.sql 自动创建 */
         @Bean
         public TableInitializer eventOutboxTableInitializer(ListableBeanFactory beanFactory) {
-            return new TableInitializer(beanFactory, "事件发件箱", "sys_event.sql",
+            return TableInitializer.onMaster(beanFactory, "事件发件箱", "sys_event.sql",
                     List.of("sys_event_outbox", "sys_event_outbox_dlq"));
         }
 
@@ -248,7 +248,7 @@ public class EventAutoConfiguration {
         /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_event.sql 自动创建 */
         @Bean
         public TableInitializer eventInboxTableInitializer(ListableBeanFactory beanFactory) {
-            return new TableInitializer(beanFactory, "事件收件箱", "sys_event.sql",
+            return TableInitializer.onMaster(beanFactory, "事件收件箱", "sys_event.sql",
                     List.of("sys_event_inbox"));
         }
 

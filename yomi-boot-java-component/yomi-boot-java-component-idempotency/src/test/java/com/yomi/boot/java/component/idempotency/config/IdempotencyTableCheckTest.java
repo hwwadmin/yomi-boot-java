@@ -1,6 +1,6 @@
 package com.yomi.boot.java.component.idempotency.config;
 
-import com.yomi.boot.java.component.ds.support.TableInitializer;
+
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -45,9 +45,11 @@ class IdempotencyTableCheckTest {
 
     @Test
     void startsWhenTableExists() {
-        runner("MySQL", true, true, new ArrayList<>()).run(context -> {
+        List<String> executed = new ArrayList<>();
+        runner("MySQL", true, true, executed).run(context -> {
             assertNull(context.getStartupFailure(), () -> "表存在时不应启动失败: " + failureText(context.getStartupFailure()));
-            assertNotNull(context.getBean(TableInitializer.class), "建表器 Bean 应已装配");
+            assertEquals(List.of("SELECT 1 FROM " + TABLE + " WHERE 1 = 0"), executed,
+                    "表存在时只探活、不执行任何 DDL");
         });
     }
 

@@ -3,6 +3,7 @@ package com.yomi.boot.java.component.idempotency;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyGuard;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyKey;
 import com.yomi.boot.java.core.utils.SpringUtils;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.lang.reflect.Type;
 import java.util.UUID;
@@ -11,7 +12,9 @@ import java.util.function.Supplier;
 /**
  * 幂等组件唯一入口（静态调用，需 {@code yomi.idempotency.enabled=true}）：
  * 把写逻辑包进 {@code execute} / {@code run} 的闭包，同一 namespace + 幂等键只执行一次，重放返回首次结果。
- * <p>建议放在写用例入口（{@code *UseCase#execute}）与 {@code @Transactional} 同点：占位记录与业务写入同一事务，回滚一起回滚。
+ * <p>事务边界由调用方给：调用点已有事务（{@code *UseCase#execute} 上的 {@code @Transactional}）就直接沿用，
+ * 没有事务时把 {@code TransactionTemplate} 显式传进来——组件不创建事务，两者都没有就在入口报错。
+ * 记录库跟着事务走（默认只有主库可用，附加库要用幂等先经 {@link IdempotencyDataSources} 注册）。
  *
  * @author zwei
  */
@@ -33,7 +36,7 @@ public abstract class IdempotencyUtils {
     }
 
     /**
-     * 有返回值的幂等执行
+     * 有返回值的幂等执行（沿用调用点已有事务）
      *
      * @param namespace      命名空间，非空
      * @param idempotencyKey 幂等键，非空
@@ -45,10 +48,26 @@ public abstract class IdempotencyUtils {
     }
 
     /**
+     * 有返回值的幂等执行（显式事务模板：调用点没有事务时用它给出边界，须为 REQUIRED 且非只读）
+     */
+    public static <T> T execute(String namespace, String idempotencyKey, Class<T> returnType,
+                                TransactionTemplate template, Supplier<T> fn) {
+        return guard().execute(key(namespace, idempotencyKey), returnType, template, fn);
+    }
+
+    /**
      * 有返回值的幂等执行（完整 IdempotencyKey）
      */
     public static <T> T execute(IdempotencyKey idempotencyKey, Class<T> returnType, Supplier<T> fn) {
         return guard().execute(idempotencyKey, returnType, fn);
+    }
+
+    /**
+     * 有返回值的幂等执行（完整 IdempotencyKey + 显式事务模板）
+     */
+    public static <T> T execute(IdempotencyKey idempotencyKey, Class<T> returnType,
+                                TransactionTemplate template, Supplier<T> fn) {
+        return guard().execute(idempotencyKey, returnType, template, fn);
     }
 
     /**
@@ -58,16 +77,37 @@ public abstract class IdempotencyUtils {
         return guard().execute(key(namespace, idempotencyKey), returnType, fn);
     }
 
+    /**
+     * 有返回值的幂等执行（完整泛型返回类型 + 显式事务模板）
+     */
+    public static <T> T execute(String namespace, String idempotencyKey, Type returnType,
+                                TransactionTemplate template, Supplier<T> fn) {
+        return guard().execute(key(namespace, idempotencyKey), returnType, template, fn);
+    }
+
     /** 有返回值的幂等执行（完整 IdempotencyKey + 完整泛型返回类型） */
     public static <T> T execute(IdempotencyKey idempotencyKey, Type returnType, Supplier<T> fn) {
         return guard().execute(idempotencyKey, returnType, fn);
     }
 
+    /** 有返回值的幂等执行（完整 IdempotencyKey + 完整泛型返回类型 + 显式事务模板） */
+    public static <T> T execute(IdempotencyKey idempotencyKey, Type returnType,
+                                TransactionTemplate template, Supplier<T> fn) {
+        return guard().execute(idempotencyKey, returnType, template, fn);
+    }
+
     /**
-     * 无返回值的幂等执行
+     * 无返回值的幂等执行（沿用调用点已有事务）
      */
     public static void run(String namespace, String idempotencyKey, Runnable fn) {
         guard().executeVoid(key(namespace, idempotencyKey), fn);
+    }
+
+    /**
+     * 无返回值的幂等执行（显式事务模板）
+     */
+    public static void run(String namespace, String idempotencyKey, TransactionTemplate template, Runnable fn) {
+        guard().executeVoid(key(namespace, idempotencyKey), template, fn);
     }
 
     /**
@@ -75,6 +115,13 @@ public abstract class IdempotencyUtils {
      */
     public static void run(IdempotencyKey idempotencyKey, Runnable fn) {
         guard().executeVoid(idempotencyKey, fn);
+    }
+
+    /**
+     * 无返回值的幂等执行（完整 IdempotencyKey + 显式事务模板）
+     */
+    public static void run(IdempotencyKey idempotencyKey, TransactionTemplate template, Runnable fn) {
+        guard().executeVoid(idempotencyKey, template, fn);
     }
 
     /** 获取幂等守卫 Bean */

@@ -13,6 +13,7 @@ import java.util.function.IntUnaryOperator;
  * 定时物理删除：超时「处理中」记录、已过 expire_time 的记录
  * <p>两类各自"删到删空或达到单轮上限"（限额删除 + 块大小 + 单轮上限，与 httplog/event 同口径），
  * 单轮占用数据库的时间有上限；落后度量取「已过期」一类——它才是稳态增长源，僵死一类常态为空。
+ * <p>每个注册的记录库一个实例（{@link #datasourceName} 进日志）：一个库的清理卡住不牵动别的库
  * <p>仅当 yomi.idempotency.stale-cleaner-enabled=true 时装配，由集群定时任务调度
  *
  * @author zwei
@@ -30,6 +31,9 @@ public class IdempotencyStaleCleaner {
     /** 块大小、单轮上限、超时等 */
     private final IdempotencyProperties properties;
 
+    /** 记录库注册名：日志标识，多库时看得出是哪一份记录表 */
+    private final String datasourceName;
+
     /** 最近一轮的落后秒数（表空或已追上为 0）：最旧一行过期多久，供指标/排查读取 */
     private volatile long lagSeconds;
 
@@ -46,8 +50,8 @@ public class IdempotencyStaleCleaner {
 
         this.lagSeconds = lagSeconds(now);
         if (staleDeleted > 0 || expiredDeleted > 0) {
-            log.info("[幂等]记录清理 staleProcessing={} expired={}, lag={}s, elapsedMs={}, staleTimeout={}",
-                    staleDeleted, expiredDeleted, lagSeconds, (System.nanoTime() - startedAt) / 1_000_000,
+            log.info("{}记录清理 staleProcessing={} expired={}, lag={}s, elapsedMs={}, staleTimeout={}",
+                    tag(), staleDeleted, expiredDeleted, lagSeconds, (System.nanoTime() - startedAt) / 1_000_000,
                     properties.getStaleTimeout());
         }
     }
@@ -69,10 +73,15 @@ public class IdempotencyStaleCleaner {
             }
             deleted += rows;
         }
-        log.warn("[幂等]{}清理达到单轮上限 max-delete-per-run={}，剩余行下轮继续"
+        log.warn("{}{}清理达到单轮上限 max-delete-per-run={}，剩余行下轮继续"
                         + "（持续触顶说明单轮容量不足：调大上限或调小 scan-interval）",
-                category, maxPerRun);
+                tag(), category, maxPerRun);
         return deleted;
+    }
+
+    /** 日志前缀：多库时标明是哪一份记录表 */
+    private String tag() {
+        return "[幂等:" + datasourceName + "]";
     }
 
     /** 落后 = 最旧一行的 expire_time 已过期多久（表空或未过期按 0 计） */

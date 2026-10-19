@@ -136,7 +136,7 @@ public class HttpLogAutoConfiguration {
     /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_http_log.sql 自动创建 */
     @Bean
     public TableInitializer httpLogTableInitializer(ListableBeanFactory beanFactory) {
-        return new TableInitializer(beanFactory, "HTTP请求日志", "sys_http_log.sql", List.of("sys_http_log"));
+        return TableInitializer.onMaster(beanFactory, "HTTP请求日志", "sys_http_log.sql", List.of("sys_http_log"));
     }
 
     @Bean

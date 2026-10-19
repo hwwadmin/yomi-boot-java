@@ -15,6 +15,7 @@ import org.springframework.jdbc.datasource.ConnectionHolder;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import javax.sql.DataSource;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /**
@@ -28,6 +29,9 @@ import java.util.stream.Collectors;
  * 形态：每个工厂一个实例（绑定该工厂的库名与数据源），因为判定需要知道"本语句属于哪个库"：
  * {@code DsCrossDbGuard.of(库名, 该工厂的数据源)}。主库由本组件自动挂上；附加库由业务按
  * 《组件使用说明》的模板挂（一行 {@code factory.setPlugins(chain, DsCrossDbGuard.of(...))}）。
+ * <p>
+ * "当前线程的事务绑在哪个库"这条判据由 {@link #otherBoundLibraries(javax.sql.DataSource)} 对外复用
+ * （幂等组件用它做"外层事务必须落主库"的入口自检）。
  * <p>
  * 判定：事务活跃 + 本库不是事务绑定的库（{@code hasResource(本库)} 为假）+ 事务确实绑定了其它库的
  * 连接 ⇒ ERROR。无事务或本库就是事务绑定的库时只做两次 ThreadLocal 读，零额外开销。
@@ -111,7 +115,7 @@ public class DsCrossDbGuard implements Interceptor {
         if (TransactionSynchronizationManager.hasResource(dataSource)) {
             return;
         }
-        String bound = boundLibraries();
+        String bound = otherBoundLibraries(dataSource);
         if (bound.isEmpty()) {
             return;
         }
@@ -123,15 +127,33 @@ public class DsCrossDbGuard implements Interceptor {
     }
 
     /**
-     * 事务当前绑定的库（连接持有者）；空的返回表示"事务活跃但没有绑定任何数据源连接"（如纯 Redis 事务），不算违规。
-     * 走到这里时 {@code hasResource(本库)} 已为假，所以任何连接持有者都属于别的库。
+     * 当前线程事务绑定的、不属于 {@code own} 的数据源（连接持有者），多个用逗号连接；空串 = 没有别的库在这个事务里。
+     * <p>
+     * 只认 {@link ConnectionHolder}：事务活跃但没绑任何数据源连接（如纯 Redis 事务）时返回空串，不算跨库。
+     * 判定"本库的语句在不在这个事务里"就靠它——{@code hasResource(本库)} 为假时，任何连接持有者都属于别的库。
+     *
+     * @param own 本库的数据源实例（事务管理器绑定时用的就是它）
      */
-    private static String boundLibraries() {
+    public static String otherBoundLibraries(DataSource own) {
         return TransactionSynchronizationManager.getResourceMap().entrySet().stream()
                 .filter(entry -> entry.getValue() instanceof ConnectionHolder)
+                .filter(entry -> entry.getKey() != own)
                 .map(entry -> entry.getKey() instanceof DataSource bound
                         ? bound.getClass().getSimpleName() : String.valueOf(entry.getKey()))
                 .collect(Collectors.joining(", "));
+    }
+
+    /**
+     * 当前线程事务绑定的数据源（连接持有者对应的那些）；空列表 = 没有数据源事务在跑。
+     * <p>与 {@link #otherBoundLibraries} 同一判据，供"按事务判定记录写哪个库"的组件复用（如幂等守卫）。
+     */
+    public static List<DataSource> boundDataSources() {
+        return TransactionSynchronizationManager.getResourceMap().entrySet().stream()
+                .filter(entry -> entry.getValue() instanceof ConnectionHolder)
+                .map(entry -> entry.getKey())
+                .filter(DataSource.class::isInstance)
+                .map(DataSource.class::cast)
+                .toList();
     }
 
     /** 被拦截语句的标识（mapper 接口#方法） */

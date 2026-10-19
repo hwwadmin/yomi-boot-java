@@ -243,7 +243,7 @@ public class RbacAutoConfiguration {
      *（含内置超管种子），建表后请求可正常通过鉴权 */
     @Bean
     public TableInitializer rbacTableInitializer(ListableBeanFactory beanFactory) {
-        return new TableInitializer(beanFactory, "RBAC", "sys_rbac.sql", List.of(
+        return TableInitializer.onMaster(beanFactory, "RBAC", "sys_rbac.sql", List.of(
                 "sys_rbac_perm", "sys_rbac_perm_group", "sys_rbac_role",
                 "sys_rbac_user_role_rel", "sys_rbac_role_group_rel", "sys_rbac_group_perm_rel"));
     }

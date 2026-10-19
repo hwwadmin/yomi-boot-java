@@ -1,20 +1,22 @@
 package com.yomi.boot.java.component.idempotency.core;
 
 import com.yomi.boot.java.base.exception.BizException;
+import com.yomi.boot.java.component.idempotency.IdempotencyDataSources;
 import com.yomi.boot.java.component.idempotency.config.IdempotencyProperties;
 import com.yomi.boot.java.component.idempotency.exception.IdempotencyErrorCode;
-import com.yomi.boot.java.component.idempotency.repository.IdempotencyRecordRepository;
+import com.yomi.boot.java.component.idempotency.repository.IIdempotencyRecordRepository;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyCacheLoad;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyKeys;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyRedisStore;
+import com.yomi.boot.java.component.idempotency.testsupport.StubDataSource;
 import org.junit.jupiter.api.Test;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.AbstractPlatformTransactionManager;
-import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -30,11 +32,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       （否则会落到驱动层 Data too long / value too long，报错不点名且同形状请求此后必然失败）；上限值本身合法；</li>
  *   <li>请求指纹不限长：构造时归一为 SHA-256 摘要，落库列宽与结果缓存键长度都由此封顶。</li>
  * </ol>
+ * 事务边界由用例显式给出（组件不自建事务）；仓储为桩，全离线。
  */
 class IdempotencyGuardKeyLengthTest {
 
     /** 是否读到了结果缓存：用来证明"长度校验先于缓存/锁/库" */
     private final AtomicBoolean storeTouched = new AtomicBoolean();
+
+    /** 主库数据源与事务模板（边界由调用方给） */
+    private final StubDataSource masterDataSource = new StubDataSource();
+    private final TransactionTemplate template =
+            new TransactionTemplate(new DataSourceTransactionManager(masterDataSource));
 
     @Test
     void rejectsOverlongNamespaceAndKey() {
@@ -52,7 +60,7 @@ class IdempotencyGuardKeyLengthTest {
                 "k".repeat(IdempotencyKey.MAX_KEY_LENGTH),
                 null);
 
-        Object result = guard(IdempotencyCacheLoad.hit("cached")).executeInternal(key, String.class, () -> "should-not-run");
+        Object result = invoke(IdempotencyCacheLoad.hit("cached"), key, () -> "should-not-run");
 
         assertEquals("cached", result, "上限值必须合法：校验通过后照常读缓存");
         assertTrue(storeTouched.get(), "上限值应放行到缓存读取");
@@ -66,7 +74,7 @@ class IdempotencyGuardKeyLengthTest {
 
         assertEquals(IdempotencyKey.REQUEST_HASH_LENGTH, key.requestHash().length(),
                 "指纹必须归一为固定长度的摘要");
-        Object result = guard(IdempotencyCacheLoad.hit("cached")).executeInternal(key, String.class, () -> "x");
+        Object result = invoke(IdempotencyCacheLoad.hit("cached"), key, () -> "x");
         assertEquals("cached", result);
         assertTrue(storeTouched.get(), "超长指纹不得被长度校验拦下");
     }
@@ -82,7 +90,7 @@ class IdempotencyGuardKeyLengthTest {
         assertNotEquals(first.requestHash(), other.requestHash(), "异原文必须异摘要");
         assertNull(new IdempotencyKey("ns", "k", "   ").requestHash(), "空白指纹视为未传");
 
-        IdempotencyKeys keys = new IdempotencyKeys("yomi:test:idem");
+        IdempotencyKeys keys = new IdempotencyKeys("yomi:test:idem").forDatasource("master");
         assertEquals(keys.resultKey(first), keys.resultKey(sameRawWithSpaces), "同指纹必须落在同一缓存键");
         assertNotEquals(keys.resultKey(first), keys.resultKey(other), "异指纹必须落在不同缓存键");
         assertFalse(keys.resultKey(first).contains("fp-A"), "缓存键只带摘要，不带原文");
@@ -95,7 +103,7 @@ class IdempotencyGuardKeyLengthTest {
         storeTouched.set(false);
 
         BizException ex = assertThrows(BizException.class,
-                () -> guard(IdempotencyCacheLoad.miss()).executeInternal(key, String.class, () -> "should-not-run"));
+                () -> invoke(IdempotencyCacheLoad.miss(), key, () -> "should-not-run"));
 
         assertEquals(IdempotencyErrorCode.KEY_INVALID, ex.getErrorCode());
         assertTrue(ex.getMessage().contains(field), ex.getMessage());
@@ -104,39 +112,27 @@ class IdempotencyGuardKeyLengthTest {
         assertFalse(storeTouched.get(), "长度校验必须先于缓存/锁/库");
     }
 
-    /** 只装配校验路径需要的桩：命中的缓存桩用于放行，未命中也不会走到锁（长度校验通过后才会读缓存） */
-    private IdempotencyGuard guard(IdempotencyCacheLoad loadResult) {
-        IdempotencyRedisStore store = new IdempotencyRedisStore(null, null, null) {
+    /** 在显式事务模板里执行（新契约：边界由调用方给）；命中的缓存桩用于放行，未命中也不会走到锁 */
+    private Object invoke(IdempotencyCacheLoad loadResult, IdempotencyKey key, Supplier<Object> fn) {
+        IdempotencyRedisStore store = new IdempotencyRedisStore(null, null) {
             @Override
-            public IdempotencyCacheLoad load(IdempotencyKey key, Type type) {
+            public IdempotencyCacheLoad load(IdempotencyKeys dsKeys, IdempotencyKey key, Type type) {
                 storeTouched.set(true);
                 return loadResult;
             }
         };
-        return new IdempotencyGuard(new IdempotencyRecordRepository(null), store,
-                new IdempotencyKeys("yomi:test:idem"), new TransactionTemplate(new NoTxManager()),
-                new IdempotencyProperties());
+        return guard(store).executeInternal(key, String.class, template, fn);
     }
 
-    /** 最小事务管理器：本类用例不真正开事务（校验失败即抛、其余用例命中缓存即返回） */
-    static class NoTxManager extends AbstractPlatformTransactionManager {
-
-        @Override
-        protected Object doGetTransaction() {
-            return new Object();
-        }
-
-        @Override
-        protected void doBegin(Object transaction, TransactionDefinition definition) {
-        }
-
-        @Override
-        protected void doCommit(DefaultTransactionStatus status) {
-        }
-
-        @Override
-        protected void doRollback(DefaultTransactionStatus status) {
-        }
+    /** 守卫：主库注册一个空壳仓储（用例只走到"长度校验/缓存"为止） */
+    private IdempotencyGuard guard(IdempotencyRedisStore store) {
+        IdempotencyDataSources dataSources = new IdempotencyDataSources();
+        IIdempotencyRecordRepository repository = (IIdempotencyRecordRepository) Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{IIdempotencyRecordRepository.class},
+                (proxy, method, args) -> null);
+        dataSources.register(IdempotencyDataSources.MASTER, masterDataSource, repository);
+        return new IdempotencyGuard(dataSources, new IdempotencyKeys("yomi:test:idem"), store,
+                new IdempotencyProperties());
     }
 
 }

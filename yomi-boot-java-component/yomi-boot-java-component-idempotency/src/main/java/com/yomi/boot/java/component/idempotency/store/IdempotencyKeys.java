@@ -6,6 +6,8 @@ import org.apache.commons.lang3.StringUtils;
 
 /**
  * 幂等相关 Redis Key
+ * <p>多数据源下每个记录库一段前缀（{@link #forDatasource}）：同一个 namespace + 幂等键落在不同库是两件事，
+ * 键里不带库名会让缓存互相命中（A 库的结果被当成 B 库的结果重放）
  *
  * @author zwei
  */
@@ -17,6 +19,11 @@ public class IdempotencyKeys {
 
     public IdempotencyKeys(String prefix) {
         this.prefix = prefix;
+    }
+
+    /** 某个记录库的键集合：注册名并入前缀 */
+    public IdempotencyKeys forDatasource(String datasource) {
+        return new IdempotencyKeys(prefix + ":" + datasource);
     }
 
     /**

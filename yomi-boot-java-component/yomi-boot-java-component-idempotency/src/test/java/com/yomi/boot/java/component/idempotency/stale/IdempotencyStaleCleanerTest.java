@@ -172,7 +172,7 @@ class IdempotencyStaleCleanerTest {
         IdempotencyProperties properties = enabledProps();
         properties.setStaleCleanerEnabled(true);
         customizer.accept(properties);
-        return new IdempotencyStaleCleaner(repository, properties);
+        return new IdempotencyStaleCleaner(repository, properties, "master");
     }
 
     /** 组件启用态的最小配置 */

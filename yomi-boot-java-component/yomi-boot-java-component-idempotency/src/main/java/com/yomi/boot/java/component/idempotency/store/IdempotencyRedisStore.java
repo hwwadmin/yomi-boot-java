@@ -13,6 +13,7 @@ import java.time.Duration;
 
 /**
  * 幂等成功结果的 Redis 缓存（第一层快读）
+ * <p>键按记录库分段（{@link IdempotencyKeys#forDatasource}）：多数据源下同名 namespace + 幂等键不能互相命中
  *
  * @author zwei
  */
@@ -26,19 +27,17 @@ public class IdempotencyRedisStore {
     /** 结果缓存读写 */
     private final StringRedisTemplate stringRedisTemplate;
 
-    /** 缓存键前缀 */
-    private final IdempotencyKeys keys;
-
     /** 缓存 TTL 等配置 */
     private final IdempotencyProperties properties;
 
     /**
      * 读缓存；Redis 异常时返回 miss（只记 WARN），由锁 + DB 路径继续
      *
-     * @param type 完整泛型返回类型（如 {@code Result<OrderVO>}），重放不丢里层泛型
+     * @param dsKeys 本次记录库的键集合（含库段）
+     * @param type   完整泛型返回类型（如 {@code Result<OrderVO>}），重放不丢里层泛型
      */
-    public IdempotencyCacheLoad load(IdempotencyKey key, Type type) {
-        String redisKey = keys.resultKey(key);
+    public IdempotencyCacheLoad load(IdempotencyKeys dsKeys, IdempotencyKey key, Type type) {
+        String redisKey = dsKeys.resultKey(key);
         try {
             String payload = stringRedisTemplate.opsForValue().get(redisKey);
             if (payload == null) {
@@ -56,8 +55,8 @@ public class IdempotencyRedisStore {
     }
 
     /** 写入结果并设置 TTL */
-    public void save(IdempotencyKey key, Object value) {
-        String redisKey = keys.resultKey(key);
+    public void save(IdempotencyKeys dsKeys, IdempotencyKey key, Object value) {
+        String redisKey = dsKeys.resultKey(key);
         String payload;
         if (value == null) {
             payload = CACHED_NULL_PAYLOAD;
@@ -72,12 +71,12 @@ public class IdempotencyRedisStore {
     }
 
     /** 写缓存失败只记日志不抛错，业务成功结果不受影响 */
-    public void saveQuietly(IdempotencyKey key, Object value) {
+    public void saveQuietly(IdempotencyKeys dsKeys, IdempotencyKey key, Object value) {
         try {
-            save(key, value);
+            save(dsKeys, key, value);
         } catch (Exception e) {
             log.error("[幂等]结果缓存写入失败，业务已成功 namespace={} key={} redisKey={}",
-                    key.namespace(), key.idempotencyKey(), keys.resultKey(key), e);
+                    key.namespace(), key.idempotencyKey(), dsKeys.resultKey(key), e);
         }
     }
 

@@ -67,9 +67,9 @@ spec Step 1 表须同时填写 **是否开本地 DB 事务**（开/不开）与�
 | 组件 | `yomi-boot-java-component-idempotency` |
 | 用法 | `IdempotencyUtils.execute/run(namespace, key, ...)` + 业务键（唯一入口：静态调用，无注解、不注入守卫） |
 | 与 DB | 幂等键（如 Header `Idempotency-Key`，取出后作为 `IdempotencyUtils` 的 key 参数传入）与 **业务唯一索引** 分工：前者防重复提交，后者防脏数据；spec 须分别说明 |
-| 与事务 | 常见顺序：`IdempotencyUtils` 闭包进入 → `@Transactional` 内写库；细节以组件源码与 `TestIdempotencyFlowApiTest` 为准 |
+| 与事务 | 边界由调用方给，组件**不创建也不注入**事务模板：`@Transactional` 与 `IdempotencyUtils` 闭包同点（写用例入口）时守卫直接沿用；没有事务时把 `TransactionTemplate` 作为 `execute/run` 的 `template` 入参传入（只接受 REQUIRED、非只读）；两者都没有直接抛 `IDEMPOTENCY_TRANSACTION_REQUIRED`。记录库**跟着事务走**（事务落哪个库就写哪个库），未注册的库抛 `IDEMPOTENCY_DATASOURCE_UNREGISTERED`，线程上另绑别的库事务抛 `IDEMPOTENCY_FOREIGN_TRANSACTION` |
 
-**禁止**：用幂等组件替代业务唯一约束，或假设幂等可回滚已提交的跨边界副作用。
+**禁止**：用幂等组件替代业务唯一约束、假设幂等可回滚已提交的跨边界副作用；闭包内不要再开 `REQUIRES_NEW`（业务先独立提交、记录随外层回滚，重试会重复执行）；没有事务边界就调用幂等（组件不自建事务）。附加库要用幂等必须先在装配期经 `IdempotencyDataSources` 注册（注册即获得自动建表与自动清理）。
 
 ---
 

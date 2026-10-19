@@ -15,6 +15,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Supplier;
 
 /**
  * 启动期初始化组件依赖的数据表：逐表探活，缺表时按当前数据库方言执行组件内置建表脚本自动建表。
@@ -28,8 +29,8 @@ import java.util.Locale;
  * 探活用 {@code SELECT 1 FROM t WHERE 1 = 0}，只验证表可访问、不读取数据行；
  * 在所有单例就绪后执行一次（早于 Web 对外服务）。
  * <p>
- * 数据源只认主库（{@link DsMaster#DATASOURCE_BEAN}，由 component-ds 独占装配）：组件表建在主库上，
- * 主库不在（未配 {@code spring.datasource.url}）即失败——建在哪个库不容含糊，跳过会把问题留到运行期。
+ * 数据源由调用方给出：组件表建在主库的用 {@link #onMaster}（主库由 component-ds 独占装配，按固定名字解析，
+ * 主库不在即失败）；支持多个记录库的组件可以为每个库各建一个实例（数据源在回调里解析，不提前拉连接池）。
  *
  * @author zwei
  */
@@ -39,8 +40,8 @@ public class TableInitializer implements SmartInitializingSingleton {
     /** 建表脚本在 jar 内的目录前缀（末级目录为方言名） */
     private static final String SQL_DIR = "sql/";
 
-    /** 用于解析主数据源（按固定名字，不猜） */
-    private final ListableBeanFactory beanFactory;
+    /** 数据源供给：延迟到回调里解析（按固定名字取主库的形态见 {@link #onMaster}） */
+    private final Supplier<DataSource> dataSourceSupplier;
 
     /** 组件名称（日志与报错） */
     private final String component;
@@ -51,18 +52,24 @@ public class TableInitializer implements SmartInitializingSingleton {
     /** 待校验的表名列表 */
     private final List<String> tables;
 
-    public TableInitializer(ListableBeanFactory beanFactory, String component,
+    public TableInitializer(Supplier<DataSource> dataSourceSupplier, String component,
                             String sqlFile, List<String> tables) {
-        this.beanFactory = beanFactory;
+        this.dataSourceSupplier = dataSourceSupplier;
         this.component = component;
         this.sqlFile = sqlFile;
         this.tables = List.copyOf(tables);
     }
 
+    /** 主库形态：组件表建在主库上（按固定名字解析，不猜） */
+    public static TableInitializer onMaster(ListableBeanFactory beanFactory, String component,
+                                            String sqlFile, List<String> tables) {
+        return new TableInitializer(() -> DsMaster.requireDataSource(beanFactory), component, sqlFile, tables);
+    }
+
     /** 单例就绪后逐表探活，缺表则按方言自动建表，仍缺则阻止启动 */
     @Override
     public void afterSingletonsInstantiated() {
-        DataSource dataSource = DsMaster.requireDataSource(beanFactory);
+        DataSource dataSource = dataSourceSupplier.get();
         try (Connection connection = dataSource.getConnection()) {
             if (connection == null) {
                 throw new IllegalStateException("[" + component

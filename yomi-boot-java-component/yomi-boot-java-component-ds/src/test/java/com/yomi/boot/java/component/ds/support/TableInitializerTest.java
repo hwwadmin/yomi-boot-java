@@ -93,7 +93,7 @@ class TableInitializerTest {
         Stub stub = stub("PostgreSQL");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> new TableInitializer(beanFactoryOf(dataSource(stub)), "测试组件", "not-exists.sql",
+                () -> TableInitializer.onMaster(beanFactoryOf(dataSource(stub)), "测试组件", "not-exists.sql",
                         List.of("table_init_a")).afterSingletonsInstantiated());
 
         assertTrue(ex.getMessage().contains("sql/pgsql/not-exists.sql"), "必须给出缺失的脚本路径: " + ex.getMessage());
@@ -156,7 +156,7 @@ class TableInitializerTest {
                     }
                     return defaultReturn(proxy, method, args);
                 });
-        TableInitializer initializer = new TableInitializer(beanFactoryOf(broken), "测试组件", SCRIPT,
+        TableInitializer initializer = TableInitializer.onMaster(beanFactoryOf(broken), "测试组件", SCRIPT,
                 List.of("table_init_a"));
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, initializer::afterSingletonsInstantiated);
@@ -166,7 +166,7 @@ class TableInitializerTest {
     /** 主库不在（没配 spring.datasource.url）：失败并给出路，不静默跳过（建在哪个库不容含糊） */
     @Test
     void failsFastWhenMasterDataSourceAbsent() {
-        TableInitializer initializer = new TableInitializer(new DefaultListableBeanFactory(), "测试组件", SCRIPT,
+        TableInitializer initializer = TableInitializer.onMaster(new DefaultListableBeanFactory(), "测试组件", SCRIPT,
                 List.of("table_init_a"));
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, initializer::afterSingletonsInstantiated);
@@ -179,7 +179,7 @@ class TableInitializerTest {
     void otherNamedDataSourceIsNotMaster() {
         DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
         beanFactory.registerSingleton("reportDataSource", dataSource(stub("MySQL")));
-        TableInitializer initializer = new TableInitializer(beanFactory, "测试组件", SCRIPT, List.of("table_init_a"));
+        TableInitializer initializer = TableInitializer.onMaster(beanFactory, "测试组件", SCRIPT, List.of("table_init_a"));
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, initializer::afterSingletonsInstantiated);
         assertTrue(ex.getMessage().contains("reportDataSource"), "要列出候选: " + ex.getMessage());
@@ -190,7 +190,7 @@ class TableInitializerTest {
             "create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?[`\"]?(\\w+)[`\"]?", Pattern.CASE_INSENSITIVE);
 
     private static TableInitializer initializer(Stub stub, String... tables) {
-        return new TableInitializer(beanFactoryOf(dataSource(stub)), "测试组件", SCRIPT, List.of(tables));
+        return TableInitializer.onMaster(beanFactoryOf(dataSource(stub)), "测试组件", SCRIPT, List.of(tables));
     }
 
     /** 桩：方言产品名 + 已存在表集合（缺表时 executeQuery 抛"表不存在"） */

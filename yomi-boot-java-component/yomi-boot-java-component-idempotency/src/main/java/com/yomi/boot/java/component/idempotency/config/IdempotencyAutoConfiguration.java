@@ -1,41 +1,42 @@
 package com.yomi.boot.java.component.idempotency.config;
 
 import com.yomi.boot.java.component.ds.support.DsMaster;
-import com.yomi.boot.java.component.ds.support.TableInitializer;
+import com.yomi.boot.java.component.idempotency.IdempotencyDataSources;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyGuard;
-import com.yomi.boot.java.component.idempotency.repository.IdempotencyRecordRepository;
 import com.yomi.boot.java.component.idempotency.repository.IIdempotencyRecordRepository;
+import com.yomi.boot.java.component.idempotency.repository.IdempotencyRecordRepository;
 import com.yomi.boot.java.component.idempotency.repository.mapper.IdempotencyRecordMapper;
-import com.yomi.boot.java.component.idempotency.stale.IdempotencyStaleCleaner;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyKeys;
 import com.yomi.boot.java.component.idempotency.store.IdempotencyRedisStore;
 import com.yomi.boot.java.component.redis.config.RedisAutoConfiguration;
-import com.yomi.boot.java.component.redis.schedule.ClusterTask;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
 import org.redisson.api.RedissonClient;
-import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.context.LifecycleProperties;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-import java.util.List;
+import javax.sql.DataSource;
 
 /**
  * 幂等组件自动装配；需 {@code yomi.idempotency.enabled=true}
  * <p>
- * 依赖：Redis/Redisson、主数据源（component-ds 装配，Mapper 与建表都锚在主库）、绑定主库事务管理器的事务模板、
+ * 依赖：Redis/Redisson、主数据源（component-ds 装配，主库的 Mapper 与建表都锚在主库）、
  * IdempotencyRecordMapper（resources/mapper/IdempotencyRecordMapper.xml）
+ * <p>不清求也不注册事务基础设施：事务边界由调用方给（{@code @Transactional} 或显式传入的
+ * {@code TransactionTemplate}），组件只在自己的调用里沿用或使用它
+ * <p>默认只注册主库（自动建表 + 自动清理）；附加库要放幂等记录，业务在自己的 {@code @Configuration} 里
+ * 依赖 {@link IdempotencyDataSources} 后自行注册（注册即同样获得这两项能力）
  * <p>本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描（不写 ref，按类型落主库），宿主无需关心依赖 jar
  *
  * @author zwei
@@ -50,6 +51,12 @@ public class IdempotencyAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public IdempotencyDataSources idempotencyDataSources() {
+        return new IdempotencyDataSources();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public IdempotencyKeys idempotencyKeys(IdempotencyProperties properties, Environment environment) {
         return new IdempotencyKeys(resolvePrefix(properties, environment));
     }
@@ -57,73 +64,44 @@ public class IdempotencyAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public IdempotencyRedisStore idempotencyRedisStore(StringRedisTemplate stringRedisTemplate,
-                                                       IdempotencyKeys keys,
                                                        IdempotencyProperties properties) {
-        return new IdempotencyRedisStore(stringRedisTemplate, keys, properties);
+        return new IdempotencyRedisStore(stringRedisTemplate, properties);
     }
 
     /**
-     * 幂等守卫：占位记录与结果写回必须与业务同事务，事务模板只复用应用自己的、且必须绑定主库事务管理器
-     * （判据见 {@link DsMaster#requireTransactionTemplate(org.springframework.beans.factory.ListableBeanFactory)}）
+     * 幂等守卫：记录库按本次事务解析（默认只有主库），事务边界由调用方给
+     * （{@code @Transactional} 或 {@code IdempotencyUtils} 的 template 入参）——组件不建、也不注入事务设施
      */
     @Bean
     @ConditionalOnMissingBean
     // 校验先行：依赖项缺失时要报组件自己的错，而不是 Spring 的注入错误
     @DependsOn("idempotencyBootstrap")
-    public IdempotencyGuard idempotencyGuard(IIdempotencyRecordRepository repository,
-                                             IdempotencyRedisStore redisStore,
+    public IdempotencyGuard idempotencyGuard(IdempotencyDataSources dataSources,
                                              IdempotencyKeys keys,
-                                             IdempotencyProperties properties,
-                                             ListableBeanFactory beanFactory) {
-        return new IdempotencyGuard(repository, redisStore, keys,
-                DsMaster.requireTransactionTemplate(beanFactory), properties);
+                                             IdempotencyRedisStore redisStore,
+                                             IdempotencyProperties properties) {
+        return new IdempotencyGuard(dataSources, keys, redisStore, properties);
     }
 
+    /** 主库的默认记录仓储（宿主可声明自己的实现覆盖）；附加库的仓储在注册时按各自工厂建 */
     @Bean
     @ConditionalOnMissingBean(IIdempotencyRecordRepository.class)
     public IIdempotencyRecordRepository idempotencyRecordRepository(IdempotencyRecordMapper mapper) {
         return new IdempotencyRecordRepository(mapper);
     }
 
-    /** 记录清理（默认关闭，需 yomi.idempotency.stale-cleaner-enabled=true） */
-    @Bean
-    @ConditionalOnProperty(value = "yomi.idempotency.stale-cleaner-enabled", havingValue = "true")
-    public IdempotencyStaleCleaner idempotencyStaleCleaner(IIdempotencyRecordRepository repository,
-                                                           IdempotencyProperties properties) {
-        log.info("[幂等]记录清理已启用: scanInterval={}, staleTimeout={}, chunkSize={}, maxDeletePerRun={}, "
-                        + "单轮能力≈{}行/天/类",
-                properties.getScanInterval(), properties.getStaleTimeout(), properties.getChunkSize(),
-                properties.getMaxDeletePerRun(), dailyCapacity(properties));
-        return new IdempotencyStaleCleaner(repository, properties);
-    }
-
-    /** 单轮上限折算的日清理能力：scanInterval 越短能力越大，用于判断保留期是否追得上写入量 */
-    private static long dailyCapacity(IdempotencyProperties properties) {
-        long intervalMs = Math.max(1, properties.getScanInterval().toMillis());
-        return properties.getMaxDeletePerRun() * 86_400_000L / intervalMs;
-    }
-
-    /** 记录清理任务（集群定时任务：同一时刻只有一个实例执行） */
-    @Bean
-    @ConditionalOnProperty(value = "yomi.idempotency.stale-cleaner-enabled", havingValue = "true")
-    public ClusterTask idempotencyRecordCleanerTask(IdempotencyProperties properties,
-                                                    IdempotencyStaleCleaner cleaner,
-                                                    Environment environment,
-                                                    LifecycleProperties lifecycleProperties) {
-        return new ClusterTask(IdempotencyStaleCleaner.TASK_NAME, properties.getScanInterval(), environment,
-                lifecycleProperties, cleaner::clean);
-    }
-
-    /** 启动期校验依赖并打日志 */
+    /** 启动期校验依赖、注册主库并冻结注册表；附加库由业务在装配期自行注册 */
     @Bean
     public IdempotencyBootstrap idempotencyBootstrap(IdempotencyProperties properties,
-                                                     IdempotencyKeys keys,
-                                                     ApplicationContext applicationContext,
+                                                     IdempotencyDataSources dataSources,
+                                                     IIdempotencyRecordRepository repository,
+                                                     ConfigurableListableBeanFactory beanFactory,
+                                                     Environment environment,
+                                                     ObjectProvider<LifecycleProperties> lifecycleProperties,
                                                      ObjectProvider<StringRedisTemplate> redisTemplateProvider,
                                                      ObjectProvider<RedissonClient> redissonClientProvider,
                                                      ObjectProvider<IdempotencyRecordMapper> mapperProvider) {
         properties.validate();
-        requireTransactionTemplate(applicationContext);
         if (redisTemplateProvider.getIfAvailable() == null || redissonClientProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
                     "yomi.idempotency.enabled=true 需要 Redis/Redisson：请配置 spring.data.redis.host");
@@ -134,29 +112,13 @@ public class IdempotencyAutoConfiguration {
                             + "sql/mysql/sys_idempotency_record.sql 或 sql/pgsql/sys_idempotency_record.sql；"
                             + "Mapper 由 component-idempotency 自动配置扫描，无需宿主配置 @MapperScan");
         }
+        DataSource master = DsMaster.requireDataSource(beanFactory);
+        dataSources.register(IdempotencyDataSources.MASTER, master, repository);
         log.info("[幂等]守卫已启用: storePrefix={}, resultCacheTtl={}, recordRetention={}, staleCleanerEnabled={}",
-                keys.getPrefix(), properties.getResultCacheTtl(), properties.getRecordRetention(),
+                resolvePrefix(properties, environment), properties.getResultCacheTtl(), properties.getRecordRetention(),
                 properties.isStaleCleanerEnabled());
-        return new IdempotencyBootstrap();
-    }
-
-    /**
-     * 事务模板启动期校验：组件只复用应用自己的模板（不注册事务基础设施）
-     * <p>
-     * 判据是"绑定主库事务管理器"，不是"候选唯一"：宿主为别的库声明 TransactionTemplate 时，Boot 的
-     * 标准模板会因 {@code @ConditionalOnMissingBean(TransactionOperations)} 退让，唯一性照样能命中一个
-     * 绑错库的模板——那样占位记录与业务写入不在同一个事务里。判定与报错见
-     * {@link DsMaster#requireTransactionTemplate(org.springframework.beans.factory.ListableBeanFactory)}
-     */
-    static void requireTransactionTemplate(ApplicationContext context) {
-        DsMaster.requireTransactionTemplate(context);
-    }
-
-    /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_idempotency_record.sql 自动创建 */
-    @Bean
-    public TableInitializer idempotencyTableInitializer(ListableBeanFactory beanFactory) {
-        return new TableInitializer(beanFactory, "幂等", "sys_idempotency_record.sql",
-                List.of("sys_idempotency_record"));
+        return new IdempotencyBootstrap(properties, dataSources, beanFactory, environment,
+                lifecycleProperties.getIfAvailable(LifecycleProperties::new));
     }
 
     /** 从环境补全存储键前缀 */
@@ -171,10 +133,6 @@ public class IdempotencyAutoConfiguration {
             raw = "yomi:idempotency:" + applicationName;
         }
         return raw;
-    }
-
-    /** 无业务逻辑，仅触发上述校验 */
-    public static final class IdempotencyBootstrap {
     }
 
 }
