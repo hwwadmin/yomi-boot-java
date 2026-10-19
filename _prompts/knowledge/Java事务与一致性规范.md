@@ -24,9 +24,9 @@
 | 项 | 要求 |
 | -- | ---- |
 | `@Transactional` | **对外写用例默认**在 **`*UseCase#execute`**；**领域内**仅在 spec 写明时标在 **`*DomainServiceImpl` 写方法**（同一写链路二者不同时标注） |
-| `@Idempotent` | 通常在 `*UseCase#execute` |
+| `IdempotencyUtils` | **唯一入口**；幂等边界同样在 `*UseCase#execute`——把写逻辑包进 `execute` / `run` 的闭包（静态调用，不用注解） |
 | Controller | 不声明事务 |
-| 同类 `this.xxx()` | 不承载 `@Transactional` / `@Idempotent`；业务写事务标在 `execute` |
+| 同类 `this.xxx()` | 不承载 `@Transactional`（同类自调用不走代理）、不重复包幂等；业务写事务与幂等闭包都标在 `execute` |
 
 ### 2.2 闭包边界（Step 2）
 
@@ -65,9 +65,9 @@ spec Step 1 表须同时填写 **是否开本地 DB 事务**（开/不开）与�
 | 项 | 约定 |
 |----|------|
 | 组件 | `yomi-boot-java-component-idempotency` |
-| 用法 | `@Idempotent` 或 `IdempotencyGuard` + 业务键 |
-| 与 DB | 幂等键（如 Header `Idempotency-Key` 或 `@Idempotent.key` 指向的字段）与 **业务唯一索引** 分工：前者防重复提交，后者防脏数据；spec 须分别说明 |
-| 与事务 | 常见顺序：幂等守卫进入 → `@Transactional` 内写库；细节以组件源码与 `TestIdempotencyFlowApiTest` 为准 |
+| 用法 | `IdempotencyUtils.execute/run(namespace, key, ...)` + 业务键（唯一入口：静态调用，无注解、不注入守卫） |
+| 与 DB | 幂等键（如 Header `Idempotency-Key`，取出后作为 `IdempotencyUtils` 的 key 参数传入）与 **业务唯一索引** 分工：前者防重复提交，后者防脏数据；spec 须分别说明 |
+| 与事务 | 常见顺序：`IdempotencyUtils` 闭包进入 → `@Transactional` 内写库；细节以组件源码与 `TestIdempotencyFlowApiTest` 为准 |
 
 **禁止**：用幂等组件替代业务唯一约束，或假设幂等可回滚已提交的跨边界副作用。
 

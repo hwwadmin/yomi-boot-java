@@ -85,7 +85,7 @@
 ## 6. 链路与其他 Header
 
 - 追踪：`TraceMdcUtils` / MDC `traceId`（若启用）；spec 可要求传递 `traceId`。
-- 幂等：写接口幂等键与 [Java事务与一致性规范](./Java事务与一致性规范.md) 及 `@Idempotent.key` 一致（如 Header `Idempotency-Key`）；spec 须写明传递方式。
+- 幂等：写接口幂等键与 [Java事务与一致性规范](./Java事务与一致性规范.md) §4 一致（如 Header `Idempotency-Key`，取出后传给 `IdempotencyUtils.execute/run(...)`）；spec 须写明传递方式。
 
 ---
 

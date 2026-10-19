@@ -17,8 +17,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ClassUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.reflect.MethodSignature;
 import org.redisson.api.RLock;
 import org.redisson.client.RedisException;
 import org.springframework.transaction.TransactionStatus;
@@ -61,37 +59,6 @@ public class IdempotencyGuard {
 
     /** 幂等组件配置 */
     private final IdempotencyProperties properties;
-
-    /** 供 Idempotent 切面调用：按方法返回值类型做缓存与反序列化 */
-    public Object executeAround(ProceedingJoinPoint point, IdempotencyKey key) throws Throwable {
-        // 取完整泛型签名（如 Result<OrderVO>），重放才能还原里层类型
-        Type returnType = ((MethodSignature) point.getSignature()).getMethod().getGenericReturnType();
-        if (returnType == void.class) {
-            executeVoid(key, () -> proceedVoid(point));
-            return null;
-        }
-        return executeInternal(key, returnType, () -> proceed(point));
-    }
-
-    /** 执行切面目标方法并统一异常类型 */
-    private static Object proceed(ProceedingJoinPoint point) {
-        try {
-            return point.proceed();
-        } catch (Throwable e) {
-            if (e instanceof Error error) {
-                throw error;
-            }
-            if (e instanceof RuntimeException runtime) {
-                throw runtime;
-            }
-            throw new RuntimeException(e);
-        }
-    }
-
-    /** 执行无返回值切面目标 */
-    private static void proceedVoid(ProceedingJoinPoint point) {
-        proceed(point);
-    }
 
     /** 无返回值业务的幂等包装 */
     public void executeVoid(IdempotencyKey key, Runnable fn) {

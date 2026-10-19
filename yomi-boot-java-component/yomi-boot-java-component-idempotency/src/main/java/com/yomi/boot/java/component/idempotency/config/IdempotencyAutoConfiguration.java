@@ -2,7 +2,6 @@ package com.yomi.boot.java.component.idempotency.config;
 
 import com.yomi.boot.java.component.ds.support.DsMaster;
 import com.yomi.boot.java.component.ds.support.TableInitializer;
-import com.yomi.boot.java.component.idempotency.annotation.IdempotentAop;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyGuard;
 import com.yomi.boot.java.component.idempotency.repository.IdempotencyRecordRepository;
 import com.yomi.boot.java.component.idempotency.repository.IIdempotencyRecordRepository;
@@ -78,12 +77,6 @@ public class IdempotencyAutoConfiguration {
                                              ListableBeanFactory beanFactory) {
         return new IdempotencyGuard(repository, redisStore, keys,
                 DsMaster.requireTransactionTemplate(beanFactory), properties);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public IdempotentAop idempotentAop(IdempotencyGuard guard) {
-        return new IdempotentAop(guard);
     }
 
     @Bean

@@ -38,12 +38,6 @@
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
 
-        <!-- AOP -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aspectj</artifactId>
-        </dependency>
-
         <!-- auto-configuration 测试（ApplicationContextRunner 及其 assertj 契约） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

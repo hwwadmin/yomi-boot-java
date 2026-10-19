@@ -54,5 +54,5 @@
 
 - [ ] tasks.md 已生成且与 spec 范围一致
 - [ ] 实现符合 spec 分层与组件选型（含第十章 `*UseCase#execute`、§2.3 Maven 模块）
-- [ ] 写路径 `@Transactional`（默认 `execute`）/ `@Idempotent` 与 spec 落点一致；无同类自调用承载事务
+- [ ] 写路径 `@Transactional`（默认 `execute`）与幂等入口（`IdempotencyUtils` 闭包）与 spec 落点一致；无同类自调用承载事务
 - [ ] 相关测试已执行并通过或说明未执行原因

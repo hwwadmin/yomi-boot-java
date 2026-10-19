@@ -9,7 +9,9 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * 幂等守卫静态入口，便于在 Service 内函数式调用（需 {@code yomi.idempotency.enabled=true}）
+ * 幂等组件唯一入口（静态调用，需 {@code yomi.idempotency.enabled=true}）：
+ * 把写逻辑包进 {@code execute} / {@code run} 的闭包，同一 namespace + 幂等键只执行一次，重放返回首次结果。
+ * <p>建议放在写用例入口（{@code *UseCase#execute}）与 {@code @Transactional} 同点：占位记录与业务写入同一事务，回滚一起回滚。
  *
  * @author zwei
  */

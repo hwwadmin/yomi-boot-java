@@ -279,13 +279,16 @@ public class CreateOrderController {
 @RequiredArgsConstructor
 public class CreateOrderUseCase {
     private final OrderDomainService orderDomainService;
-    private final IdempotencyGuard idempotencyGuard; // 横切在编排，见 component-idempotency
 
+    /** 幂等边界在编排层：IdempotencyUtils 闭包包住写逻辑，见 component-idempotency */
     @Transactional(rollbackFor = Exception.class)
     public CreateOrderResponse execute(CreateOrderRequest request) {
-        CreateOrderInput input = toDomainInput(request);
-        OrderModel created = orderDomainService.create(input);
-        return toResponse(created);
+        return IdempotencyUtils.execute("order:create", request.getIdempotencyKey(), CreateOrderResponse.class,
+                () -> {
+                    CreateOrderInput input = toDomainInput(request);
+                    OrderModel created = orderDomainService.create(input);
+                    return toResponse(created);
+                });
     }
 }
 ```
@@ -323,7 +326,7 @@ public class CreateOrderUseCase {
 3. 配置还是运行时实例？→ 常属不同上下文，勿揉成万能 Model  
 
 **两级装配**：域内 `OrderDomainConfiguration`（在 `order-service`）注册 `OrderDomainService` → `{app}-starter` 依赖 `order-service` 拉入自动配置。  
-横切能力（`ITokenService`、`IdempotencyGuard` 等）注入 UseCase，不穿透进 `Default*DomainService` 实现。
+横切能力（`ITokenService` 等）注入 UseCase；幂等走 `IdempotencyUtils` 静态入口——同样不穿透进 `Default*DomainService` 实现。
 
 ---
 

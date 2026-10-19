@@ -3,7 +3,7 @@ package com.yomi.boot.java.component.idempotency.exception;
 import com.yomi.boot.java.base.exception.BizException;
 
 /**
- * 构造带统一 errorCode 的 BizException，供守卫与切面抛出
+ * 构造带统一 errorCode 的 BizException，供守卫抛出
  *
  * @author zwei
  */

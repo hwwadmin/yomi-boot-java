@@ -22,8 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class TestIdempotencyFlowApiTest {
 
     private static final String BASE_URL = "http://127.0.0.1:28080";
-    private static final String ANNOTATION_PATH = "/test/ds/test-idempotency/annotation";
-    private static final String UTILS_PATH = "/test/ds/test-idempotency/utils";
+    private static final String FLOW_PATH = "/test/ds/test-idempotency/flow";
 
     private static final List<String> STEP_PREFIXES = List.of(
             "1.首次调用: ", "2.重复同键: ", "3.新键调用: ", "4.流程通过");
@@ -31,13 +30,8 @@ class TestIdempotencyFlowApiTest {
     private final RestClient restClient = RestClient.create(BASE_URL);
 
     @Test
-    void annotationFlowApiPassesFourSteps() {
-        assertFourSteps(requestFlow(ANNOTATION_PATH));
-    }
-
-    @Test
-    void utilsFlowApiPassesFourSteps() {
-        assertFourSteps(requestFlow(UTILS_PATH));
+    void flowApiPassesFourSteps() {
+        assertFourSteps(requestFlow(FLOW_PATH));
     }
 
     /** 调用演示 HTTP 接口 */

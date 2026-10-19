@@ -22,10 +22,9 @@ import java.util.Objects;
  * <p>
  * 前置：{@code yomi.idempotency.enabled=true}、Redis/Redisson（组件表由启动期自动创建，脚本 component-idempotency/sql/mysql|pgsql/sys_idempotency_record.sql）
  * <ul>
- *     <li>POST /test/ds/test-idempotency/annotation：{@link com.yomi.boot.java.component.idempotency.annotation.Idempotent}</li>
- *     <li>POST /test/ds/test-idempotency/utils：{@link IdempotencyUtils}</li>
+ *     <li>POST /test/ds/test-idempotency/flow：标准入口 {@link IdempotencyUtils}</li>
  * </ul>
- * 两者都支持可选参数 {@code flowKey}（默认随机生成）：传同一个键重复调用即可手工验证
+ * 支持可选参数 {@code flowKey}（默认随机生成）：传同一个键重复调用即可手工验证
  * "结果缓存已过期/被清 + 库中已有已完成记录"的冲突读回路径。
  *
  * @author zwei
@@ -36,64 +35,35 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class TestIdempotencyFlowController {
 
-    /** 演示：注解幂等流程标识 */
-    private static final String FLOW_ANNOTATION = "annotation";
-    /** 演示：工具类幂等流程标识 */
-    private static final String FLOW_UTILS = "utils";
-    /** 演示：工具类幂等命名空间 */
-    private static final String NAMESPACE_UTILS = "test:idempotency:utils";
-
-    /** 注解与工具类演示服务 */
+    /** 幂等演示服务 */
     private final TestIdempotencyDemoService demoService;
 
-    @PostMapping("/annotation")
-    public Response<List<String>> annotationFlow(@RequestParam(value = "flowKey", required = false) String flowKey) {
-        return runFlow(FLOW_ANNOTATION, flowKey, key -> demoService.invokeByAnnotation(key));
-    }
-
-    @PostMapping("/utils")
-    public Response<List<String>> utilsFlow(@RequestParam(value = "flowKey", required = false) String flowKey) {
-        return runFlow(FLOW_UTILS, flowKey, key -> IdempotencyUtils.execute(
-                NAMESPACE_UTILS,
-                key,
-                TestIdempotencyInvokeResult.class,
-                () -> demoService.recordSideEffect(NAMESPACE_UTILS, key)
-        ));
-    }
-
-    /**
-     * 执行演示流程并逐步断言
-     *
-     * @param fixedKey 显式指定的幂等键（可不传，默认随机生成）。传同一个键重复调用可用于手工验证
-     *                 "结果缓存冷 + 库中已有记录"的冲突读回路径（先删掉 Redis 结果键再调）
-     */
-    private Response<List<String>> runFlow(String flow, String fixedKey,
-                                          java.util.function.Function<String, TestIdempotencyInvokeResult> invoker) {
+    @PostMapping("/flow")
+    public Response<List<String>> flow(@RequestParam(value = "flowKey", required = false) String flowKey) {
         List<String> steps = new ArrayList<>();
-        String flowKey = StringUtils.isNotBlank(fixedKey) ? fixedKey : IdempotencyUtils.newKey();
-        log.info("[幂等测试流程][{}] 开始, flowKey={}", flow, flowKey);
+        String key = StringUtils.isNotBlank(flowKey) ? flowKey : IdempotencyUtils.newKey();
+        log.info("[幂等测试流程] 开始, flowKey={}", key);
         try {
-            TestIdempotencyInvokeResult first = invoker.apply(flowKey);
+            TestIdempotencyInvokeResult first = demoService.create(key);
             assertResult(first, 1, "[1.首次调用]");
-            step(steps, flow, "1.首次调用: flowKey=" + flowKey + ", " + first);
+            step(steps, "1.首次调用: flowKey=" + key + ", " + first);
 
-            TestIdempotencyInvokeResult second = invoker.apply(flowKey);
+            TestIdempotencyInvokeResult second = demoService.create(key);
             assertSameReplay(first, second, "[2.重复同键]");
-            step(steps, flow, "2.重复同键: 与首次结果一致, " + second);
+            step(steps, "2.重复同键: 与首次结果一致, " + second);
 
             String otherKey = IdempotencyUtils.newKey();
-            TestIdempotencyInvokeResult third = invoker.apply(otherKey);
+            TestIdempotencyInvokeResult third = demoService.create(otherKey);
             assertResult(third, 1, "[3.新键调用]");
             Assert.isTrue(!Objects.equals(first.getRunId(), third.getRunId()),
                     "[3.新键调用] runId 不应与首次相同: first={}, third={}", first.getRunId(), third.getRunId());
-            step(steps, flow, "3.新键调用: flowKey=" + otherKey + ", " + third);
+            step(steps, "3.新键调用: flowKey=" + otherKey + ", " + third);
 
-            step(steps, flow, "4.流程通过");
-            log.info("[幂等测试流程][{}] 结束", flow);
+            step(steps, "4.流程通过");
+            log.info("[幂等测试流程] 结束");
             return Response.success(steps);
         } catch (Exception e) {
-            log.error("[幂等测试流程][{}] 失败于第{}步: {}", flow, steps.size() + 1,
-                    StringUtils.normalizeSpace(e.getMessage()));
+            log.error("[幂等测试流程] 失败于第{}步: {}", steps.size() + 1, StringUtils.normalizeSpace(e.getMessage()));
             throw e;
         }
     }
@@ -116,9 +86,9 @@ public class TestIdempotencyFlowController {
     }
 
     /** 记录演示流程步骤 */
-    private static void step(List<String> steps, String flow, String detail) {
+    private static void step(List<String> steps, String detail) {
         steps.add(detail);
-        log.info("[幂等测试流程][{}] {}", flow, detail);
+        log.info("[幂等测试流程] {}", detail);
     }
 
 }
