@@ -150,8 +150,10 @@ yomi:
     scan-interval: 10m
     # 超过该时长仍为处理中则视为僵死并删除
     stale-timeout: 60m
-    # 每轮清理最多删除条数
-    batch-size: 100
+    # 单条 DELETE 删除的行数（限额删除的块大小）
+    chunk-size: 1000
+    # 单轮每类最多删除条数（两类各自封顶）
+    max-delete-per-run: 50000
   oss:
     # 是否启用 OSS 组件
     enabled: true

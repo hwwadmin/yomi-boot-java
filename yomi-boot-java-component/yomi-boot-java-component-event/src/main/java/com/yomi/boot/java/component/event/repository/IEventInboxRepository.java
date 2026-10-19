@@ -23,4 +23,7 @@ public interface IEventInboxRepository {
     /** 保留期清理：物理删除指定服务且创建时间早于阈值的行 */
     int deleteCreatedBefore(String serviceName, Instant createTimeBefore, int limit);
 
+    /** 该服务最旧一行的 {@code create_time}（表空返回 null）：保留期清理的落后度量 */
+    Instant findOldestCreateTime(String serviceName);
+
 }

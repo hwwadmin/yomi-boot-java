@@ -3,6 +3,12 @@
 <!-- sys_idempotency_record 自定义 SQL，与 IdempotencyRecordMapper 接口方法一一对应 -->
 <mapper namespace="com.yomi.boot.java.component.idempotency.repository.mapper.IdempotencyRecordMapper">
 
+    <!-- 最旧一行的 expire_time（表空返回 NULL）：保留期清理的落后度量，取 idx_expire_time 首项，O(1) -->
+    <select id="selectOldestExpireTime" resultType="java.time.Instant">
+        SELECT MIN(expire_time)
+        FROM sys_idempotency_record
+    </select>
+
     <!-- 与框架约定一致：仅物理删，避免软删占用唯一键。
          受限删除两库语法不同，按方言各写一条（databaseId 由 ds 组件的 DsDatabaseIdProvider 解析）：
          MySQL 用原生 DELETE ... LIMIT（走 idx_status_update_time / idx_expire_time）；PG 无此语法，用 ctid 子查询限量

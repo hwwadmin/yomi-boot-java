@@ -22,4 +22,8 @@ public interface EventOutboxMapper extends BaseMapper<EventOutbox> {
                                 @Param("sentTimeBefore") Instant sentTimeBefore,
                                 @Param("limit") int limit);
 
+    /** 指定服务、指定状态最旧一行的 sent_time（无返回 NULL）：清理落后度量 */
+    Instant selectOldestSentSuccessTime(@Param("serviceName") String serviceName,
+                                        @Param("status") OutboxStatus status);
+
 }

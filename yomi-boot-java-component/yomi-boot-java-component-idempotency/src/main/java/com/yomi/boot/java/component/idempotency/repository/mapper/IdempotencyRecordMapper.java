@@ -15,6 +15,9 @@ import java.time.Instant;
  */
 public interface IdempotencyRecordMapper extends BaseMapper<IdempotencyRecord> {
 
+    /** 表内最小的 expire_time（表空返回 NULL） */
+    Instant selectOldestExpireTime();
+
     /** 物理删除超时仍处于处理中的记录 */
     int deleteStaleProcessing(@Param("processingStatus") int processingStatus,
                               @Param("before") Instant before,

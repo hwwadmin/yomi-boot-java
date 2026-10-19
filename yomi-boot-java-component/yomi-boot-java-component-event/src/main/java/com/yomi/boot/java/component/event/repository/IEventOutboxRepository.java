@@ -53,4 +53,7 @@ public interface IEventOutboxRepository {
     /** 保留期清理：物理删除指定服务已成功且发送时间早于阈值的行 */
     int deleteSentSuccessBefore(String serviceName, Instant sentTimeBefore, int limit);
 
+    /** 该服务最旧一条已成功行的 {@code sent_time}（无则 null）：保留期清理的落后度量 */
+    Instant findOldestSentSuccessTime(String serviceName);
+
 }

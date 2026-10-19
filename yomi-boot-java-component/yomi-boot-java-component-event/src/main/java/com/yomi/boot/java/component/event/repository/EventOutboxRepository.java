@@ -199,4 +199,10 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         return getMapper().deleteSentSuccessBefore(serviceName, OutboxStatus.SENT_SUCCESS, sentTimeBefore, limit);
     }
 
+    /** 该服务最旧一条已成功行的 sent_time（无返回 null）：走 idx_status_sent_time */
+    public Instant findOldestSentSuccessTime(String serviceName) {
+        Assert.isTrue(serviceName != null && !serviceName.isBlank(), "serviceName 不能为空");
+        return getMapper().selectOldestSentSuccessTime(serviceName, OutboxStatus.SENT_SUCCESS);
+    }
+
 }

@@ -45,6 +45,11 @@ public class IdempotencyRecordRepository extends MyBatisDao<IdempotencyRecordMap
         Assert.isTrue(rows == 1, "幂等记录状态更新未生效");
     }
 
+    /** 表内最小的 expire_time（表空返回 null）：走 idx_expire_time 的 MIN 优化 */
+    public Instant findOldestExpireTime() {
+        return getMapper().selectOldestExpireTime();
+    }
+
     /** 清理僵尸处理中记录 */
     public long deleteStaleProcessing(Instant before, int limit) {
         Assert.isTrue(limit > 0, "清理批量大小必须大于 0");

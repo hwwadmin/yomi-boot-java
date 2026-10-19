@@ -1,5 +1,8 @@
 package com.yomi.boot.java.component.event.retention;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.yomi.boot.java.component.event.config.EventProperties;
 import com.yomi.boot.java.component.event.model.OutboxStatus;
 import com.yomi.boot.java.component.event.repository.EventInboxRepository;
@@ -8,6 +11,7 @@ import com.yomi.boot.java.component.event.repository.mapper.EventInboxMapper;
 import com.yomi.boot.java.component.event.repository.mapper.EventOutboxMapper;
 import com.yomi.boot.java.component.event.support.EventKeys;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -114,6 +118,81 @@ class EventRetentionCleanerTest {
         assertDoesNotThrow(() -> cleaner.cleanInbox(), "未传收件箱仓储时不应有动作/报错");
     }
 
+    /** 落后度量：最旧一行仍在保留期内 → 0；已超期 → 超期时长（供运维判断单轮容量是否够） */
+    @Test
+    void lagIsZeroWhenWithinRetentionAndGrowsWhenOverdue() {
+        Instant[] oldest = {Instant.now().minus(Duration.ofDays(1))};
+        EventProperties properties = retentionProps(r -> r.setInboxRetention(Duration.ofDays(7)));
+        EventRetentionCleaner cleaner = new EventRetentionCleaner(properties, EVENT_KEYS, null,
+                new EventInboxRepository(inboxMapper(() -> 0, () -> oldest[0])));
+
+        cleaner.cleanInbox();
+        assertEquals(0, cleaner.getLagSeconds(), "最旧一行仍在保留期内 → 落后 0");
+
+        oldest[0] = Instant.now().minus(Duration.ofDays(7)).minus(Duration.ofHours(5));
+        cleaner.cleanInbox();
+        assertEquals(Duration.ofHours(5).toSeconds(), cleaner.getLagSeconds(), 10,
+                "最旧一行已超期 5 小时 → 落后 ≈5 小时");
+    }
+
+    /** 发件箱落后度量同样按"最旧一条已成功行"算，空表为 0 */
+    @Test
+    void outboxLagIsZeroForEmptyTable() {
+        OutboxCalls calls = new OutboxCalls(new ArrayDeque<>(List.of(0)));
+        EventRetentionCleaner cleaner = new EventRetentionCleaner(retentionProps(r -> { }), EVENT_KEYS,
+                new EventOutboxRepository(calls.mapper()), null);
+
+        cleaner.cleanOutbox();
+        assertEquals(0, cleaner.getLagSeconds(), "表空（最旧行 null）落后为 0");
+    }
+
+    /** 侧开着、对应保留期关着：启动期必须出声（默认关闭是有意的，但静默会拖到表涨满才被发现） */
+    @Test
+    void retentionDisabledWarnsButDoesNotBlockStartup() {
+        EventProperties publisherOnly = new EventProperties();
+        publisherOnly.setPublisherEnabled(true);
+        assertWarned(publisherOnly, "sys_event_outbox 只增不删", "发布侧开着却没开保留期必须留痕");
+
+        EventProperties consumerOnly = new EventProperties();
+        consumerOnly.setConsumerEnabled(true);
+        assertWarned(consumerOnly, "sys_event_inbox 只增不删", "消费侧开着却没开保留期必须留痕");
+
+        EventProperties covered = new EventProperties();
+        covered.setPublisherEnabled(true);
+        EventProperties.Retention retention = covered.getRetention();
+        retention.setOutboxRetentionEnabled(true);
+        retention.setInboxRetentionEnabled(true);
+        assertWarned(covered, null, "");
+    }
+
+    /** 校验指定配置校验后是否留下含 marker 的日志（marker 为 null 表示不应出现该族告警） */
+    private static void assertWarned(EventProperties properties, String marker, String message) {
+        ListAppender<ILoggingEvent> logs = attachLogs();
+        try {
+            assertDoesNotThrow(properties::validate, "配置自洽告警不阻断启动");
+        } finally {
+            detachLogs(logs);
+        }
+        List<String> 增删告警 = logs.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .filter(text -> text.contains("只增不删")).toList();
+        if (marker == null) {
+            assertEquals(List.of(), 增删告警, "两侧都开了保留期时不应有该族告警");
+        } else {
+            assertTrue(增删告警.stream().anyMatch(text -> text.contains(marker)), message + ": " + 增删告警);
+        }
+    }
+
+    private static ListAppender<ILoggingEvent> attachLogs() {
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        ((Logger) LoggerFactory.getLogger(EventProperties.class)).addAppender(appender);
+        return appender;
+    }
+
+    private static void detachLogs(ListAppender<ILoggingEvent> appender) {
+        ((Logger) LoggerFactory.getLogger(EventProperties.class)).detachAppender(appender);
+    }
+
     /** 收件箱清理独立开关：不要求发件箱开关同时打开 */
     @Test
     void inboxRetentionSwitchIsIndependentOfOutbox() {
@@ -176,6 +255,17 @@ class EventRetentionCleanerTest {
         retention.setMaxDeletePerRun(1000);
         customizer.accept(retention);
         return properties;
+    }
+
+    /** 收件箱 Mapper 桩：删除行数与最旧一行时间都可编排 */
+    private static EventInboxMapper inboxMapper(java.util.function.IntSupplier deleteRows,
+                                               java.util.function.Supplier<Instant> oldestCreateTime) {
+        return (EventInboxMapper) Proxy.newProxyInstance(EventRetentionCleanerTest.class.getClassLoader(),
+                new Class<?>[]{EventInboxMapper.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "deleteCreatedBefore" -> deleteRows.getAsInt();
+                    case "selectOldestCreateTime" -> oldestCreateTime.get();
+                    default -> null;
+                });
     }
 
     /** 记录 deleteSentSuccessBefore 的调用参数 */

@@ -24,4 +24,12 @@
                        LIMIT #{limit})
     </delete>
 
+    <!-- 最旧一条已成功行的 sent_time（无返回 NULL）：清理落后度量，走 idx_status_sent_time 首项 -->
+    <select id="selectOldestSentSuccessTime" resultType="java.time.Instant">
+        SELECT MIN(sent_time)
+        FROM sys_event_outbox
+        WHERE service_name = #{serviceName}
+          AND status = #{status}
+    </select>
+
 </mapper>

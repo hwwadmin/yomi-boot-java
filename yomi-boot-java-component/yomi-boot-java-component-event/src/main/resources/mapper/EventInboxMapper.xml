@@ -21,4 +21,11 @@
                        LIMIT #{limit})
     </delete>
 
+    <!-- 最旧一行的 create_time（表空返回 NULL）：清理落后度量，走 idx_service_name_create_time -->
+    <select id="selectOldestCreateTime" resultType="java.time.Instant">
+        SELECT MIN(create_time)
+        FROM sys_event_inbox
+        WHERE service_name = #{serviceName}
+    </select>
+
 </mapper>

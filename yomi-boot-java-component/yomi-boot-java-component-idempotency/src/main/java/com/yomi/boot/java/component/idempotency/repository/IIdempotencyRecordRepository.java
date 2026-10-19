@@ -23,6 +23,9 @@ public interface IIdempotencyRecordRepository {
     /** 按 namespace + 幂等键查记录；不存在返回 null */
     IdempotencyRecord findByNamespaceAndKey(String namespace, String idempotencyKey);
 
+    /** 表内最小的 {@code expire_time}（表空返回 null）：保留期清理的落后度量，单次取索引首项 */
+    Instant findOldestExpireTime();
+
     /** 清理僵死的处理中记录（早于阈值），返回删除行数 */
     long deleteStaleProcessing(Instant before, int limit);
 

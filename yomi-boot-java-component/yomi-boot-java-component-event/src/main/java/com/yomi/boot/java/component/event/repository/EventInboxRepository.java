@@ -42,4 +42,10 @@ public class EventInboxRepository extends MyBatisDao<EventInboxMapper, EventInbo
         return getMapper().deleteCreatedBefore(serviceName, createTimeBefore, limit);
     }
 
+    /** 该服务最旧一行的 create_time（表空返回 null）：走 idx_service_name_create_time */
+    public Instant findOldestCreateTime(String serviceName) {
+        Assert.isTrue(serviceName != null && !serviceName.isBlank(), "serviceName 不能为空");
+        return getMapper().selectOldestCreateTime(serviceName);
+    }
+
 }

@@ -14,6 +14,9 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "yomi.idempotency")
 public class IdempotencyProperties {
 
+    /** 单条 DELETE 行数的硬上限：块越大单语句持锁越久（与 httplog 同口径） */
+    private static final int MAX_CHUNK_SIZE = 10_000;
+
     /** 是否启用幂等组件 */
     private boolean enabled = false;
 
@@ -43,8 +46,11 @@ public class IdempotencyProperties {
     /** update_time 早于该阈值的「处理中」记录将被删除 */
     private Duration staleTimeout = Duration.ofMinutes(60);
 
-    /** 每轮清理最多删除行数 */
-    private int batchSize = 100;
+    /** 单条 DELETE 删除的行数（限额删除的块大小）：越大清理吞吐越高、单语句持锁越久 */
+    private int chunkSize = 1000;
+
+    /** 单轮每类最多删除行数（防止一次清理长时间占用数据库） */
+    private int maxDeletePerRun = 50_000;
 
     /** 启用时校验必填项与取值范围 */
     public void validate() {
@@ -62,8 +68,13 @@ public class IdempotencyProperties {
         }
         requireAtLeast(scanInterval, Duration.ofMinutes(1), "yomi.idempotency.scan-interval");
         requireAtLeast(staleTimeout, Duration.ofMinutes(5), "yomi.idempotency.stale-timeout");
-        if (batchSize <= 0) {
-            throw new IllegalStateException("yomi.idempotency.batch-size 必须大于 0");
+        if (chunkSize < 1 || chunkSize > MAX_CHUNK_SIZE) {
+            throw new IllegalStateException("yomi.idempotency.chunk-size 必须在 [1," + MAX_CHUNK_SIZE
+                    + "]（单条 DELETE 的行数）");
+        }
+        if (maxDeletePerRun < chunkSize) {
+            throw new IllegalStateException("yomi.idempotency.max-delete-per-run(" + maxDeletePerRun
+                    + ") 不能小于 chunk-size(" + chunkSize + ")：一轮连一块都删不完");
         }
     }
 

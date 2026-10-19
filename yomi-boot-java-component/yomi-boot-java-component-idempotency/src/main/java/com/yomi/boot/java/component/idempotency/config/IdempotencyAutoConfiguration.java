@@ -97,9 +97,17 @@ public class IdempotencyAutoConfiguration {
     @ConditionalOnProperty(value = "yomi.idempotency.stale-cleaner-enabled", havingValue = "true")
     public IdempotencyStaleCleaner idempotencyStaleCleaner(IIdempotencyRecordRepository repository,
                                                            IdempotencyProperties properties) {
-        log.info("[幂等]记录清理已启用: scanInterval={}, staleTimeout={}, batchSize={}",
-                properties.getScanInterval(), properties.getStaleTimeout(), properties.getBatchSize());
+        log.info("[幂等]记录清理已启用: scanInterval={}, staleTimeout={}, chunkSize={}, maxDeletePerRun={}, "
+                        + "单轮能力≈{}行/天/类",
+                properties.getScanInterval(), properties.getStaleTimeout(), properties.getChunkSize(),
+                properties.getMaxDeletePerRun(), dailyCapacity(properties));
         return new IdempotencyStaleCleaner(repository, properties);
+    }
+
+    /** 单轮上限折算的日清理能力：scanInterval 越短能力越大，用于判断保留期是否追得上写入量 */
+    private static long dailyCapacity(IdempotencyProperties properties) {
+        long intervalMs = Math.max(1, properties.getScanInterval().toMillis());
+        return properties.getMaxDeletePerRun() * 86_400_000L / intervalMs;
     }
 
     /** 记录清理任务（集群定时任务：同一时刻只有一个实例执行） */

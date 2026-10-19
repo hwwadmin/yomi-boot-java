@@ -20,4 +20,7 @@ public interface EventInboxMapper extends BaseMapper<EventInbox> {
                             @Param("createTimeBefore") Instant createTimeBefore,
                             @Param("limit") int limit);
 
+    /** 指定服务最旧一行的 create_time（表空返回 NULL）：清理落后度量 */
+    Instant selectOldestCreateTime(@Param("serviceName") String serviceName);
+
 }

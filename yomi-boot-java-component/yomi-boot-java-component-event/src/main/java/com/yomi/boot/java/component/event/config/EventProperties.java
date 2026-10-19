@@ -158,10 +158,13 @@ public class EventProperties {
         }
     }
 
-    /** 保留期清理配置自检：只校验已开启一侧的参数 */
+    /** 保留期清理配置自检：只校验已开启一侧的参数，未开一侧给出"表只增不删"告警 */
     private void validateRetention() {
-        if (retention == null
-                || (!retention.isOutboxRetentionEnabled() && !retention.isInboxRetentionEnabled())) {
+        if (retention == null) {
+            return;
+        }
+        warnRetentionDisabled();
+        if (!retention.isOutboxRetentionEnabled() && !retention.isInboxRetentionEnabled()) {
             return;
         }
         requirePositive(retention.getScanInterval(), "yomi.event.retention.scan-interval");
@@ -196,6 +199,18 @@ public class EventProperties {
     private static void requirePositive(Duration value, String key) {
         if (value == null || value.isZero() || value.isNegative()) {
             throw new IllegalStateException(key + " 必须大于 0");
+        }
+    }
+
+    /** 侧开着、对应保留期关着：该表只增不删（默认关闭是有意的，但必须出声提醒，否则到期才发现表涨满） */
+    private void warnRetentionDisabled() {
+        if (publisherEnabled && !retention.isOutboxRetentionEnabled()) {
+            log.warn("[事件]发布侧已启用但发件箱保留期清理未开启（yomi.event.retention.outbox-retention-enabled=false）："
+                    + "sys_event_outbox 只增不删，请开启保留期或自行定期清理");
+        }
+        if (consumerEnabled && !retention.isInboxRetentionEnabled()) {
+            log.warn("[事件]消费侧已启用但收件箱保留期清理未开启（yomi.event.retention.inbox-retention-enabled=false）："
+                    + "sys_event_inbox 只增不删（该表是「只消费一次」的判重依据，开启时保留期须 ≥ 事件可能被重投的最长时间）");
         }
     }
 

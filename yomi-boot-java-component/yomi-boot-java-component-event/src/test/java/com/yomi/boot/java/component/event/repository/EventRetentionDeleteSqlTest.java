@@ -27,6 +27,10 @@ class EventRetentionDeleteSqlTest {
             "com.yomi.boot.java.component.event.repository.mapper.EventOutboxMapper.deleteSentSuccessBefore";
     private static final String INBOX_DELETE =
             "com.yomi.boot.java.component.event.repository.mapper.EventInboxMapper.deleteCreatedBefore";
+    private static final String OUTBOX_OLDEST =
+            "com.yomi.boot.java.component.event.repository.mapper.EventOutboxMapper.selectOldestSentSuccessTime";
+    private static final String INBOX_OLDEST =
+            "com.yomi.boot.java.component.event.repository.mapper.EventInboxMapper.selectOldestCreateTime";
 
     @Test
     void mysqlVariantIsNativeLimitedDeleteWithoutSubquery() throws Exception {
@@ -68,6 +72,20 @@ class EventRetentionDeleteSqlTest {
 
         assertFalse(configuration.hasStatement(OUTBOX_DELETE));
         assertFalse(configuration.hasStatement(INBOX_DELETE));
+    }
+
+    /** 落后度量语句与方言无关：两库同一条，只取 MIN(时间列) */
+    @Test
+    void oldestTimeQueriesAreDialectNeutral() throws Exception {
+        String outbox = norm(sql(parse("mysql"), OUTBOX_OLDEST,
+                Map.of("serviceName", "svc", "status", "SENT_SUCCESS")));
+        String inbox = norm(sql(parse("pgsql"), INBOX_OLDEST, Map.of("serviceName", "svc")));
+
+        assertTrue(outbox.startsWith("SELECT MIN(sent_time) FROM sys_event_outbox WHERE"), outbox);
+        assertTrue(outbox.contains("status = ?"), "只统计可删状态的行: " + outbox);
+        assertTrue(inbox.startsWith("SELECT MIN(create_time) FROM sys_event_inbox WHERE"), inbox);
+        assertEquals(2, count(outbox, "?"), "只按服务名与状态过滤: " + outbox);
+        assertEquals(1, count(inbox, "?"), "只按服务名过滤: " + inbox);
     }
 
     // ===== 夹具 =====

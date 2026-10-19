@@ -110,7 +110,8 @@ yomi:
     stale-cleaner-enabled: true
     scan-interval: 10m
     stale-timeout: 60m
-    batch-size: 100
+    chunk-size: 1000
+    max-delete-per-run: 50000
   oss:
     enabled: true
     provider: alioss
