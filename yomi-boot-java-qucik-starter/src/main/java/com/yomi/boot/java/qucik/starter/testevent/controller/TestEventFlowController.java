@@ -21,7 +21,7 @@ import java.util.List;
  * 事件组件流程测试：发件箱写入、重复发布、{@link EventUtils} 模拟幂等消费。
  * <p>
  * 前置：{@code yomi.event.publisher-enabled=true}、{@code yomi.event.consumer-enabled=true}、
- * Redis（组件表由启动期自动创建，脚本 component-event/sql/mysql|pgsql/sys_event.sql）；经 Kafka 端到端另需 broker 及
+ * Redis（组件表需先手工执行仓库根目录 sql/mysql|pgsql/sys_event.sql）；经 Kafka 端到端另需 broker 及
  * {@link com.yomi.boot.java.qucik.starter.testevent.kafka.TestEventDemoKafkaListener}
  *
  * @author zwei

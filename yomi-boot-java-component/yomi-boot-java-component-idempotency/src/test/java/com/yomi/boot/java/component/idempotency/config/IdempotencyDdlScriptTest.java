@@ -2,11 +2,11 @@ package com.yomi.boot.java.component.idempotency.config;
 
 import com.yomi.boot.java.component.idempotency.core.IdempotencyKey;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -15,12 +15,12 @@ import java.util.regex.Pattern;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 两套方言 DDL 的守卫：脚本在 classpath（随 jar 打包，见根 pom 的 sql resources），
+ * 两套方言 DDL 的守卫：脚本在仓库根 sql/{mysql,pgsql}/（普通目录，不进 classpath/jar，测试直接读文件），
  * 两个方言都要声明组件全部表，pgsql 脚本里不能有 MySQL 专属写法，列宽与 {@link IdempotencyKey} 的上限常量同源。
  */
 class IdempotencyDdlScriptTest {
 
-    /** 组件声明的表清单（与装配类里的 TableInitializer 一致） */
+    /** 组件表清单（脚本是唯一 DDL 来源，需与实体/仓储一致） */
     private static final List<String> TABLES = List.of("sys_idempotency_record");
 
     /** MySQL 专属写法：pgsql 脚本里出现即执行失败（注释行已剔除） */
@@ -64,16 +64,24 @@ class IdempotencyDdlScriptTest {
         return Integer.parseInt(matcher.group(1));
     }
 
-    /** 读 classpath 脚本并剔除 -- 行注释、转小写（守卫只看真正的 SQL 语句） */
+    /** 读仓库根 sql/ 脚本并剔除 -- 行注释、转小写（守卫只看真正的 SQL 语句） */
     private static String body(String path) throws IOException {
-        ClassPathResource resource = new ClassPathResource(path);
-        assertTrue(resource.exists(), "classpath 必须包含 " + path + "（jar 打包配置见根 pom resources）");
-        try (InputStream in = resource.getInputStream()) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8).lines()
-                    .filter(line -> !line.trim().startsWith("--"))
-                    .reduce("", (left, right) -> left + "\n" + right)
-                    .toLowerCase(Locale.ROOT);
+        Path file = repositoryRoot().resolve(path);
+        assertTrue(Files.isRegularFile(file), "仓库根目录必须包含 " + path + "（实际路径 " + file + "）");
+        return Files.readString(file, StandardCharsets.UTF_8).lines()
+                .filter(line -> !line.trim().startsWith("--"))
+                .reduce("", (left, right) -> left + "\n" + right)
+                .toLowerCase(Locale.ROOT);
+    }
+
+    /** 仓库根目录：从工作目录向上找到同时含 sql/mysql 与 sql/pgsql 的那层（sql 是普通目录，不进 classpath） */
+    private static Path repositoryRoot() {
+        for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
+            if (Files.isDirectory(dir.resolve("sql/mysql")) && Files.isDirectory(dir.resolve("sql/pgsql"))) {
+                return dir;
+            }
         }
+        throw new IllegalStateException("未找到仓库根目录（需含 sql/mysql 与 sql/pgsql）: " + Path.of("").toAbsolutePath());
     }
 
 }

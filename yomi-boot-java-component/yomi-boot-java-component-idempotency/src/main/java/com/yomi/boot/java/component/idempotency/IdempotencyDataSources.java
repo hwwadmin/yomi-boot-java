@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * 幂等记录库注册门面（装配期使用）：注册哪个数据源，哪个库就获得「自动建表 + 自动清理」并允许放幂等记录。
+ * 幂等记录库注册门面（装配期使用）：注册哪个数据源，哪个库就获得「自动清理」并允许放幂等记录。
  * <p>
  * 默认只注册主库（组件自己完成，注册名 {@value #MASTER}）；业务附加库要用幂等，在自己的 {@code @Configuration}
  * 里把该库的 {@code SqlSessionFactory} 交给 {@link #register(String, SqlSessionFactory)}——注册名会并进 Redis 键
@@ -111,7 +111,7 @@ public class IdempotencyDataSources {
         return byDataSource.get(dataSource);
     }
 
-    /** 全部注册项（按注册顺序，主库在前）：建表检查、清理任务与日志用 */
+    /** 全部注册项（按注册顺序，主库在前）：清理任务与日志用 */
     public Collection<Registration> registrations() {
         return byName.values();
     }

@@ -23,7 +23,7 @@ import java.util.Objects;
  * 测试表流程接口：一次调用依次走 增 → 查 → 改 → 查 → 删 → 查 六步，逐步断言，用于验证
  * MyBatis-Plus 的封装与配置是否正常，任一步骤不符合预期即返回失败响应。
  * <p>
- * 两种实现各有一条流程（表结构见 sql/mysql|pgsql/test_table.sql）：
+ * 两种实现各有一条流程（表结构见 yomi-boot-java-qucik-starter/sql/mysql|pgsql/test_table.sql）：
  * <ul>
  *     <li>GET /test/ds/test-table/dao：MyBatisDao 封装形式（BaseMapper + Lambda 链式条件）</li>
  *     <li>GET /test/ds/test-table/xml：mapper.xml 形式（SQL 全部手写）</li>

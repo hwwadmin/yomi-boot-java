@@ -113,7 +113,7 @@ public final class IdempotencyException {
     public static BizException datasourceUnregistered(String dataSource) {
         return BizException.exception(IdempotencyErrorCode.DATASOURCE_UNREGISTERED,
                 "本次事务所在的数据源（" + dataSource + "）未注册幂等记录表：请在装配期用 IdempotencyDataSources#register"
-                        + " 注册它（注册即获得自动建表与自动清理），或把幂等调用放回已注册的库（默认只有主库）");
+                        + " 注册它（注册即获得自动清理），或把幂等调用放回已注册的库（默认只有主库）");
     }
 
 }

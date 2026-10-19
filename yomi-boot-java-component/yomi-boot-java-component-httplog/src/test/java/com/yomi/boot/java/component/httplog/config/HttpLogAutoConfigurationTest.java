@@ -288,7 +288,7 @@ class HttpLogAutoConfigurationTest {
     @Configuration(proxyBeanMethods = false)
     static class StubConfiguration {
 
-        /** 主数据源桩：连接可用、表都存在（启动期建表只探活、不建表） */
+        /** 主数据源桩：连接可用、语句无副作用 */
         @Bean
         DataSource masterDataSource() {
             return ProbeDataSource.allTablesExist();

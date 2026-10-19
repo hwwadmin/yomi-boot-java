@@ -1,4 +1,4 @@
--- MySQL 建表脚本（PostgreSQL 版见同组件 sql/pgsql/sys_event.sql；启动期缺表时按当前数据库自动执行，也可手工执行）
+-- MySQL 建表脚本（PostgreSQL 版见仓库根 sql/pgsql/sys_event.sql；属组件表，需手工执行）
 -- 事件收件箱表：字段与 EventInbox 实体一一对应
 CREATE TABLE IF NOT EXISTS `sys_event_inbox`
 (

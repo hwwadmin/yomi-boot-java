@@ -159,7 +159,7 @@ class IdempotencyStaleCleanerWiringTest {
     }
 
     /**
-     * 构造带测试 Bean 的 ApplicationContextRunner（与建表检查测试同款桩；Mapper 由装配类自己的 @MapperScan 扫出）；
+     * 构造带测试 Bean 的 ApplicationContextRunner（与其它装配测试同款桩；Mapper 由装配类自己的 @MapperScan 扫出）；
      * 主库设施按 ds 的固定名字注入，事务边界由调用方给（组件不再自建/注入事务模板）
      */
     private ApplicationContextRunner runner(Class<?>... userConfigurations) {

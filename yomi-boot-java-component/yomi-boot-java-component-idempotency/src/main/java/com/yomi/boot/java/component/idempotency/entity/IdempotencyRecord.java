@@ -10,7 +10,7 @@ import lombok.experimental.Accessors;
 import java.time.Instant;
 
 /**
- * 表 sys_idempotency_record；建表脚本 sql/mysql|pgsql/sys_idempotency_record.sql
+ * 表 sys_idempotency_record；建表脚本在仓库根目录 sql/mysql|pgsql/sys_idempotency_record.sql
  *
  * @author zwei
  */

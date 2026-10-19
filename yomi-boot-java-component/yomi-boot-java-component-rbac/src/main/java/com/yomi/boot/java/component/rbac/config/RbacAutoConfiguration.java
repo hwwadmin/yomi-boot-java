@@ -1,6 +1,5 @@
 package com.yomi.boot.java.component.rbac.config;
 
-import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.rbac.IRbacAdminService;
 import com.yomi.boot.java.component.rbac.IRbacAuthService;
 import com.yomi.boot.java.component.rbac.cache.RbacProjectionKeys;
@@ -26,7 +25,6 @@ import com.yomi.boot.java.component.token.config.TokenAutoConfiguration;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.spring.annotation.MapperScan;
-import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.context.LifecycleProperties;
@@ -39,8 +37,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
-
-import java.util.List;
 
 /**
  * RBAC 自动装配；需 {@code yomi.rbac.enabled=true}
@@ -117,7 +113,7 @@ public class RbacAutoConfiguration {
         T mapper = mapperProvider.getIfAvailable();
         if (mapper == null) {
             throw new IllegalStateException("yomi.rbac.enabled=true 需要 " + mapperName
-                    + "：请执行组件 jar 内 sql/mysql/sys_rbac.sql 或 sql/pgsql/sys_rbac.sql（含内置超管种子）；"
+                    + "：请执行仓库根目录 sql/mysql/sys_rbac.sql 或 sql/pgsql/sys_rbac.sql（含内置超管种子）；"
                     + "Mapper 由 component-rbac 自动配置扫描，无需宿主配置 @MapperScan");
         }
         return mapper;
@@ -230,22 +226,13 @@ public class RbacAutoConfiguration {
         }
         if (authMapperProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
-                    "yomi.rbac.enabled=true 需要 RbacAuthMapper：请执行组件 jar 内 "
+                    "yomi.rbac.enabled=true 需要 RbacAuthMapper：请执行仓库根目录 "
                             + "sql/mysql/sys_rbac.sql 或 sql/pgsql/sys_rbac.sql（含内置超管种子）；"
                             + "Mapper 由 component-rbac 自动配置扫描，无需宿主配置 @MapperScan");
         }
         log.info("[RBAC]已启用: storePrefix={}, projectionEnabled={}, httpPathStyle={}",
                 keys.getPrefix(), properties.isProjectionEnabled(), properties.getHttpPathStyle());
         return new RbacBootstrap();
-    }
-
-    /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_rbac.sql 自动创建
-     *（含内置超管种子），建表后请求可正常通过鉴权 */
-    @Bean
-    public TableInitializer rbacTableInitializer(ListableBeanFactory beanFactory) {
-        return TableInitializer.onMaster(beanFactory, "RBAC", "sys_rbac.sql", List.of(
-                "sys_rbac_perm", "sys_rbac_perm_group", "sys_rbac_role",
-                "sys_rbac_user_role_rel", "sys_rbac_role_group_rel", "sys_rbac_group_perm_rel"));
     }
 
     /** 从环境补全存储键前缀 */

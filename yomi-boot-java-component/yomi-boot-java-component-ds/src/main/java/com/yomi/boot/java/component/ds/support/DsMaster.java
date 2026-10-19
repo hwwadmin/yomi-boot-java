@@ -51,7 +51,7 @@ public final class DsMaster {
         return List.of(DATASOURCE_BEAN, SQL_SESSION_FACTORY_BEAN, SQL_SESSION_TEMPLATE_BEAN, TRANSACTION_MANAGER_BEAN);
     }
 
-    /** 主数据源：只认 {@code masterDataSource}（组件建表、跨库诊断都锚在它上面） */
+    /** 主数据源：只认 {@code masterDataSource}（组件数据访问、跨库诊断都锚在它上面） */
     public static DataSource requireDataSource(ListableBeanFactory beanFactory) {
         return require(beanFactory, DataSource.class, DATASOURCE_BEAN, "主数据源");
     }

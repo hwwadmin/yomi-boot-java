@@ -1,6 +1,5 @@
 package com.yomi.boot.java.component.idempotency.config;
 
-import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.idempotency.IdempotencyDataSources;
 import com.yomi.boot.java.component.idempotency.stale.IdempotencyStaleCleaner;
 import com.yomi.boot.java.component.redis.schedule.ClusterTask;
@@ -11,26 +10,17 @@ import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.context.LifecycleProperties;
 import org.springframework.core.env.Environment;
 
-import java.util.List;
-
 /**
- * 装配收口：冻结记录库注册表，并给每个注册库配上「建表检查」与「清理任务」。
+ * 装配收口：冻结记录库注册表，并给每个注册库配上「清理任务」。
  * <p>注册表在装配期可写（业务在自己的 {@code @Configuration} 里依赖 {@code IdempotencyDataSources} 后注册），
  * 本类在所有单例就绪后冻结它——注册必须在装配期完成，运行期不再接受变更
- * <p>建表与清理都逐库独立：某库缺表或连接卡住不牵动别的库（每库一个集群定时任务，任务名即锁键）。
- * 建表按该库自己的方言走（{@link TableInitializer} 内置 MySQL/PostgreSQL 脚本，缺表自动建）
+ * <p>清理逐库独立（每库一个集群定时任务，任务名即锁键）；记录表需在各库手工建好，组件不自动建表
  *
  * @author zwei
  */
 @Slf4j
 @RequiredArgsConstructor
 public class IdempotencyBootstrap implements SmartInitializingSingleton {
-
-    /** 建表脚本名（jar 内 sql/mysql|pgsql 下同名） */
-    private static final String TABLE_SCRIPT = "sys_idempotency_record.sql";
-
-    /** 记录表名 */
-    private static final String TABLE = "sys_idempotency_record";
 
     /** 幂等组件配置 */
     private final IdempotencyProperties properties;
@@ -47,17 +37,15 @@ public class IdempotencyBootstrap implements SmartInitializingSingleton {
     /** 集群任务构造需要（停机等待按同类阶段超时推算） */
     private final LifecycleProperties lifecycleProperties;
 
-    /** 冻结注册表并逐库装配建表检查与清理任务 */
+    /** 冻结注册表并逐库装配清理任务 */
     @Override
     public void afterSingletonsInstantiated() {
         dataSources.freeze();
         dataSources.registrations().forEach(this::initializeLibrary);
     }
 
-    /** 单个记录库：建表检查（缺表按该库方言自动建） + 清理任务（开关打开时，一库一个任务） */
+    /** 单个记录库：清理任务（开关打开时，一库一个任务） */
     private void initializeLibrary(IdempotencyDataSources.Registration registration) {
-        new TableInitializer(() -> registration.dataSource(), label(registration.name()), TABLE_SCRIPT, List.of(TABLE))
-                .afterSingletonsInstantiated();
         if (!properties.isStaleCleanerEnabled()) {
             return;
         }
@@ -79,11 +67,6 @@ public class IdempotencyBootstrap implements SmartInitializingSingleton {
         return IdempotencyDataSources.MASTER.equals(datasourceName)
                 ? IdempotencyStaleCleaner.TASK_NAME
                 : IdempotencyStaleCleaner.TASK_NAME + "-" + datasourceName;
-    }
-
-    /** 建表检查的日志标识：主库沿用原文案，附加库点名自己 */
-    private static String label(String datasourceName) {
-        return IdempotencyDataSources.MASTER.equals(datasourceName) ? "幂等" : "幂等(" + datasourceName + ")";
     }
 
     /** 单轮上限折算的日清理能力：scanInterval 越短能力越大，用于判断保留期是否追得上写入量 */

@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 查询全程走组件服务接口 IHttpLogService
  * <p>
  * 运行前需手动启动应用（mvn -o spring-boot:run -pl yomi-boot-java-qucik-starter），
- * 并保证 sys_http_log 表已创建（组件启动期自动创建；脚本 sql/mysql|pgsql/sys_http_log.sql）
+ * 并保证 sys_http_log 表已创建（先手工执行仓库根目录 sql/mysql|pgsql/sys_http_log.sql）
  *
  * @author zwei
  */

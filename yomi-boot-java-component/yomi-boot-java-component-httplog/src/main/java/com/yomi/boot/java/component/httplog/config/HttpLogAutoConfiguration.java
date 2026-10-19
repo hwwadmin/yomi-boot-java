@@ -4,7 +4,6 @@ import com.yomi.boot.java.component.desensitize.IDesensitizeService;
 import com.yomi.boot.java.component.desensitize.DesensitizeStrategyRegistry;
 import com.yomi.boot.java.component.desensitize.config.DesensitizeAutoConfiguration;
 import com.yomi.boot.java.component.ds.support.DsMaster;
-import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.httplog.IHttpLogService;
 import com.yomi.boot.java.component.httplog.collect.HttpLogContextEnricher;
 import com.yomi.boot.java.component.httplog.collect.HttpLogFilter;
@@ -131,12 +130,6 @@ public class HttpLogAutoConfiguration {
     @ConditionalOnMissingBean(IHttpLogService.class)
     public IHttpLogService httpLogService(IHttpLogRepository httpLogRepository, HttpLogKeys httpLogKeys) {
         return new HttpLogService(httpLogRepository, httpLogKeys);
-    }
-
-    /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_http_log.sql 自动创建 */
-    @Bean
-    public TableInitializer httpLogTableInitializer(ListableBeanFactory beanFactory) {
-        return TableInitializer.onMaster(beanFactory, "HTTP请求日志", "sys_http_log.sql", List.of("sys_http_log"));
     }
 
     @Bean

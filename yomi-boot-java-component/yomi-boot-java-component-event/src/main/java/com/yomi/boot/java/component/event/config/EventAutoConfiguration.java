@@ -1,7 +1,6 @@
 package com.yomi.boot.java.component.event.config;
 
 import com.yomi.boot.java.component.ds.support.DsMaster;
-import com.yomi.boot.java.component.ds.support.TableInitializer;
 import com.yomi.boot.java.component.event.IEventService;
 import com.yomi.boot.java.component.event.consume.EventInboxGuard;
 import com.yomi.boot.java.component.event.publish.EventPublisher;
@@ -44,7 +43,6 @@ import org.springframework.core.env.Environment;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -140,13 +138,6 @@ public class EventAutoConfiguration {
     @Configuration
     @ConditionalOnProperty(value = "yomi.event.publisher-enabled", havingValue = "true")
     static class PublisherConfiguration {
-
-        /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_event.sql 自动创建 */
-        @Bean
-        public TableInitializer eventOutboxTableInitializer(ListableBeanFactory beanFactory) {
-            return TableInitializer.onMaster(beanFactory, "事件发件箱", "sys_event.sql",
-                    List.of("sys_event_outbox", "sys_event_outbox_dlq"));
-        }
 
         @Bean
         @ConditionalOnMissingBean(IEventOutboxRepository.class)
@@ -245,13 +236,6 @@ public class EventAutoConfiguration {
     @ConditionalOnProperty(value = "yomi.event.consumer-enabled", havingValue = "true")
     static class ConsumerConfiguration {
 
-        /** 启动期建表（主库）：缺表时按当前数据库方言执行 sql/mysql|pgsql/sys_event.sql 自动创建 */
-        @Bean
-        public TableInitializer eventInboxTableInitializer(ListableBeanFactory beanFactory) {
-            return TableInitializer.onMaster(beanFactory, "事件收件箱", "sys_event.sql",
-                    List.of("sys_event_inbox"));
-        }
-
         @Bean
         @ConditionalOnMissingBean(IEventInboxRepository.class)
         public IEventInboxRepository eventInboxRepository(EventInboxMapper mapper) {
@@ -303,7 +287,7 @@ public class EventAutoConfiguration {
                                              ObjectProvider<RedissonClient> redissonProvider) {
         if (outboxMapperProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
-                    "yomi.event.publisher-enabled=true 需要 EventOutboxMapper：请执行组件 jar 内 "
+                    "yomi.event.publisher-enabled=true 需要 EventOutboxMapper：请执行仓库根目录 "
                             + "sql/mysql/sys_event.sql 或 sql/pgsql/sys_event.sql；"
                             + "Mapper 由 component-event 自动配置扫描，无需宿主配置 @MapperScan");
         }
@@ -352,7 +336,7 @@ public class EventAutoConfiguration {
                                             ObjectProvider<RedissonClient> redissonProvider) {
         if (inboxMapperProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
-                    "yomi.event.consumer-enabled=true 需要 EventInboxMapper：请执行组件 jar 内 "
+                    "yomi.event.consumer-enabled=true 需要 EventInboxMapper：请执行仓库根目录 "
                             + "sql/mysql/sys_event.sql 或 sql/pgsql/sys_event.sql；"
                             + "Mapper 由 component-event 自动配置扫描，无需宿主配置 @MapperScan");
         }

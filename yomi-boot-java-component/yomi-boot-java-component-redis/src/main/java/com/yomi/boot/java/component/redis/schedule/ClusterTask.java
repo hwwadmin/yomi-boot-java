@@ -139,7 +139,7 @@ public class ClusterTask implements SmartLifecycle {
         return running;
     }
 
-    /** 生命周期阶段：启动尽量晚（所有单例创建、建表之后），停机尽量早（先于低阶段 Bean 停止与基础设施销毁） */
+    /** 生命周期阶段：启动尽量晚（所有单例创建之后），停机尽量早（先于低阶段 Bean 停止与基础设施销毁） */
     @Override
     public int getPhase() {
         return Integer.MAX_VALUE - 200;

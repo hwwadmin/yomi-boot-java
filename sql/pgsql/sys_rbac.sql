@@ -1,4 +1,4 @@
--- PostgreSQL 建表脚本（MySQL 版见同组件 sql/mysql/sys_rbac.sql；启动期缺表时按当前数据库自动执行，也可手工执行）
+-- PostgreSQL 建表脚本（MySQL 版见仓库根 sql/mysql/sys_rbac.sql；属组件表，需手工执行）
 -- 时间列统一 timestamptz(3)（即 timestamp(3) with time zone，瞬时语义、与 Java Instant 对齐；MySQL 版对应 datetime(3)）
 -- 约束/索引名在 PG 内是 schema 级唯一（MySQL 是表级），故统一带表名前缀（MySQL 的 uk_code 在本文件里按表展开）
 -- RBAC 权限模型（字段与实体一一对应；status：0 禁用 / 1 启用）

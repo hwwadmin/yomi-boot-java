@@ -8,7 +8,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.Statement;
 
 /**
- * 探活用数据源桩：连接可用、所有表都存在（启动期建表检查只探活、不建表）、方言按 MySQL 解析；不触库。
+ * 数据源桩：连接可用、语句无副作用、方言按 MySQL 解析；不触库。
  * 主数据源只能按 ds 的固定名字（masterDataSource）注册，装配测试用它顶主库。
  */
 final class ProbeDataSource {
