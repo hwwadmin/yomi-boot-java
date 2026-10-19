@@ -1,8 +1,13 @@
 package com.yomi.boot.java.component.idempotency.stale;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.yomi.boot.java.component.idempotency.config.IdempotencyProperties;
 import com.yomi.boot.java.component.idempotency.repository.IdempotencyRecordRepository;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -96,6 +101,69 @@ class IdempotencyStaleCleanerTest {
         assertTrue(ex.getMessage().contains("不能小于 chunk-size"), ex.getMessage());
         properties.setMaxDeletePerRun(1000);
         properties.validate();
+    }
+
+    /** 日志级别口径：正常一轮只出 INFO；只有触顶（需要干预）才 WARN */
+    @Test
+    void normalRoundLogsInfoAndOnlyCapHitLogsWarn() {
+        StubRepository repository = new StubRepository();
+        repository.expiredResults.addAll(List.of(3, 0));
+
+        ListAppender<ILoggingEvent> logs = attachLogs();
+        try {
+            cleaner(repository, props -> {
+                props.setChunkSize(1000);
+                props.setMaxDeletePerRun(50_000);
+            }).clean();
+        } finally {
+            detachLogs(logs);
+        }
+
+        assertTrue(logs.list.stream().anyMatch(e -> e.getLevel() == Level.INFO
+                && e.getFormattedMessage().contains("记录清理")), "正常清理必须留 INFO 摘要: " + messages(logs));
+        assertEquals(List.of(), warnMessages(logs), "正常清理不得 WARN（长期刷 WARN 会淹掉真告警）");
+    }
+
+    /** 触顶才是需要干预的情况：留 WARN 并给出去路 */
+    @Test
+    void capHitLogsWarnWithGuidance() {
+        StubRepository repository = new StubRepository();
+        repository.expiredResults.addAll(List.of(500, 500));
+
+        ListAppender<ILoggingEvent> logs = attachLogs();
+        try {
+            cleaner(repository, props -> {
+                props.setChunkSize(500);
+                props.setMaxDeletePerRun(1000);
+            }).clean();
+        } finally {
+            detachLogs(logs);
+        }
+
+        assertTrue(warnMessages(logs).stream().anyMatch(msg -> msg.contains("达到单轮上限")
+                        && msg.contains("调大上限或调小 scan-interval")),
+                "触顶必须留 WARN 且指出路: " + messages(logs));
+    }
+
+    private static ListAppender<ILoggingEvent> attachLogs() {
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        ((Logger) LoggerFactory.getLogger(IdempotencyStaleCleaner.class)).addAppender(appender);
+        return appender;
+    }
+
+    private static void detachLogs(ListAppender<ILoggingEvent> appender) {
+        ((Logger) LoggerFactory.getLogger(IdempotencyStaleCleaner.class)).detachAppender(appender);
+    }
+
+    private static List<String> warnMessages(ListAppender<ILoggingEvent> appender) {
+        return appender.list.stream().filter(event -> event.getLevel() == Level.WARN)
+                .map(ILoggingEvent::getFormattedMessage).toList();
+    }
+
+    private static String messages(ListAppender<ILoggingEvent> appender) {
+        return appender.list.stream().map(event -> event.getLevel() + ":" + event.getFormattedMessage())
+                .toList().toString();
     }
 
     /** 构造清理器（配置校验不经过 validate，直接给闭合取值） */
