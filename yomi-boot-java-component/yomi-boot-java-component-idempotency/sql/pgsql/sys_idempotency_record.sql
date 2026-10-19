@@ -26,7 +26,7 @@ COMMENT ON TABLE sys_idempotency_record IS '幂等记录表';
 COMMENT ON COLUMN sys_idempotency_record.id IS '主键ID（雪花ID）';
 COMMENT ON COLUMN sys_idempotency_record.namespace IS '幂等命名空间（业务域/接口隔离）';
 COMMENT ON COLUMN sys_idempotency_record.idempotency_key IS '幂等键';
-COMMENT ON COLUMN sys_idempotency_record.request_hash IS '请求指纹（同键不同参校验）';
+COMMENT ON COLUMN sys_idempotency_record.request_hash IS '请求指纹摘要（SHA-256 hex，同键不同参校验）';
 COMMENT ON COLUMN sys_idempotency_record.status IS '状态：1处理中 2已完成';
 COMMENT ON COLUMN sys_idempotency_record.result_type IS '结果类型（全限定类名）';
 COMMENT ON COLUMN sys_idempotency_record.result_payload IS '结果JSON';

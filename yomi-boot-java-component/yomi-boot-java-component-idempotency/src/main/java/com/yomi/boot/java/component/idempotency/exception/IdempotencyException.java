@@ -17,6 +17,15 @@ public final class IdempotencyException {
         return BizException.exception(IdempotencyErrorCode.KEY_INVALID, "幂等键不合法");
     }
 
+    /**
+     * 命名空间、幂等键或请求指纹超过库列上限
+     * <p>提前拒绝，避免落到驱动层的 Data too long / value too long
+     */
+    public static BizException valueTooLong(String field, int length, int max) {
+        return BizException.exception(IdempotencyErrorCode.KEY_INVALID,
+                field + "超长：" + length + " 字符 > 库列上限 " + max + "，请缩短或改用摘要");
+    }
+
     /** 同键请求仍在处理中 */
     public static BizException processing() {
         return BizException.exception(IdempotencyErrorCode.PROCESSING, "同键请求仍在处理中");

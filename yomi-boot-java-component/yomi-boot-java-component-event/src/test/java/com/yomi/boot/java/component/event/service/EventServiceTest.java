@@ -75,9 +75,11 @@ class EventServiceTest {
         EventService service = service(outbox.repo(), dlq.repo(), null);
 
         assertTrue(service.requeue("evt-1"));
-        // 顺序：先删 DLQ（阻断自动重试路径），后重置 PENDING（中继重新抓取）
-        assertTrue(calls.indexOf("deleteByEventOutboxId") >= 0);
-        assertTrue(calls.indexOf("deleteByEventOutboxId") < calls.indexOf("resetToPending"));
+        // 顺序与投递侧一致：先重置 PENDING（拿 outbox 行锁），再删 DLQ（拿 DLQ 索引锁）；
+        // 反序会与 markSentFailAndEnqueueDlq / markOutboxSuccessAndDeleteDlq 构成等待环（InnoDB 死锁）
+        assertTrue(calls.indexOf("resetToPending") >= 0);
+        assertTrue(calls.indexOf("resetToPending") < calls.indexOf("deleteByEventOutboxId"),
+                "必须先动 outbox 行再动 DLQ 行: " + calls);
         assertEquals("evt-1", outbox.lastEventId);
     }
 
@@ -96,7 +98,22 @@ class EventServiceTest {
     }
 
     @Test
-    void requeue_rollsBackDlqDeletionWhenResetFails() {
+    void requeue_rollsBackResetWhenDlqDeleteFails() {
+        List<String> txNotes = new ArrayList<>();
+        FakeOutbox outbox = new FakeOutbox(new ArrayList<>(), txNotes);
+        outbox.row = row(OutboxStatus.SENT_FAIL);
+        FakeDlq dlq = new FakeDlq(new ArrayList<>(), txNotes);
+        dlq.failDelete = true;
+        EventService service = service(outbox.repo(), dlq.repo(), null);
+
+        assertThrows(IllegalStateException.class, () -> service.requeue("evt-1"));
+
+        assertTrue(txNotes.contains("outbox:resetUndone"),
+                "第二步（删 DLQ）失败必须把重置一起回滚: " + txNotes);
+    }
+
+    @Test
+    void requeue_resetFailureSkipsDlqWrite() {
         List<String> txNotes = new ArrayList<>();
         FakeOutbox outbox = new FakeOutbox(new ArrayList<>(), txNotes);
         outbox.row = row(OutboxStatus.SENT_FAIL);
@@ -106,8 +123,21 @@ class EventServiceTest {
 
         assertThrows(IllegalStateException.class, () -> service.requeue("evt-1"));
 
-        assertTrue(txNotes.contains("dlq:deleteUndone"),
-                "第二步失败必须连同 DLQ 删除一起回滚，否则留下永不投递的事件: " + txNotes);
+        assertFalse(dlq.calls.contains("deleteByEventOutboxId"),
+                "第一步就失败时不应再去删 DLQ（事务已回滚）: " + dlq.calls);
+    }
+
+    @Test
+    void requeue_whenResetMissesStillClearsStaleDlq() {
+        FakeOutbox outbox = new FakeOutbox();
+        outbox.row = row(OutboxStatus.SENT_FAIL);
+        outbox.resetRows = 0;
+        FakeDlq dlq = new FakeDlq();
+        EventService service = service(outbox.repo(), dlq.repo(), null);
+
+        assertFalse(service.requeue("evt-1"), "未重置成功应返回 false");
+        assertTrue(dlq.calls.contains("deleteByEventOutboxId"),
+                "行已并发送达/不存在时 DLQ 指针已失效，仍应清掉: " + dlq.calls);
     }
 
     @Test
@@ -274,7 +304,10 @@ class EventServiceTest {
         String lastService;
         String lastEventId;
 
-        /** true 时 resetToPending 抛错（模拟第二步失败，用于验证回滚） */
+        /** resetToPending 的返回行数（0 模拟行已并发送达/不存在，重置未命中） */
+        int resetRows = 1;
+
+        /** true 时 resetToPending 抛错（模拟第一步失败） */
         boolean failReset;
 
         IEventOutboxRepository repo() {
@@ -294,7 +327,18 @@ class EventServiceTest {
                                 if (failReset) {
                                     throw new IllegalStateException("resetToPending 失败（模拟 DB 故障）");
                                 }
-                                yield 1;
+                                if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                                    // 记录该写入挂在事务上：回滚时回调会被触发
+                                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                                        @Override
+                                        public void afterCompletion(int status) {
+                                            if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+                                                txNotes.add("outbox:resetUndone");
+                                            }
+                                        }
+                                    });
+                                }
+                                yield resetRows;
                             }
                             case "findByIds" -> byIds;
                             case "pageOutbox" -> {
@@ -332,6 +376,9 @@ class EventServiceTest {
         long resetRows;
         String lastService;
 
+        /** true 时 deleteByEventOutboxId 抛错（模拟第二步失败） */
+        boolean failDelete;
+
         IEventOutboxDlqRepository repo() {
             return (IEventOutboxDlqRepository) Proxy.newProxyInstance(
                     IEventOutboxDlqRepository.class.getClassLoader(),
@@ -341,6 +388,9 @@ class EventServiceTest {
                             case "deleteByEventOutboxId" -> {
                                 txNotes.add(TransactionSynchronizationManager.isActualTransactionActive()
                                         ? "dlq:inTx" : "dlq:noTx");
+                                if (failDelete) {
+                                    throw new IllegalStateException("deleteByEventOutboxId 失败（模拟 DB 故障）");
+                                }
                                 if (TransactionSynchronizationManager.isSynchronizationActive()) {
                                     // 记录该写入挂在事务上：回滚时回调会被触发
                                     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

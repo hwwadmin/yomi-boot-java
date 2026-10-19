@@ -108,13 +108,15 @@ public class EventService implements IEventService {
         }
         // 两步同成同败：单独执行时若在中间崩溃/第二步失败，"DLQ 行已删、行还停在 SENT_FAIL"
         // 这条事件会一直停在 SENT_FAIL 无人投递（中继只抓 PENDING、DLQ 扫描已无行），只能人工再 requeue 一次。
-        // 顺序保持：先删 DLQ 行（既有 DLQ 重试路径重试前会重查 DLQ 行），再重置 PENDING。
+        // 顺序与投递侧（markSentFailAndEnqueueDlq / markOutboxSuccessAndDeleteDlq）保持一致：先动 outbox 行、
+        // 再动 DLQ 行——反向顺序会与投递侧构成等待环，同一行并发时被 InnoDB 判死锁（已实测复现）
         Boolean requeued = transactionTemplate.execute(status -> {
+            boolean reset = outboxRepository.resetToPending(keys.getServiceName(), eventId) > 0;
             IEventOutboxDlqRepository dlqRepository = dlqProvider.getIfAvailable();
             if (dlqRepository != null) {
                 dlqRepository.deleteByEventOutboxId(row.getId());
             }
-            return outboxRepository.resetToPending(keys.getServiceName(), eventId) > 0;
+            return reset;
         });
         return Boolean.TRUE.equals(requeued);
     }

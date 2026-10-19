@@ -122,6 +122,7 @@ public class IdempotencyGuard {
         if (!key.isValid()) {
             throw IdempotencyException.keyInvalid();
         }
+        assertFitsColumns(key);
 
         IdempotencyCacheLoad cached = redisStore.load(key, returnType);
         if (cached.hit()) {
@@ -149,6 +150,19 @@ public class IdempotencyGuard {
             return executeLocked(key, returnType, fn);
         } finally {
             releaseQuietly(lockKey, lock);
+        }
+    }
+
+    /** 身份字段必须落在列宽内：超长会在驱动层报 Data too long / value too long（指纹已归一为摘要，不受此限） */
+    private static void assertFitsColumns(IdempotencyKey key) {
+        assertFitsColumn("幂等命名空间", key.namespace(), IdempotencyKey.MAX_NAMESPACE_LENGTH);
+        assertFitsColumn("幂等键", key.idempotencyKey(), IdempotencyKey.MAX_KEY_LENGTH);
+    }
+
+    /** 单字段列宽校验 */
+    private static void assertFitsColumn(String field, String value, int max) {
+        if (value != null && value.length() > max) {
+            throw IdempotencyException.valueTooLong(field, value.length(), max);
         }
     }
 

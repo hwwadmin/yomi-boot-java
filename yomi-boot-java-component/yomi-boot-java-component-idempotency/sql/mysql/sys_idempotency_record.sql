@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS `sys_idempotency_record`
     `id`               bigint        NOT NULL COMMENT '主键ID（雪花ID）',
     `namespace`        varchar(128)  NOT NULL COMMENT '幂等命名空间（业务域/接口隔离）',
     `idempotency_key`  varchar(256)  NOT NULL COMMENT '幂等键',
-    `request_hash`     varchar(64)            DEFAULT NULL COMMENT '请求指纹（同键不同参校验）',
+    `request_hash`     varchar(64)            DEFAULT NULL COMMENT '请求指纹摘要（SHA-256 hex，同键不同参校验）',
     `status`           tinyint       NOT NULL DEFAULT 1 COMMENT '状态：1处理中 2已完成',
     `result_type`      varchar(512)           DEFAULT NULL COMMENT '结果类型（全限定类名）',
     `result_payload`   mediumtext             DEFAULT NULL COMMENT '结果JSON',

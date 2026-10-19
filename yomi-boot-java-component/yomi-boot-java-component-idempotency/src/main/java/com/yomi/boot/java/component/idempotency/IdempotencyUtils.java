@@ -3,7 +3,6 @@ package com.yomi.boot.java.component.idempotency;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyGuard;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyKey;
 import com.yomi.boot.java.core.utils.SpringUtils;
-import org.apache.commons.lang3.StringUtils;
 
 import java.lang.reflect.Type;
 import java.util.UUID;
@@ -26,9 +25,9 @@ public abstract class IdempotencyUtils {
         return new IdempotencyKey(namespace, idempotencyKey, null);
     }
 
-    /** 构造幂等键（含请求指纹，同键不同参时可校验） */
+    /** 构造幂等键（含请求指纹，同键不同参时可校验；指纹不限长，构造时归一为 SHA-256 摘要） */
     public static IdempotencyKey key(String namespace, String idempotencyKey, String requestHash) {
-        return new IdempotencyKey(namespace, idempotencyKey, StringUtils.trimToNull(requestHash));
+        return new IdempotencyKey(namespace, idempotencyKey, requestHash);
     }
 
     /**

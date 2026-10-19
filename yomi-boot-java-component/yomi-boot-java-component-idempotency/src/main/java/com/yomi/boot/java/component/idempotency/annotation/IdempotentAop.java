@@ -2,6 +2,7 @@ package com.yomi.boot.java.component.idempotency.annotation;
 
 import com.yomi.boot.java.base.exception.AbstractRuntimeException;
 import com.yomi.boot.java.base.exception.BizException;
+import com.yomi.boot.java.base.exception.UtilsException;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyGuard;
 import com.yomi.boot.java.component.idempotency.core.IdempotencyKey;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,8 @@ import java.lang.reflect.Method;
 
 /**
  * 拦截带 Idempotent 的方法：解析幂等键后交给 IdempotencyGuard 执行
+ * <p>异常口径：框架受控异常（含组件自己的幂等错误码）与 Error 原样透传；
+ * 其余非受控异常按系统异常（UtilsException）抛出，日志保留堆栈与根因
  *
  * @author zwei
  */
@@ -59,7 +62,7 @@ public class IdempotentAop {
         }
 
         String requestHash = IdempotentSpelSupport.resolve(idempotent.requestFingerprint(), method, args);
-        IdempotencyKey key = new IdempotencyKey(namespace, idempotencyKey, StringUtils.trimToNull(requestHash));
+        IdempotencyKey key = new IdempotencyKey(namespace, idempotencyKey, requestHash);
 
         try {
             return guard.executeAround(point, key);
@@ -68,7 +71,8 @@ public class IdempotentAop {
         } catch (Error e) {
             throw e;
         } catch (Throwable e) {
-            throw BizException.exception(e, "幂等处理失败");
+            // 非受控异常按系统异常归类：BizException 会被全局 advice 记成「业务异常」且不打堆栈，排障丢根因
+            throw UtilsException.exception(e, "幂等处理失败");
         }
     }
 

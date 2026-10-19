@@ -14,6 +14,8 @@ import java.lang.annotation.*;
  *         例如 {@code #orderId}、{@code #request.userId}</li>
  * </ul>
  * 解析后的 key 不能为空；namespace 解析后仍为空时使用「类全限定名#方法名」。
+ * <p>长度上限与库列一致（超限直接点名报错）：key ≤ 256、namespace ≤ 128；
+ * requestFingerprint 不限长度，组件统一取 SHA-256 摘要后落库与比对（列宽固定 64）。
  *
  * @author zwei
  */
@@ -36,7 +38,7 @@ public @interface Idempotent {
 
     /**
      * 请求指纹（可选），用于「同键、不同请求体」时拒绝（错误码 IDEMPOTENCY_KEY_CONFLICT）。
-     * 示例：对请求体做 hash 的 SpEL，或固定字段拼接。
+     * 示例：对请求体做 hash 的 SpEL，或固定字段拼接；长度不限，组件统一取 SHA-256 摘要后存储与比对。
      */
     String requestFingerprint() default "";
 

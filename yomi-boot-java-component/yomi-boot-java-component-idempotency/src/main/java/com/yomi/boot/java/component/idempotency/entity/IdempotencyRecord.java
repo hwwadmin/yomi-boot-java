@@ -27,7 +27,7 @@ public class IdempotencyRecord extends BaseEntity {
     /** 幂等键 */
     private String idempotencyKey;
 
-    /** 请求指纹，可选 */
+    /** 请求指纹摘要（SHA-256 hex），可选 */
     private String requestHash;
 
     /** 状态：1 处理中，2 已完成 */
