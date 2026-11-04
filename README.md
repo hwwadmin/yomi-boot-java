@@ -8,13 +8,6 @@
 - **要注意**：不含用户、订单这类业务代码，表要自己建（脚本在 `sql/mysql|pgsql/`）；数据库只支持 MySQL 和 PostgreSQL。
 - **怎么用**：先引 `yomi-boot-java-core`，再按需加 `component` 下的子模块；`qucik-starter` 是参考示例。
 
-### 提示词工程（AI 协作）
-
-[`_prompts/`](_prompts/) 是一套给 AI 用的协作说明（写需求 → 出方案 → 审方案 → 写代码）和 Java 规范，用在**业务项目**里；本仓库只管组件，不写业务功能。
-
-用法：业务项目把本仓 `_prompts/` **整体拷入工程根目录**，在 AI 对话里依次用 `prd_spec` → `create_spec` → `audit_spec` → `do_spec`，产出的文档和代码落在工程根目录。细则见 [AI 开发工作流说明](docs/AI开发工作流说明.md)。
-
-
 ## 中间件推荐版本
 
 | 服务 | 推荐版本 | Docker 镜像 tag | 兼容区间 |
