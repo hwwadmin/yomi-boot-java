@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 审核允许进入实现之后，按显化稿拆成任务，在目标系统里把设计落地，并留下可追踪的任务记录。
 
-执行前阅读《需求显化》（`.cursor/skills/create-spec/SKILL.md`）和《显化审核》（`.cursor/skills/audit-spec/SKILL.md`）。调用方点名、或显化稿写明遵循的其他约定，在任务里写明条款后采用。
+执行前阅读 create-spec 和 audit-spec。调用方点名、或显化稿写明遵循的其他约定，在任务里写明条款后采用。
 
 基于第一性原理和对抗性审查，用白话写。信息不足标待确认，不臆造、不直接假定。
 
@@ -34,7 +34,7 @@ disable-model-invocation: true
 
 **必需**：
 
-- 按《需求显化》写出的显化稿（常见 `spec.md`）
+- 按 create-spec 写出的显化稿（常见 `spec.md`）
 - 对应审核稿（常见 `audit.md`）。开工条件：没有未关闭的严重问题，且结论写明可以进入实现
 
 没有审核稿，或结论仍是不可进入实现：指出缺什么或未关闭的严重问题在哪，停在这里。
