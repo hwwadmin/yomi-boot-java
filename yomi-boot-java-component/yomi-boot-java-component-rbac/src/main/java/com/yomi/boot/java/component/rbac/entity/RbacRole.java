@@ -10,7 +10,7 @@ import lombok.experimental.Accessors;
 import java.time.Instant;
 
 /**
- * 表 sys_rbac_role
+ * 表 t_sys_rbac_role
  *
  * @author zwei
  */
@@ -18,7 +18,7 @@ import java.time.Instant;
 @Setter
 @ToString
 @Accessors(chain = true)
-@TableName("sys_rbac_role")
+@TableName("t_sys_rbac_role")
 public class RbacRole {
 
     /** 主键 */

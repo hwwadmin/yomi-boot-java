@@ -35,7 +35,7 @@ class IdempotencyRetentionDeleteSqlTest {
         String stale = norm(sql(configuration, STALE, params));
         String expired = norm(sql(configuration, EXPIRED, params));
 
-        assertTrue(stale.startsWith("DELETE FROM sys_idempotency_record WHERE"), stale);
+        assertTrue(stale.startsWith("DELETE FROM t_sys_idempotency_record WHERE"), stale);
         assertTrue(stale.endsWith("LIMIT ?"), stale);
         assertFalse(stale.contains("IN (SELECT"), stale);
         assertTrue(expired.endsWith("LIMIT ?"), expired);
@@ -51,10 +51,10 @@ class IdempotencyRetentionDeleteSqlTest {
         String stale = norm(sql(configuration, STALE, params));
         String expired = norm(sql(configuration, EXPIRED, params));
 
-        assertTrue(stale.contains("WHERE ctid IN (SELECT ctid FROM sys_idempotency_record"), stale);
+        assertTrue(stale.contains("WHERE ctid IN (SELECT ctid FROM t_sys_idempotency_record"), stale);
         assertTrue(stale.endsWith("LIMIT ?)"), stale);
         assertEquals(1, count(stale, "SELECT"), "只允许一层子查询: " + stale);
-        assertTrue(expired.contains("WHERE ctid IN (SELECT ctid FROM sys_idempotency_record"), expired);
+        assertTrue(expired.contains("WHERE ctid IN (SELECT ctid FROM t_sys_idempotency_record"), expired);
         assertEquals(1, count(expired, "SELECT"), expired);
     }
 

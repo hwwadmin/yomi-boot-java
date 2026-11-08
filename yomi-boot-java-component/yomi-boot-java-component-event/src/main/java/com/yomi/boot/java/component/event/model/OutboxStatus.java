@@ -1,7 +1,7 @@
 package com.yomi.boot.java.component.event.model;
 
 /**
- * 发件箱状态，与列 {@code sys_event_outbox.status} 一致
+ * 发件箱状态，与列 {@code t_sys_event_outbox.status} 一致
  *
  * @author zwei
  */

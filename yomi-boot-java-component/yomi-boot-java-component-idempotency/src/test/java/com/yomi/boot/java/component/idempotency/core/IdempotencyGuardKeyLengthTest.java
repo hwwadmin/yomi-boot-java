@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 键的长度契约（与 sys_idempotency_record 列宽一致）：
+ * 键的长度契约（与 t_sys_idempotency_record 列宽一致）：
  * <ol>
  *   <li>身份字段 namespace / idempotencyKey 原样入库，超限必须在碰缓存、锁、库之前点名字段与上限
  *       （否则会落到驱动层 Data too long / value too long，报错不点名且同形状请求此后必然失败）；上限值本身合法；</li>

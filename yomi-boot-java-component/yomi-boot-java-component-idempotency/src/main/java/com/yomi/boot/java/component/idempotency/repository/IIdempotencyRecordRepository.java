@@ -5,7 +5,7 @@ import com.yomi.boot.java.component.idempotency.entity.IdempotencyRecord;
 import java.time.Instant;
 
 /**
- * 幂等记录仓储（端口）：sys_idempotency_record 的持久化唯一出入口
+ * 幂等记录仓储（端口）：t_sys_idempotency_record 的持久化唯一出入口
  * <p>
  * 组件内其余代码（守卫/僵死清理）都经本接口访问，不直接调用 Mapper；
  * 默认实现 {@link IdempotencyRecordRepository}，宿主可自行实现本接口并注册 Bean 替换默认实现。

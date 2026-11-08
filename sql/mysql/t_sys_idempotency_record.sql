@@ -1,6 +1,6 @@
--- MySQL 建表脚本（PostgreSQL 版见仓库根 sql/pgsql/sys_idempotency_record.sql；属组件表，需手工执行）
+-- MySQL 建表脚本（PostgreSQL 版见仓库根 sql/pgsql/t_sys_idempotency_record.sql；属组件表，需手工执行）
 -- 幂等记录表：字段与 IdempotencyRecord 实体一一对应
-CREATE TABLE IF NOT EXISTS `sys_idempotency_record`
+CREATE TABLE IF NOT EXISTS `t_sys_idempotency_record`
 (
     `id`               bigint        NOT NULL COMMENT '主键ID（雪花ID）',
     `namespace`        varchar(128)  NOT NULL COMMENT '幂等命名空间（业务域/接口隔离）',

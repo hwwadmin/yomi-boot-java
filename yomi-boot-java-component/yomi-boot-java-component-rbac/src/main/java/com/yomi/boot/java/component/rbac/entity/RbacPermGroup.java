@@ -10,7 +10,7 @@ import lombok.experimental.Accessors;
 import java.time.Instant;
 
 /**
- * 表 sys_rbac_perm_group
+ * 表 t_sys_rbac_perm_group
  *
  * @author zwei
  */
@@ -18,7 +18,7 @@ import java.time.Instant;
 @Setter
 @ToString
 @Accessors(chain = true)
-@TableName("sys_rbac_perm_group")
+@TableName("t_sys_rbac_perm_group")
 public class RbacPermGroup {
 
     /** 主键 */

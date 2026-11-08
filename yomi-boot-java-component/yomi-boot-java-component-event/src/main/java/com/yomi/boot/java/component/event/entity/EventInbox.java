@@ -10,7 +10,7 @@ import lombok.experimental.Accessors;
 import java.time.Instant;
 
 /**
- * 表 sys_event_inbox；消费幂等凭证
+ * 表 t_sys_event_inbox；消费幂等凭证
  *
  * @author zwei
  */
@@ -18,7 +18,7 @@ import java.time.Instant;
 @Setter
 @ToString
 @Accessors(chain = true)
-@TableName("sys_event_inbox")
+@TableName("t_sys_event_inbox")
 public class EventInbox {
 
     /** 主键 */

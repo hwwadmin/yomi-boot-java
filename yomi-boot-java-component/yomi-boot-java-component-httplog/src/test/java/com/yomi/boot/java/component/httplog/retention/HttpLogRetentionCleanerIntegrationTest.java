@@ -123,7 +123,7 @@ class HttpLogRetentionCleanerIntegrationTest {
 
     /** 写入 count 行：create_time = now - daysAgo 天 */
     private static void insertRows(DataSource dataSource, int count, int daysAgo) throws SQLException {
-        String sql = "INSERT INTO sys_http_log (id, service_name, request_time, duration_ms, method, uri, status, "
+        String sql = "INSERT INTO t_sys_http_log (id, service_name, request_time, duration_ms, method, uri, status, "
                 + "request_body_truncated, response_body_truncated, async_started, create_time, update_time) "
                 + "VALUES (?, ?, ?, 1, 'GET', '/it', 200, ?, ?, ?, ?, ?)";
         Instant when = Instant.now().minus(Duration.ofDays(daysAgo));
@@ -149,7 +149,7 @@ class HttpLogRetentionCleanerIntegrationTest {
     private static int countServiceRows(DataSource dataSource) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT COUNT(*) FROM sys_http_log WHERE service_name = ?")) {
+                     "SELECT COUNT(*) FROM t_sys_http_log WHERE service_name = ?")) {
             statement.setString(1, SERVICE);
             try (ResultSet rows = statement.executeQuery()) {
                 rows.next();
@@ -162,7 +162,7 @@ class HttpLogRetentionCleanerIntegrationTest {
     private static void deleteServiceRows(DataSource dataSource) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "DELETE FROM sys_http_log WHERE service_name = ?")) {
+                     "DELETE FROM t_sys_http_log WHERE service_name = ?")) {
             statement.setString(1, SERVICE);
             statement.executeUpdate();
         }

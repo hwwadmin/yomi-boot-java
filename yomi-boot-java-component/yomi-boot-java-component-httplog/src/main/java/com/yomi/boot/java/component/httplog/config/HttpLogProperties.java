@@ -19,7 +19,7 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "yomi.httplog")
 public class HttpLogProperties {
 
-    /** body 截断上限的硬上限：sys_http_log 的 body 列为 text（64KB），留少量余量 */
+    /** body 截断上限的硬上限：t_sys_http_log 的 body 列为 text（64KB），留少量余量 */
     private static final int MAX_BODY_BYTES_LIMIT = 60_000;
 
     /** 单条 DELETE 行数的硬上限：块越大单语句持锁越久（吞吐收益在 5000 附近已基本拿满） */
@@ -89,7 +89,7 @@ public class HttpLogProperties {
         /** 是否采集响应体 */
         private boolean recordResponseBody = true;
 
-        /** 请求体截断上限（字节）；记录超限部分被丢弃并标记 truncated。受 sys_http_log 的 text 列约束（≤60000） */
+        /** 请求体截断上限（字节）；记录超限部分被丢弃并标记 truncated。受 t_sys_http_log 的 text 列约束（≤60000） */
         private int maxRequestBodyBytes = 8192;
 
         /** 响应体截断上限（字节）；同受 text 列约束（≤60000） */
@@ -305,7 +305,7 @@ public class HttpLogProperties {
         }
         if (c.getMaxRequestBodyBytes() > MAX_BODY_BYTES_LIMIT || c.getMaxResponseBodyBytes() > MAX_BODY_BYTES_LIMIT) {
             throw new IllegalStateException("yomi.httplog.collect.max-request/response-body-bytes 不能超过 "
-                    + MAX_BODY_BYTES_LIMIT + "：sys_http_log 的 body 列为 text（64KB），超限行会插入失败导致整批丢弃；"
+                    + MAX_BODY_BYTES_LIMIT + "：t_sys_http_log 的 body 列为 text（64KB），超限行会插入失败导致整批丢弃；"
                     + "如需更大请将列改为 mediumtext 并同步调整本值");
         }
         if (c.getSampleRate() <= 0 || c.getSampleRate() > 1) {

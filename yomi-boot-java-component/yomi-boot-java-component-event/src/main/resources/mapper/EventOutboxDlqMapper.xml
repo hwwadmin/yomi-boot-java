@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<!-- sys_event_outbox_dlq 自定义 SQL -->
+<!-- t_sys_event_outbox_dlq 自定义 SQL -->
 <mapper namespace="com.yomi.boot.java.component.event.repository.mapper.EventOutboxDlqMapper">
 
     <!-- DLQ 扫描两段（未排期 / 已到期）改由仓储的 LambdaQueryWrapper + MP Page 表达：
@@ -8,7 +8,7 @@
 
     <!-- 人工复位：清零重试计数、清退避窗口，并去掉 [EXHAUSTED] 前缀 -->
     <update id="resetRetryCountInRange">
-        UPDATE sys_event_outbox_dlq
+        UPDATE t_sys_event_outbox_dlq
         SET retry_count = 0,
             retry_last_time = NULL,
             retry_after_time = NULL,

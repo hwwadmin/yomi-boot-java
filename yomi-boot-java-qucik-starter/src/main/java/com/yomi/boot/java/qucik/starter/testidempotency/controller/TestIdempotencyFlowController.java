@@ -20,7 +20,7 @@ import java.util.Objects;
 /**
  * 幂等组件流程测试：一次调用完成「首调 → 同键重放 → 新键再调」并逐步断言。
  * <p>
- * 前置：{@code yomi.idempotency.enabled=true}、Redis/Redisson（组件表需先手工执行仓库根目录 sql/mysql|pgsql/sys_idempotency_record.sql）
+ * 前置：{@code yomi.idempotency.enabled=true}、Redis/Redisson（组件表需先手工执行仓库根目录 sql/mysql|pgsql/t_sys_idempotency_record.sql）
  * <ul>
  *     <li>POST /test/ds/test-idempotency/flow：标准入口 {@link IdempotencyUtils}</li>
  * </ul>

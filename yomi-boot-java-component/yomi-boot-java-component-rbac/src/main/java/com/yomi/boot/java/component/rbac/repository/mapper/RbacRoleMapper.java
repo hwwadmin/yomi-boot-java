@@ -7,7 +7,7 @@ import org.apache.ibatis.annotations.Param;
 
 
 /**
- * sys_rbac_role Mapper：由 {@link RbacRoleRepository}、{@link RbacSnapshotRepository} 使用；其余代码经仓储端口访问
+ * t_sys_rbac_role Mapper：由 {@link RbacRoleRepository}、{@link RbacSnapshotRepository} 使用；其余代码经仓储端口访问
  *
  * @author zwei
  */

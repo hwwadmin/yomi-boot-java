@@ -34,7 +34,7 @@ class HttpLogRetentionDeleteSqlTest {
         String sql = norm(sql(parse("mysql"), DELETE, Map.of("serviceName", "svc",
                 "createTimeBefore", Instant.parse("2026-10-01T00:00:00Z"), "limit", 1000)));
 
-        assertTrue(sql.startsWith("DELETE FROM sys_http_log WHERE"), sql);
+        assertTrue(sql.startsWith("DELETE FROM t_sys_http_log WHERE"), sql);
         assertTrue(sql.endsWith("LIMIT ?"), sql);
         assertFalse(sql.contains("IN (SELECT"), "MySQL 方言用原生 DELETE ... LIMIT，不应有子查询: " + sql);
         assertFalse(sql.contains("ORDER BY"), "谓词已界定全部过期行，排序只会让优化器退化成 filesort: " + sql);
@@ -45,7 +45,7 @@ class HttpLogRetentionDeleteSqlTest {
         String sql = norm(sql(parse("pgsql"), DELETE, Map.of("serviceName", "svc",
                 "createTimeBefore", Instant.parse("2026-10-01T00:00:00Z"), "limit", 1000)));
 
-        assertTrue(sql.contains("WHERE ctid IN (SELECT ctid FROM sys_http_log"), sql);
+        assertTrue(sql.contains("WHERE ctid IN (SELECT ctid FROM t_sys_http_log"), sql);
         assertTrue(sql.endsWith("LIMIT ?)"), sql);
         assertEquals(1, count(sql, "SELECT"), "只允许一层子查询: " + sql);
     }
@@ -55,7 +55,7 @@ class HttpLogRetentionDeleteSqlTest {
     void oldestCreateTimeIsDialectIndependent() throws Exception {
         for (String databaseId : new String[]{"mysql", "pgsql"}) {
             String sql = norm(sql(parse(databaseId), OLDEST, Map.of("serviceName", "svc")));
-            assertEquals("SELECT MIN(create_time) FROM sys_http_log WHERE service_name = ?", sql,
+            assertEquals("SELECT MIN(create_time) FROM t_sys_http_log WHERE service_name = ?", sql,
                     "方言 " + databaseId);
         }
     }

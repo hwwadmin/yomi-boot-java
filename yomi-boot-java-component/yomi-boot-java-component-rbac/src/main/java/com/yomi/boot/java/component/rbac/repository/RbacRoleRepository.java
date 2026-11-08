@@ -16,7 +16,7 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * sys_rbac_role 数据访问；Bean 由 {@code RbacAutoConfiguration} 注册，不做组件扫描
+ * t_sys_rbac_role 数据访问；Bean 由 {@code RbacAutoConfiguration} 注册，不做组件扫描
  *
  * @author zwei
  */

@@ -5,7 +5,7 @@ import org.apache.commons.lang3.StringUtils;
 
 /**
  * 一次幂等请求的逻辑键
- * <p>namespace / idempotencyKey 是身份字段，原样存储与比对，长度上限与 sys_idempotency_record 列宽一致（超限由守卫点名拒绝）；
+ * <p>namespace / idempotencyKey 是身份字段，原样存储与比对，长度上限与 t_sys_idempotency_record 列宽一致（超限由守卫点名拒绝）；
  * requestHash 只用于「同键不同体」比对，构造时统一取 SHA-256 摘要——指纹本身不限长，落库与缓存用的都是这个摘要
  *
  * @author zwei

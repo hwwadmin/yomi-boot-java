@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<!-- sys_event_outbox 自定义 SQL -->
+<!-- t_sys_event_outbox 自定义 SQL -->
 <mapper namespace="com.yomi.boot.java.component.event.repository.mapper.EventOutboxMapper">
 
     <!-- 保留期清理：只删已成功终态的行，PENDING/FETCHED/SENT_FAIL 与 DLQ 在途行不受影响。
@@ -8,7 +8,7 @@
          MySQL 用原生 DELETE ... LIMIT（走 idx_status_sent_time，按 limit 提前结束）；PG 无此语法，用 ctid 子查询限量
          （PG 的经典批量删写法：计划是 Tid Scan 直接按元组定位，O(limit)，不会退化成"按 id 删"的全表 Hash Semi Join） -->
     <delete id="deleteSentSuccessBefore" databaseId="mysql">
-        DELETE FROM sys_event_outbox
+        DELETE FROM t_sys_event_outbox
         WHERE service_name = #{serviceName}
           AND status = #{status}
           AND sent_time &lt; #{sentTimeBefore}
@@ -16,8 +16,8 @@
     </delete>
 
     <delete id="deleteSentSuccessBefore" databaseId="pgsql">
-        DELETE FROM sys_event_outbox
-        WHERE ctid IN (SELECT ctid FROM sys_event_outbox
+        DELETE FROM t_sys_event_outbox
+        WHERE ctid IN (SELECT ctid FROM t_sys_event_outbox
                        WHERE service_name = #{serviceName}
                          AND status = #{status}
                          AND sent_time &lt; #{sentTimeBefore}
@@ -27,7 +27,7 @@
     <!-- 最旧一条已成功行的 sent_time（无返回 NULL）：清理落后度量，走 idx_status_sent_time 首项 -->
     <select id="selectOldestSentSuccessTime" resultType="java.time.Instant">
         SELECT MIN(sent_time)
-        FROM sys_event_outbox
+        FROM t_sys_event_outbox
         WHERE service_name = #{serviceName}
           AND status = #{status}
     </select>

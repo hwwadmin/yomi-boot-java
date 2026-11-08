@@ -10,7 +10,7 @@ import lombok.experimental.Accessors;
 import java.time.Instant;
 
 /**
- * 表 sys_http_log；append-only，delete_time/delete_by 恒为空（保留期走物理删除）
+ * 表 t_sys_http_log；append-only，delete_time/delete_by 恒为空（保留期走物理删除）
  *
  * @author zwei
  */
@@ -18,7 +18,7 @@ import java.time.Instant;
 @Setter
 @ToString
 @Accessors(chain = true)
-@TableName("sys_http_log")
+@TableName("t_sys_http_log")
 public class HttpLogEntity {
 
     /** 主键 */

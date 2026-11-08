@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<!-- sys_http_log 自定义 SQL -->
+<!-- t_sys_http_log 自定义 SQL -->
 <mapper namespace="com.yomi.boot.java.component.httplog.repository.mapper.HttpLogMapper">
 
     <!-- 保留期清理：限额物理删除。谓词本身即"全部过期行"，无需 ORDER BY（排序还会让优化器退化成 filesort）。
@@ -8,15 +8,15 @@
          MySQL 用原生 DELETE ... LIMIT（走 idx_service_time 等值+范围，删满即停）；PG 无此语法，用 ctid 子查询限量
          （计划是 Tid Scan 直接按元组定位，O(limit)，不会退化成"按 id 删"的全表 Hash Semi Join） -->
     <delete id="deleteExpiredLimited" databaseId="mysql">
-        DELETE FROM sys_http_log
+        DELETE FROM t_sys_http_log
         WHERE service_name = #{serviceName}
           AND create_time &lt; #{createTimeBefore}
         LIMIT #{limit}
     </delete>
 
     <delete id="deleteExpiredLimited" databaseId="pgsql">
-        DELETE FROM sys_http_log
-        WHERE ctid IN (SELECT ctid FROM sys_http_log
+        DELETE FROM t_sys_http_log
+        WHERE ctid IN (SELECT ctid FROM t_sys_http_log
                        WHERE service_name = #{serviceName}
                          AND create_time &lt; #{createTimeBefore}
                        LIMIT #{limit})
@@ -26,7 +26,7 @@
          结果按 java.time.Instant 映射（ds 的 InstantJdbcTypeHandler 统一 MySQL datetime / PG timestamptz） -->
     <select id="selectOldestCreateTime" resultType="java.time.Instant">
         SELECT MIN(create_time)
-        FROM sys_http_log
+        FROM t_sys_http_log
         WHERE service_name = #{serviceName}
     </select>
 

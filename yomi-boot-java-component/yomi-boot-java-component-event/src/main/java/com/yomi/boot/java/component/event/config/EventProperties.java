@@ -206,11 +206,11 @@ public class EventProperties {
     private void warnRetentionDisabled() {
         if (publisherEnabled && !retention.isOutboxRetentionEnabled()) {
             log.warn("[事件]发布侧已启用但发件箱保留期清理未开启（yomi.event.retention.outbox-retention-enabled=false）："
-                    + "sys_event_outbox 只增不删，请开启保留期或自行定期清理");
+                    + "t_sys_event_outbox 只增不删，请开启保留期或自行定期清理");
         }
         if (consumerEnabled && !retention.isInboxRetentionEnabled()) {
             log.warn("[事件]消费侧已启用但收件箱保留期清理未开启（yomi.event.retention.inbox-retention-enabled=false）："
-                    + "sys_event_inbox 只增不删（该表是「只消费一次」的判重依据，开启时保留期须 ≥ 事件可能被重投的最长时间）");
+                    + "t_sys_event_inbox 只增不删（该表是「只消费一次」的判重依据，开启时保留期须 ≥ 事件可能被重投的最长时间）");
         }
     }
 

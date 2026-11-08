@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * 幂等流程接口 HTTP 测试（请求者视角）
  * <p>
- * 运行前需手动启动应用，且 {@code yomi.idempotency.enabled=true}、Redis 可用、已建 sys_idempotency_record 表
+ * 运行前需手动启动应用，且 {@code yomi.idempotency.enabled=true}、Redis 可用、已建 t_sys_idempotency_record 表
  *
  * @author zwei
  */

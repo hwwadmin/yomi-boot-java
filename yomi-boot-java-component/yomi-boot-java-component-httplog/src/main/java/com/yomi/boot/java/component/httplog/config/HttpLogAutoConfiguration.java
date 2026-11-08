@@ -232,7 +232,7 @@ public class HttpLogAutoConfiguration {
     private static void warnRetentionWithoutRedis(HttpLogProperties properties, Environment environment) {
         if (properties.getRetention().isEnabled() && !RedisConfiguredCondition.isConfigured(environment)) {
             log.warn("[httplog]保留期清理已启用但未配置 Redis（spring.data.redis.*）：清理任务不会装配，"
-                    + "sys_http_log 将只增不减（配置 yomi.httplog.retention.enabled=false 可消除本告警）");
+                    + "t_sys_http_log 将只增不减（配置 yomi.httplog.retention.enabled=false 可消除本告警）");
         }
     }
 

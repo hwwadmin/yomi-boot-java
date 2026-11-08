@@ -18,8 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class RbacDdlScriptTest {
 
     /** 组件表清单（脚本是唯一 DDL 来源，需与实体/仓储一致） */
-    private static final List<String> TABLES = List.of("sys_rbac_perm", "sys_rbac_perm_group", "sys_rbac_role",
-            "sys_rbac_user_role_rel", "sys_rbac_role_group_rel", "sys_rbac_group_perm_rel");
+    private static final List<String> TABLES = List.of("t_sys_rbac_perm", "t_sys_rbac_perm_group", "t_sys_rbac_role",
+            "t_sys_rbac_user_role_rel", "t_sys_rbac_role_group_rel", "t_sys_rbac_group_perm_rel");
 
     /** MySQL 专属写法：pgsql 脚本里出现即执行失败（注释行已剔除） */
     private static final List<String> MYSQL_ONLY = List.of("`", "mediumtext", "datetime(", "tinyint",
@@ -27,8 +27,8 @@ class RbacDdlScriptTest {
 
     @Test
     void bothDialectsDeclareAllTablesAndSeed() throws IOException {
-        String mysql = body("sql/mysql/sys_rbac.sql");
-        String pgsql = body("sql/pgsql/sys_rbac.sql");
+        String mysql = body("sql/mysql/t_sys_rbac.sql");
+        String pgsql = body("sql/pgsql/t_sys_rbac.sql");
 
         for (String table : TABLES) {
             assertTrue(mysql.contains("create table if not exists `" + table + "`"),
@@ -39,9 +39,9 @@ class RbacDdlScriptTest {
         for (String token : MYSQL_ONLY) {
             assertFalse(pgsql.contains(token), "pgsql 脚本不得残留 MySQL 写法: " + token);
         }
-        assertTrue(mysql.contains("insert into `sys_rbac_role`") && mysql.contains("'super_admin'"),
+        assertTrue(mysql.contains("insert into `t_sys_rbac_role`") && mysql.contains("'super_admin'"),
                 "mysql 脚本必须含内置超管种子");
-        assertTrue(pgsql.contains("insert into sys_rbac_role") && pgsql.contains("'super_admin'"),
+        assertTrue(pgsql.contains("insert into t_sys_rbac_role") && pgsql.contains("'super_admin'"),
                 "pgsql 脚本必须含内置超管种子");
     }
 

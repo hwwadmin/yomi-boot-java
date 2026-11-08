@@ -64,7 +64,7 @@ public class HttpLogRetentionCleaner {
         this.lagSeconds = lagSeconds(serviceName);
         if (deleted > 0) {
             metrics.retentionDeleted((int) Math.min(Integer.MAX_VALUE, deleted));
-            log.info("[httplog]保留期清理 sys_http_log deleted={}, chunks={}, elapsedMs={}, days={}, "
+            log.info("[httplog]保留期清理 t_sys_http_log deleted={}, chunks={}, elapsedMs={}, days={}, "
                             + "lagBefore={}s, lagAfter={}s", deleted, chunks,
                     (System.nanoTime() - startedAt) / 1_000_000, retention.getDays(),
                     lagBeforeSeconds, this.lagSeconds);

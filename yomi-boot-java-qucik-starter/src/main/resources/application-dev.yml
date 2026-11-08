@@ -214,7 +214,7 @@ yomi:
       - /actuator/**
       - /test/ds/**
   httplog:
-    # 启用 HTTP 请求日志（组件 component-httplog；表需手工建，脚本见仓库根目录 sql/mysql|pgsql/sys_http_log.sql）
+    # 启用 HTTP 请求日志（组件 component-httplog；表需手工建，脚本见仓库根目录 sql/mysql|pgsql/t_sys_http_log.sql）
     enabled: true
     # 传输模式
     mode: redis

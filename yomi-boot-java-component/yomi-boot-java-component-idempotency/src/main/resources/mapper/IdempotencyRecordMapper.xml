@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<!-- sys_idempotency_record 自定义 SQL，与 IdempotencyRecordMapper 接口方法一一对应 -->
+<!-- t_sys_idempotency_record 自定义 SQL，与 IdempotencyRecordMapper 接口方法一一对应 -->
 <mapper namespace="com.yomi.boot.java.component.idempotency.repository.mapper.IdempotencyRecordMapper">
 
     <!-- 最旧一行的 expire_time（表空返回 NULL）：保留期清理的落后度量，取 idx_expire_time 首项，O(1) -->
     <select id="selectOldestExpireTime" resultType="java.time.Instant">
         SELECT MIN(expire_time)
-        FROM sys_idempotency_record
+        FROM t_sys_idempotency_record
     </select>
 
     <!-- 与框架约定一致：仅物理删，避免软删占用唯一键。
@@ -14,29 +14,29 @@
          MySQL 用原生 DELETE ... LIMIT（走 idx_status_update_time / idx_expire_time）；PG 无此语法，用 ctid 子查询限量
          （计划为 Tid Scan，O(limit)） -->
     <delete id="deleteStaleProcessing" databaseId="mysql">
-        DELETE FROM sys_idempotency_record
+        DELETE FROM t_sys_idempotency_record
         WHERE status = #{processingStatus}
           AND update_time &lt; #{before}
         LIMIT #{limit}
     </delete>
 
     <delete id="deleteStaleProcessing" databaseId="pgsql">
-        DELETE FROM sys_idempotency_record
-        WHERE ctid IN (SELECT ctid FROM sys_idempotency_record
+        DELETE FROM t_sys_idempotency_record
+        WHERE ctid IN (SELECT ctid FROM t_sys_idempotency_record
                        WHERE status = #{processingStatus}
                          AND update_time &lt; #{before}
                        LIMIT #{limit})
     </delete>
 
     <delete id="deleteExpired" databaseId="mysql">
-        DELETE FROM sys_idempotency_record
+        DELETE FROM t_sys_idempotency_record
         WHERE expire_time &lt; #{before}
         LIMIT #{limit}
     </delete>
 
     <delete id="deleteExpired" databaseId="pgsql">
-        DELETE FROM sys_idempotency_record
-        WHERE ctid IN (SELECT ctid FROM sys_idempotency_record
+        DELETE FROM t_sys_idempotency_record
+        WHERE ctid IN (SELECT ctid FROM t_sys_idempotency_record
                        WHERE expire_time &lt; #{before}
                        LIMIT #{limit})
     </delete>

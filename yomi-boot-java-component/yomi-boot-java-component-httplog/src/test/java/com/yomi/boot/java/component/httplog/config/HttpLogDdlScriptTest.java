@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class HttpLogDdlScriptTest {
 
     /** 组件表清单（脚本是唯一 DDL 来源，需与实体/仓储一致） */
-    private static final List<String> TABLES = List.of("sys_http_log");
+    private static final List<String> TABLES = List.of("t_sys_http_log");
 
     /** MySQL 专属写法：pgsql 脚本里出现即执行失败（注释行已剔除） */
     private static final List<String> MYSQL_ONLY = List.of("`", "mediumtext", "datetime(", "tinyint",
@@ -26,8 +26,8 @@ class HttpLogDdlScriptTest {
 
     @Test
     void bothDialectsDeclareAllTables() throws IOException {
-        String mysql = body("sql/mysql/sys_http_log.sql");
-        String pgsql = body("sql/pgsql/sys_http_log.sql");
+        String mysql = body("sql/mysql/t_sys_http_log.sql");
+        String pgsql = body("sql/pgsql/t_sys_http_log.sql");
 
         for (String table : TABLES) {
             assertTrue(mysql.contains("create table if not exists `" + table + "`"),

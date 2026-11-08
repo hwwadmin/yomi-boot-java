@@ -8,7 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import java.time.Instant;
 
 /**
- * sys_event_outbox 的 Mapper：仅供 {@link EventOutboxRepository} 使用
+ * t_sys_event_outbox 的 Mapper：仅供 {@link EventOutboxRepository} 使用
  * （其余代码经仓储端口 {@link IEventOutboxRepository} 访问，不直接调用）
  * <p>自定义 SQL 见 {@code mapper/EventOutboxMapper.xml}
  *

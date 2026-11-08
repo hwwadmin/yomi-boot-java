@@ -5,7 +5,7 @@ import com.yomi.boot.java.component.event.entity.EventInbox;
 import java.time.Instant;
 
 /**
- * 收件箱仓储（端口）：sys_event_inbox 的持久化唯一出入口
+ * 收件箱仓储（端口）：t_sys_event_inbox 的持久化唯一出入口
  * <p>
  * 组件内其余代码（消费幂等守卫/清理）经本接口访问，不直接调用 Mapper；
  * 默认实现 {@link EventInboxRepository}，宿主可自行实现本接口并注册自己的 Bean。

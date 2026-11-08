@@ -4,8 +4,8 @@
 
     <select id="countUserHasEnabledSuperAdmin" resultType="long">
         SELECT COUNT(1)
-        FROM sys_rbac_user_role_rel urr
-                 JOIN sys_rbac_role r ON r.id = urr.role_id AND r.delete_time IS NULL
+        FROM t_sys_rbac_user_role_rel urr
+                 JOIN t_sys_rbac_role r ON r.id = urr.role_id AND r.delete_time IS NULL
         WHERE urr.user_id = #{userId}
           AND r.code = #{superAdminCode}
           AND r.status = #{activeStatus}
@@ -14,12 +14,12 @@
     <!-- 用户可用的 API 权限路径（启用链）；路径匹配（精确/Ant）由内存侧统一执行 -->
     <select id="listHttpAccessPaths" resultType="string">
         SELECT DISTINCT p.http_path
-        FROM sys_rbac_user_role_rel urr
-                 JOIN sys_rbac_role r ON r.id = urr.role_id AND r.status = #{activeStatus} AND r.delete_time IS NULL
-                 JOIN sys_rbac_role_group_rel rgr ON rgr.role_id = r.id
-                 JOIN sys_rbac_perm_group g ON g.id = rgr.group_id AND g.status = #{activeStatus} AND g.delete_time IS NULL
-                 JOIN sys_rbac_group_perm_rel gpr ON gpr.group_id = g.id
-                 JOIN sys_rbac_perm p ON p.id = gpr.perm_id AND p.status = #{activeStatus}
+        FROM t_sys_rbac_user_role_rel urr
+                 JOIN t_sys_rbac_role r ON r.id = urr.role_id AND r.status = #{activeStatus} AND r.delete_time IS NULL
+                 JOIN t_sys_rbac_role_group_rel rgr ON rgr.role_id = r.id
+                 JOIN t_sys_rbac_perm_group g ON g.id = rgr.group_id AND g.status = #{activeStatus} AND g.delete_time IS NULL
+                 JOIN t_sys_rbac_group_perm_rel gpr ON gpr.group_id = g.id
+                 JOIN t_sys_rbac_perm p ON p.id = gpr.perm_id AND p.status = #{activeStatus}
             AND p.type = #{apiType} AND p.delete_time IS NULL
         WHERE urr.user_id = #{userId}
           AND p.http_method = #{method}
@@ -27,12 +27,12 @@
 
     <select id="listMenuByUserId" resultType="com.yomi.boot.java.component.rbac.entity.RbacPerm">
         SELECT p.*
-        FROM sys_rbac_perm p
-                 JOIN sys_rbac_group_perm_rel gpr ON gpr.perm_id = p.id
-                 JOIN sys_rbac_perm_group g ON g.id = gpr.group_id AND g.status = #{activeStatus} AND g.delete_time IS NULL
-                 JOIN sys_rbac_role_group_rel rgr ON rgr.group_id = g.id
-                 JOIN sys_rbac_role r ON r.id = rgr.role_id AND r.status = #{activeStatus} AND r.delete_time IS NULL
-                 JOIN sys_rbac_user_role_rel urr ON urr.role_id = r.id
+        FROM t_sys_rbac_perm p
+                 JOIN t_sys_rbac_group_perm_rel gpr ON gpr.perm_id = p.id
+                 JOIN t_sys_rbac_perm_group g ON g.id = gpr.group_id AND g.status = #{activeStatus} AND g.delete_time IS NULL
+                 JOIN t_sys_rbac_role_group_rel rgr ON rgr.group_id = g.id
+                 JOIN t_sys_rbac_role r ON r.id = rgr.role_id AND r.status = #{activeStatus} AND r.delete_time IS NULL
+                 JOIN t_sys_rbac_user_role_rel urr ON urr.role_id = r.id
         WHERE urr.user_id = #{userId}
           AND p.type = #{menuType}
           AND p.status = #{activeStatus}
@@ -43,7 +43,7 @@
 
     <select id="listEnabledMenus" resultType="com.yomi.boot.java.component.rbac.entity.RbacPerm">
         SELECT *
-        FROM sys_rbac_perm
+        FROM t_sys_rbac_perm
         WHERE type = #{menuType}
           AND status = #{activeStatus}
           AND delete_time IS NULL
@@ -52,8 +52,8 @@
 
     <select id="listUserIdsWithEnabledSuperAdmin" resultType="long">
         SELECT DISTINCT urr.user_id
-        FROM sys_rbac_user_role_rel urr
-                 JOIN sys_rbac_role r ON r.id = urr.role_id AND r.delete_time IS NULL
+        FROM t_sys_rbac_user_role_rel urr
+                 JOIN t_sys_rbac_role r ON r.id = urr.role_id AND r.delete_time IS NULL
         WHERE r.code = #{superAdminCode}
           AND r.status = #{activeStatus}
     </select>

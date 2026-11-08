@@ -10,7 +10,7 @@ import lombok.experimental.Accessors;
 import java.time.Instant;
 
 /**
- * 表 sys_event_outbox_dlq；发件箱发送失败后的重试队列
+ * 表 t_sys_event_outbox_dlq；发件箱发送失败后的重试队列
  *
  * @author zwei
  */
@@ -18,7 +18,7 @@ import java.time.Instant;
 @Setter
 @ToString
 @Accessors(chain = true)
-@TableName("sys_event_outbox_dlq")
+@TableName("t_sys_event_outbox_dlq")
 public class EventOutboxDlq {
 
     /** 主键 */

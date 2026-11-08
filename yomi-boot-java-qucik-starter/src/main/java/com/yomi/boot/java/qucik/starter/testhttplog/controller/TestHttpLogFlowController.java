@@ -22,7 +22,7 @@ import java.util.concurrent.Callable;
 /**
  * HTTP 日志接入样板：POST 触发一条请求日志（头/体/响应全采 + 脱敏）；查询侧统一经组件服务接口
  * {@link IHttpLogService}（query 概要分页 / detail 全量单条）
- * <p>路径 {@code /test/ds/**} 已在 token/rbac 放行列表中；组件表需先手工执行仓库根目录 sql/mysql|pgsql/sys_http_log.sql。
+ * <p>路径 {@code /test/ds/**} 已在 token/rbac 放行列表中；组件表需先手工执行仓库根目录 sql/mysql|pgsql/t_sys_http_log.sql。
  *
  * @author zwei
  */

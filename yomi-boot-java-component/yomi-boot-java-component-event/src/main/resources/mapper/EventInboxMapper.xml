@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<!-- sys_event_inbox 自定义 SQL -->
+<!-- t_sys_event_inbox 自定义 SQL -->
 <mapper namespace="com.yomi.boot.java.component.event.repository.mapper.EventInboxMapper">
 
     <!-- 保留期清理：物理删除（与幂等组件清理一致，避免软删行长期占用表空间）。
          受限删除两库语法不同，按方言各写一条（databaseId 由 ds 组件的 DsDatabaseIdProvider 解析）：
          MySQL 用原生 DELETE ... LIMIT；PG 无此语法，用 ctid 子查询限量（计划为 Tid Scan，O(limit)） -->
     <delete id="deleteCreatedBefore" databaseId="mysql">
-        DELETE FROM sys_event_inbox
+        DELETE FROM t_sys_event_inbox
         WHERE service_name = #{serviceName}
           AND create_time &lt; #{createTimeBefore}
         LIMIT #{limit}
     </delete>
 
     <delete id="deleteCreatedBefore" databaseId="pgsql">
-        DELETE FROM sys_event_inbox
-        WHERE ctid IN (SELECT ctid FROM sys_event_inbox
+        DELETE FROM t_sys_event_inbox
+        WHERE ctid IN (SELECT ctid FROM t_sys_event_inbox
                        WHERE service_name = #{serviceName}
                          AND create_time &lt; #{createTimeBefore}
                        LIMIT #{limit})
@@ -24,7 +24,7 @@
     <!-- 最旧一行的 create_time（表空返回 NULL）：清理落后度量，走 idx_service_name_create_time -->
     <select id="selectOldestCreateTime" resultType="java.time.Instant">
         SELECT MIN(create_time)
-        FROM sys_event_inbox
+        FROM t_sys_event_inbox
         WHERE service_name = #{serviceName}
     </select>
 

@@ -4,7 +4,7 @@
 
     <select id="lockSuperAdminRoleForUpdate" resultType="com.yomi.boot.java.component.rbac.entity.RbacRole">
         SELECT *
-        FROM sys_rbac_role
+        FROM t_sys_rbac_role
         WHERE code = #{superAdminCode}
           AND delete_time IS NULL
         LIMIT 1

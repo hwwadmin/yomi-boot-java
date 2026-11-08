@@ -41,10 +41,10 @@ class EventRetentionDeleteSqlTest {
         String inbox = norm(sql(configuration, INBOX_DELETE, Map.of("serviceName", "svc",
                 "createTimeBefore", Instant.parse("2026-10-01T00:00:00Z"), "limit", 500)));
 
-        assertTrue(outbox.startsWith("DELETE FROM sys_event_outbox WHERE"), outbox);
+        assertTrue(outbox.startsWith("DELETE FROM t_sys_event_outbox WHERE"), outbox);
         assertTrue(outbox.endsWith("LIMIT ?"), outbox);
         assertFalse(outbox.contains("IN (SELECT"), "MySQL 方言用原生 DELETE ... LIMIT，不应有子查询: " + outbox);
-        assertTrue(inbox.startsWith("DELETE FROM sys_event_inbox WHERE"), inbox);
+        assertTrue(inbox.startsWith("DELETE FROM t_sys_event_inbox WHERE"), inbox);
         assertTrue(inbox.endsWith("LIMIT ?"), inbox);
         assertFalse(inbox.contains("IN (SELECT"), inbox);
     }
@@ -58,10 +58,10 @@ class EventRetentionDeleteSqlTest {
         String inbox = norm(sql(configuration, INBOX_DELETE, Map.of("serviceName", "svc",
                 "createTimeBefore", Instant.parse("2026-10-01T00:00:00Z"), "limit", 500)));
 
-        assertTrue(outbox.contains("WHERE ctid IN (SELECT ctid FROM sys_event_outbox"), outbox);
+        assertTrue(outbox.contains("WHERE ctid IN (SELECT ctid FROM t_sys_event_outbox"), outbox);
         assertTrue(outbox.endsWith("LIMIT ?)"), outbox);
         assertEquals(1, count(outbox, "SELECT"), "只允许一层子查询（不再为双库通用包第二层派生表）: " + outbox);
-        assertTrue(inbox.contains("WHERE ctid IN (SELECT ctid FROM sys_event_inbox"), inbox);
+        assertTrue(inbox.contains("WHERE ctid IN (SELECT ctid FROM t_sys_event_inbox"), inbox);
         assertEquals(1, count(inbox, "SELECT"), inbox);
     }
 
@@ -81,9 +81,9 @@ class EventRetentionDeleteSqlTest {
                 Map.of("serviceName", "svc", "status", "SENT_SUCCESS")));
         String inbox = norm(sql(parse("pgsql"), INBOX_OLDEST, Map.of("serviceName", "svc")));
 
-        assertTrue(outbox.startsWith("SELECT MIN(sent_time) FROM sys_event_outbox WHERE"), outbox);
+        assertTrue(outbox.startsWith("SELECT MIN(sent_time) FROM t_sys_event_outbox WHERE"), outbox);
         assertTrue(outbox.contains("status = ?"), "只统计可删状态的行: " + outbox);
-        assertTrue(inbox.startsWith("SELECT MIN(create_time) FROM sys_event_inbox WHERE"), inbox);
+        assertTrue(inbox.startsWith("SELECT MIN(create_time) FROM t_sys_event_inbox WHERE"), inbox);
         assertEquals(2, count(outbox, "?"), "只按服务名与状态过滤: " + outbox);
         assertEquals(1, count(inbox, "?"), "只按服务名过滤: " + inbox);
     }

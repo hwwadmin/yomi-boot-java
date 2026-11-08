@@ -126,7 +126,7 @@ public class HttpLogRecordFactory {
         return record;
     }
 
-    /** 列宽截断：任何来源（异常 method、enricher 超长填充）都截到 sys_http_log 列宽内，超宽会使整批插入失败丢弃 */
+    /** 列宽截断：任何来源（异常 method、enricher 超长填充）都截到 t_sys_http_log 列宽内，超宽会使整批插入失败丢弃 */
     private static void applyColumnLimits(HttpLogRecord record) {
         record.setTraceId(truncate(record.getTraceId(), MAX_TRACE_ID));
         record.setMethod(truncate(record.getMethod(), MAX_METHOD));

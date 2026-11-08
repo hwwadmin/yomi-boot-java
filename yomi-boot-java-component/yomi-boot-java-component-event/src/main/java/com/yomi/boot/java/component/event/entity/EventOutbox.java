@@ -11,7 +11,7 @@ import lombok.experimental.Accessors;
 import java.time.Instant;
 
 /**
- * 表 sys_event_outbox；建表脚本在仓库根目录 {@code sql/mysql|pgsql/sys_event.sql}
+ * 表 t_sys_event_outbox；建表脚本在仓库根目录 {@code sql/mysql|pgsql/t_sys_event.sql}
  *
  * @author zwei
  */
@@ -19,7 +19,7 @@ import java.time.Instant;
 @Setter
 @ToString
 @Accessors(chain = true)
-@TableName("sys_event_outbox")
+@TableName("t_sys_event_outbox")
 public class EventOutbox {
 
     /** 主键 */

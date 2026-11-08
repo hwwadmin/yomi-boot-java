@@ -49,7 +49,7 @@ import java.util.function.Supplier;
  * {@link IdempotencyDataSources}），"记录与业务同事务"由此在单库内成立；事务绑了别的库、绑了多条库的事务、
  * 或该库未注册，都在入口直接失败
  * <p>Redis 不可用时走无锁路径：分布式锁只是"省一次 DB 写入"的优化，
- * 互斥由 {@code sys_idempotency_record} 唯一键 + 事务内先插占位承担，性能略降但正确性不变
+ * 互斥由 {@code t_sys_idempotency_record} 唯一键 + 事务内先插占位承担，性能略降但正确性不变
  * <p>占位 INSERT 用保存点包住：唯一键冲突在 PostgreSQL 上会让事务进入 aborted（25P02），
  * 冲突后先回滚到保存点，才能读回已完成结果、外层事务才能继续
  *

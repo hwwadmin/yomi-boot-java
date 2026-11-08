@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * RBAC 流程：先跑 flow 准备数据，再对受保护接口做 HTTP 探测。
  * <p>
- * 运行前需启动应用且 {@code yomi.rbac.enabled=true}，并已执行 sys_rbac.sql。
+ * 运行前需启动应用且 {@code yomi.rbac.enabled=true}，并已执行 t_sys_rbac.sql。
  */
 class TestRbacFlowApiTest {
 

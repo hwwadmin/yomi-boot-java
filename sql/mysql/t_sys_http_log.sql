@@ -1,7 +1,7 @@
--- MySQL 建表脚本（PostgreSQL 版见仓库根 sql/pgsql/sys_http_log.sql；属组件表，需手工执行）
+-- MySQL 建表脚本（PostgreSQL 版见仓库根 sql/pgsql/t_sys_http_log.sql；属组件表，需手工执行）
 -- HTTP请求日志表：字段与 HttpLogEntity 一一对应
 -- append-only：delete_time/delete_by 恒为空，保留期清理走物理删除（yomi.httplog.retention）
-CREATE TABLE IF NOT EXISTS `sys_http_log`
+CREATE TABLE IF NOT EXISTS `t_sys_http_log`
 (
     `id`                      bigint       NOT NULL COMMENT '主键ID（雪花ID）',
     `service_name`            varchar(100) NOT NULL COMMENT '归属业务系统名称',

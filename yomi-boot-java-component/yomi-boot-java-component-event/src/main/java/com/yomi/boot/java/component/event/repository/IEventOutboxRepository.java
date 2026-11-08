@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * 发件箱仓储（端口）：sys_event_outbox 的持久化唯一出入口
+ * 发件箱仓储（端口）：t_sys_event_outbox 的持久化唯一出入口
  * <p>
  * 组件内其余代码（发布/中继/清理）经本接口访问，不直接调用 Mapper；
  * 默认实现 {@link EventOutboxRepository}，宿主可自行实现本接口并注册自己的 Bean。

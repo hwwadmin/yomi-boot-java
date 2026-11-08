@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * 事件流程接口 HTTP 测试（请求者视角）
  * <p>
- * 运行前需手动启动应用，且 event 开关、Redis、sys_event 表已就绪
+ * 运行前需手动启动应用，且 event 开关、Redis、t_sys_event 各表已就绪
  *
  * @author zwei
  */

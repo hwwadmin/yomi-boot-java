@@ -1,7 +1,7 @@
 package com.yomi.boot.java.component.idempotency.core;
 
 /**
- * sys_idempotency_record.status 取值
+ * t_sys_idempotency_record.status 取值
  *
  * @author zwei
  */

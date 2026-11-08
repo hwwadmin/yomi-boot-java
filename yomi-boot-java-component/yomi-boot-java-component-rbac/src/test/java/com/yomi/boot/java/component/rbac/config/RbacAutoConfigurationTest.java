@@ -78,7 +78,7 @@ class RbacAutoConfigurationTest {
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> new RbacAutoConfiguration().rbacPermRepository(none));
 
-        assertTrue(error.getMessage().contains("sys_rbac.sql"), error.getMessage());
+        assertTrue(error.getMessage().contains("t_sys_rbac.sql"), error.getMessage());
         assertTrue(error.getMessage().contains("自动配置扫描"), error.getMessage());
     }
 

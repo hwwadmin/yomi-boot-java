@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class EventDdlScriptTest {
 
     /** 组件表清单（脚本是唯一 DDL 来源，需与实体/仓储一致） */
-    private static final List<String> TABLES = List.of("sys_event_inbox", "sys_event_outbox", "sys_event_outbox_dlq");
+    private static final List<String> TABLES = List.of("t_sys_event_inbox", "t_sys_event_outbox", "t_sys_event_outbox_dlq");
 
     /** MySQL 专属写法：pgsql 脚本里出现即测试失败（注释行已剔除） */
     private static final List<String> MYSQL_ONLY = List.of("`", "mediumtext", "datetime(", "tinyint",
@@ -26,8 +26,8 @@ class EventDdlScriptTest {
 
     @Test
     void bothDialectsDeclareAllTables() throws IOException {
-        String mysql = body("sql/mysql/sys_event.sql");
-        String pgsql = body("sql/pgsql/sys_event.sql");
+        String mysql = body("sql/mysql/t_sys_event.sql");
+        String pgsql = body("sql/pgsql/t_sys_event.sql");
 
         for (String table : TABLES) {
             assertTrue(mysql.contains("create table if not exists `" + table + "`"),

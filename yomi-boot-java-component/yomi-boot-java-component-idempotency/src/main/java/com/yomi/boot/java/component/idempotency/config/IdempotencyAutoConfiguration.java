@@ -37,7 +37,7 @@ import javax.sql.DataSource;
  * {@code TransactionTemplate}），组件只在自己的调用里沿用或使用它
  * <p>默认只注册主库（自动清理）；附加库要放幂等记录，业务在自己的 {@code @Configuration} 里
  * 依赖 {@link IdempotencyDataSources} 后自行注册（注册即同样获得自动清理能力）
- * <p>记录表需手工建好（仓库根目录 {@code sql/mysql|pgsql/sys_idempotency_record.sql}），组件不自动建表
+ * <p>记录表需手工建好（仓库根目录 {@code sql/mysql|pgsql/t_sys_idempotency_record.sql}），组件不自动建表
  * <p>本组件的 Mapper 由本类 {@code @MapperScan} 自行扫描（不写 ref，按类型落主库），宿主无需关心依赖 jar
  *
  * @author zwei
@@ -110,7 +110,7 @@ public class IdempotencyAutoConfiguration {
         if (mapperProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
                     "yomi.idempotency.enabled=true 需要 IdempotencyRecordMapper：请执行仓库根目录 "
-                            + "sql/mysql/sys_idempotency_record.sql 或 sql/pgsql/sys_idempotency_record.sql；"
+                            + "sql/mysql/t_sys_idempotency_record.sql 或 sql/pgsql/t_sys_idempotency_record.sql；"
                             + "Mapper 由 component-idempotency 自动配置扫描，无需宿主配置 @MapperScan");
         }
         DataSource master = DsMaster.requireDataSource(beanFactory);

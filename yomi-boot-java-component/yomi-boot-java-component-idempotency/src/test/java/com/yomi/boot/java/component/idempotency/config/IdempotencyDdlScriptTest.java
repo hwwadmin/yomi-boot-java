@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class IdempotencyDdlScriptTest {
 
     /** 组件表清单（脚本是唯一 DDL 来源，需与实体/仓储一致） */
-    private static final List<String> TABLES = List.of("sys_idempotency_record");
+    private static final List<String> TABLES = List.of("t_sys_idempotency_record");
 
     /** MySQL 专属写法：pgsql 脚本里出现即执行失败（注释行已剔除） */
     private static final List<String> MYSQL_ONLY = List.of("`", "mediumtext", "datetime(", "tinyint",
@@ -29,8 +29,8 @@ class IdempotencyDdlScriptTest {
 
     @Test
     void bothDialectsDeclareAllTables() throws IOException {
-        String mysql = body("sql/mysql/sys_idempotency_record.sql");
-        String pgsql = body("sql/pgsql/sys_idempotency_record.sql");
+        String mysql = body("sql/mysql/t_sys_idempotency_record.sql");
+        String pgsql = body("sql/pgsql/t_sys_idempotency_record.sql");
 
         for (String table : TABLES) {
             assertTrue(mysql.contains("create table if not exists `" + table + "`"),
@@ -46,8 +46,8 @@ class IdempotencyDdlScriptTest {
     /** 列宽与代码里的上限常量同源：DDL 改了宽度而常量没跟上（或反之）时这里先红 */
     @Test
     void columnWidthsMatchKeyLimits() throws IOException {
-        String mysql = body("sql/mysql/sys_idempotency_record.sql");
-        String pgsql = body("sql/pgsql/sys_idempotency_record.sql");
+        String mysql = body("sql/mysql/t_sys_idempotency_record.sql");
+        String pgsql = body("sql/pgsql/t_sys_idempotency_record.sql");
 
         assertEquals(IdempotencyKey.MAX_NAMESPACE_LENGTH, width(mysql, "`namespace`"), "mysql namespace 列宽");
         assertEquals(IdempotencyKey.MAX_KEY_LENGTH, width(mysql, "`idempotency_key`"), "mysql idempotency_key 列宽");

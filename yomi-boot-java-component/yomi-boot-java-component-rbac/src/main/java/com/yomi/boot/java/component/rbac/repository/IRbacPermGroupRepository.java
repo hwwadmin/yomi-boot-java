@@ -7,7 +7,7 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * 权限组仓储（端口）：sys_rbac_perm_group 的数据访问入口
+ * 权限组仓储（端口）：t_sys_rbac_perm_group 的数据访问入口
  * <p>
  * 组件内其余代码（管理服务/快照/投影）都经本接口读写数据，Mapper 只由默认实现调用；
  * 默认实现 {@link RbacPermGroupRepository}，宿主可实现本接口并注册自己的 Bean。

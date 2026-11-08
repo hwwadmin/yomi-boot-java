@@ -151,11 +151,11 @@ class EventRetentionCleanerTest {
     void retentionDisabledWarnsButDoesNotBlockStartup() {
         EventProperties publisherOnly = new EventProperties();
         publisherOnly.setPublisherEnabled(true);
-        assertWarned(publisherOnly, "sys_event_outbox 只增不删", "发布侧开着却没开保留期必须留痕");
+        assertWarned(publisherOnly, "t_sys_event_outbox 只增不删", "发布侧开着却没开保留期必须留痕");
 
         EventProperties consumerOnly = new EventProperties();
         consumerOnly.setConsumerEnabled(true);
-        assertWarned(consumerOnly, "sys_event_inbox 只增不删", "消费侧开着却没开保留期必须留痕");
+        assertWarned(consumerOnly, "t_sys_event_inbox 只增不删", "消费侧开着却没开保留期必须留痕");
 
         EventProperties covered = new EventProperties();
         covered.setPublisherEnabled(true);

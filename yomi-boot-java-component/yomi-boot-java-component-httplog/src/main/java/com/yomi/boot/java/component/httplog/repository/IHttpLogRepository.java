@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * 日志仓储（端口）：sys_http_log 的持久化唯一出入口
+ * 日志仓储（端口）：t_sys_http_log 的持久化唯一出入口
  * <p>
  * 查询服务/落库 store/保留期清理统一经由本接口访问，直连 Mapper 的只有仓储实现；
  * 默认实现 {@link HttpLogRepository}，宿主自行实现本接口并注册 Bean 后以宿主的实现为准。

@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
  * RBAC 组件流程测试（服务层准备数据 + 签发 token）。
  * <p>
  * 前置：{@code yomi.rbac.enabled=true}、Redis（组件表需先手工执行仓库根目录
- * {@code sql/mysql|pgsql/sys_rbac.sql}）。
+ * {@code sql/mysql|pgsql/t_sys_rbac.sql}）。
  * HTTP 拦截验证见 {@link TestRbacProtectedController} 与
  * {@code TestRbacFlowApiTest}。
  * <ul>

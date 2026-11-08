@@ -288,7 +288,7 @@ public class EventAutoConfiguration {
         if (outboxMapperProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
                     "yomi.event.publisher-enabled=true 需要 EventOutboxMapper：请执行仓库根目录 "
-                            + "sql/mysql/sys_event.sql 或 sql/pgsql/sys_event.sql；"
+                            + "sql/mysql/t_sys_event.sql 或 sql/pgsql/t_sys_event.sql；"
                             + "Mapper 由 component-event 自动配置扫描，无需宿主配置 @MapperScan");
         }
         if (redisProvider.getIfAvailable() == null || redissonProvider.getIfAvailable() == null) {
@@ -337,7 +337,7 @@ public class EventAutoConfiguration {
         if (inboxMapperProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
                     "yomi.event.consumer-enabled=true 需要 EventInboxMapper：请执行仓库根目录 "
-                            + "sql/mysql/sys_event.sql 或 sql/pgsql/sys_event.sql；"
+                            + "sql/mysql/t_sys_event.sql 或 sql/pgsql/t_sys_event.sql；"
                             + "Mapper 由 component-event 自动配置扫描，无需宿主配置 @MapperScan");
         }
         if (redisProvider.getIfAvailable() == null || redissonProvider.getIfAvailable() == null) {

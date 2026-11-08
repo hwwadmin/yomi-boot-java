@@ -12,7 +12,7 @@ import com.yomi.boot.java.component.idempotency.repository.mapper.IdempotencyRec
 import java.time.Instant;
 
 /**
- * sys_idempotency_record 数据访问
+ * t_sys_idempotency_record 数据访问
  *
  * @author zwei
  */

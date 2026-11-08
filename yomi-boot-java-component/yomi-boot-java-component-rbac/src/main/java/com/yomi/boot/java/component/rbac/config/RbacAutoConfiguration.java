@@ -113,7 +113,7 @@ public class RbacAutoConfiguration {
         T mapper = mapperProvider.getIfAvailable();
         if (mapper == null) {
             throw new IllegalStateException("yomi.rbac.enabled=true 需要 " + mapperName
-                    + "：请执行仓库根目录 sql/mysql/sys_rbac.sql 或 sql/pgsql/sys_rbac.sql（含内置超管种子）；"
+                    + "：请执行仓库根目录 sql/mysql/t_sys_rbac.sql 或 sql/pgsql/t_sys_rbac.sql（含内置超管种子）；"
                     + "Mapper 由 component-rbac 自动配置扫描，无需宿主配置 @MapperScan");
         }
         return mapper;
@@ -227,7 +227,7 @@ public class RbacAutoConfiguration {
         if (authMapperProvider.getIfAvailable() == null) {
             throw new IllegalStateException(
                     "yomi.rbac.enabled=true 需要 RbacAuthMapper：请执行仓库根目录 "
-                            + "sql/mysql/sys_rbac.sql 或 sql/pgsql/sys_rbac.sql（含内置超管种子）；"
+                            + "sql/mysql/t_sys_rbac.sql 或 sql/pgsql/t_sys_rbac.sql（含内置超管种子）；"
                             + "Mapper 由 component-rbac 自动配置扫描，无需宿主配置 @MapperScan");
         }
         log.info("[RBAC]已启用: storePrefix={}, projectionEnabled={}, httpPathStyle={}",

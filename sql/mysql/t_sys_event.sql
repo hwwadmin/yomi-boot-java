@@ -1,6 +1,6 @@
--- MySQL 建表脚本（PostgreSQL 版见仓库根 sql/pgsql/sys_event.sql；属组件表，需手工执行）
+-- MySQL 建表脚本（PostgreSQL 版见仓库根 sql/pgsql/t_sys_event.sql；属组件表，需手工执行）
 -- 事件收件箱表：字段与 EventInbox 实体一一对应
-CREATE TABLE IF NOT EXISTS `sys_event_inbox`
+CREATE TABLE IF NOT EXISTS `t_sys_event_inbox`
 (
     `id`           bigint        NOT NULL COMMENT '主键ID（雪花ID）',
     `service_name` varchar(100)  NOT NULL COMMENT '归属业务系统名称',
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS `sys_event_inbox`
   DEFAULT CHARSET = utf8mb4 COMMENT ='事件收件箱表';
 
 -- 事件发件箱表：字段与 EventOutbox 实体一一对应；status 见 OutboxStatus 枚举
-CREATE TABLE IF NOT EXISTS `sys_event_outbox`
+CREATE TABLE IF NOT EXISTS `t_sys_event_outbox`
 (
     `id`           bigint        NOT NULL COMMENT '主键ID（雪花ID）',
     `service_name` varchar(100)  NOT NULL COMMENT '归属业务系统名称',
@@ -43,13 +43,13 @@ CREATE TABLE IF NOT EXISTS `sys_event_outbox`
     KEY `idx_service_status_fetch_time` (`service_name`, `status`, `fetch_time`),
     KEY `idx_event_id` (`event_id`),
     -- 保留期清理（yomi.event.retention）按 status + sent_time 删除；老库升级需手工执行：
-    -- ALTER TABLE sys_event_outbox ADD KEY idx_status_sent_time (status, sent_time);
+    -- ALTER TABLE t_sys_event_outbox ADD KEY idx_status_sent_time (status, sent_time);
     KEY `idx_status_sent_time` (`status`, `sent_time`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='事件发件箱表';
 
 -- 事件发件箱死信表：字段与 EventOutboxDlq 实体一一对应
-CREATE TABLE IF NOT EXISTS `sys_event_outbox_dlq`
+CREATE TABLE IF NOT EXISTS `t_sys_event_outbox_dlq`
 (
     `id`               bigint       NOT NULL COMMENT '主键ID（雪花ID）',
     `service_name`     varchar(100) NOT NULL COMMENT '归属业务系统名称',
