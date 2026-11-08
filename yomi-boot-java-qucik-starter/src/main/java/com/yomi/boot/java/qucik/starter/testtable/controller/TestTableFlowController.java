@@ -25,7 +25,7 @@ import java.util.Objects;
  * <p>
  * 两种实现各有一条流程（表结构见 yomi-boot-java-qucik-starter/sql/mysql|pgsql/test_table.sql）：
  * <ul>
- *     <li>GET /test/ds/test-table/dao：MyBatisDao 封装形式（BaseMapper + Lambda 链式条件）</li>
+ *     <li>GET /test/ds/test-table/dao：业务自建仓储形式（BaseMapper + Lambda 链式条件）</li>
  *     <li>GET /test/ds/test-table/xml：mapper.xml 形式（SQL 全部手写）</li>
  * </ul>
  * 每步都输出日志（前缀 {@code [测试表流程][dao|xml]}），收尾时统一再删一次记录，接口可重复调用
@@ -41,19 +41,19 @@ public class TestTableFlowController {
     /** createTime 与写入时刻的允许偏差：时区或类型映射有误时偏差会到小时级 */
     private static final Duration TIME_TOLERANCE = Duration.ofSeconds(60);
 
-    /** 演示：DAO 持久化流程标识 */
+    /** 演示：自建仓储持久化流程标识 */
     private static final String FLOW_DAO = "dao";
     /** 演示：XML Mapper 流程标识 */
     private static final String FLOW_XML = "xml";
 
-    /** MyBatisDao 封装 */
+    /** 业务自建仓储（BaseMapper 形式） */
     private final TestTableRepository testTableRepository;
 
     /** mapper.xml 实现 */
     private final TestTableXmlMapper testTableXmlMapper;
 
     /**
-     * MyBatisDao 封装形式：save / get / update / lambdaQuery / del 全链路
+     * 业务自建仓储形式：insert / requireById / update / query / delete 全链路
      */
     @GetMapping("/dao")
     public Response<List<String>> daoFlow() {
@@ -62,19 +62,19 @@ public class TestTableFlowController {
         log.info("[测试表流程][{}] 开始：增 → 查 → 改 → 查 → 删 → 查, name={}", FLOW_DAO, name);
         Long id = null;
         try {
-            // 1. 增：BaseEntity.init 生成雪花ID与时间戳 + mapper.insert
+            // 1. 增：mapper.insert
             Instant insertAt = Instant.now();
-            TestTable entity = new TestTable().setName(name).setAge(18).setRemark("MyBatisDao流程：新增");
-            testTableRepository.save(entity);
+            TestTable entity = new TestTable().setName(name).setAge(18).setRemark("自建仓储流程：新增");
+            testTableRepository.insert(entity);
             id = entity.getId();
             Assert.nonNull(id, "[1.新增] 未生成主键ID，雪花ID配置未生效");
             step(steps, FLOW_DAO, "1.新增: id=" + id + ", name=" + name + ", age=18, createTime=" + entity.getCreateTime());
 
             // 2. 查：selectById + 逻辑删除校验
-            TestTable loaded = testTableRepository.get(id);
+            TestTable loaded = testTableRepository.requireById(id);
             Assert.isTrue(name.equals(loaded.getName()), "[2.查询] name不一致: 期望={}, 实际={}", name, loaded.getName());
             Assert.isTrue(Objects.equals(18, loaded.getAge()), "[2.查询] age不一致: 期望=18, 实际={}", loaded.getAge());
-            Assert.isTrue("MyBatisDao流程：新增".equals(loaded.getRemark()), "[2.查询] remark不一致: 期望={}, 实际={}", "MyBatisDao流程：新增", loaded.getRemark());
+            Assert.isTrue("自建仓储流程：新增".equals(loaded.getRemark()), "[2.查询] remark不一致: 期望={}, 实际={}", "自建仓储流程：新增", loaded.getRemark());
             Assert.nonNull(loaded.getCreateTime(), "[2.查询] createTime为空，Instant 类型映射未生效");
             Instant createTime = loaded.getCreateTime();
             Assert.isTrue(withinTolerance(insertAt, createTime), "[2.查询] createTime与写入时刻偏差过大（时区或类型映射可能有误）: 写入={}, 查询={}", insertAt, createTime);
@@ -82,12 +82,12 @@ public class TestTableFlowController {
 
             // 3. 改：updateById
             String updatedName = name + "-u";
-            loaded.setName(updatedName).setAge(20).setRemark("MyBatisDao流程：已更新");
+            loaded.setName(updatedName).setAge(20).setRemark("自建仓储流程：已更新");
             testTableRepository.update(loaded);
             step(steps, FLOW_DAO, "3.更新: name=" + updatedName + ", age=20");
 
             // 4. 查：lambda 链式条件查询，验证更新已落库且 createTime 未被改动
-            TestTable reread = testTableRepository.lambdaQuery().eq(TestTable::getId, id).one();
+            TestTable reread = testTableRepository.query().eq(TestTable::getId, id).one();
             Assert.nonNull(reread, "[4.复查] lambdaQuery 未查询到记录, id={}", id);
             Assert.isTrue(updatedName.equals(reread.getName()), "[4.复查] 更新未生效: 期望={}, 实际={}", updatedName, reread.getName());
             Assert.isTrue(Objects.equals(20, reread.getAge()), "[4.复查] age更新未生效: 期望=20, 实际={}", reread.getAge());
@@ -95,11 +95,11 @@ public class TestTableFlowController {
             step(steps, FLOW_DAO, "4.复查: 更新已生效, createTime未被改动");
 
             // 5. 删：物理删除
-            testTableRepository.del(id);
+            testTableRepository.delete(id);
             step(steps, FLOW_DAO, "5.删除: id=" + id);
 
             // 6. 查：确认删除生效
-            TestTable afterDel = testTableRepository.getMapper().selectById(id);
+            TestTable afterDel = testTableRepository.findById(id);
             Assert.isNull(afterDel, "[6.复查] 删除后仍能查询到记录: {}", afterDel);
             step(steps, FLOW_DAO, "6.复查: 记录已不存在, 流程通过");
 
@@ -111,7 +111,7 @@ public class TestTableFlowController {
         } finally {
             Long cleanupId = id;
             if (cleanupId != null) {
-                cleanupQuietly(() -> testTableRepository.del(cleanupId));
+                cleanupQuietly(() -> testTableRepository.delete(cleanupId));
             }
         }
     }
@@ -125,10 +125,12 @@ public class TestTableFlowController {
         String name = "mp-xml-" + IdUtils.nextId();
         log.info("[测试表流程][{}] 开始：增 → 查 → 改 → 查 → 删 → 查, name={}", FLOW_XML, name);
 
-        // 1. 增：XML insert；id与时间戳由 BaseEntity.init 准备（该路径无MP填充）
+        // 1. 增：XML insert
         Instant insertAt = Instant.now();
         TestTable entity = new TestTable().setName(name).setAge(18).setRemark("mapper.xml流程：新增");
-        entity.init();
+        entity.setId(IdUtils.nextId());
+        entity.setCreateTime(insertAt);
+        entity.setUpdateTime(insertAt);
         Long id = entity.getId();
         try {
             int inserted = testTableXmlMapper.insertTestTable(entity);
@@ -151,7 +153,7 @@ public class TestTableFlowController {
             String updatedName = name + "-u";
             TestTable changed = new TestTable().setName(updatedName).setAge(20).setRemark("mapper.xml流程：已更新");
             changed.setId(id);
-            changed.update();
+            changed.setUpdateTime(Instant.now());
             int updated = testTableXmlMapper.updateTestTable(changed);
             Assert.isTrue(updated == 1, "[3.更新] 影响行数异常: 期望=1, 实际={}", updated);
             step(steps, FLOW_XML, "3.更新: name=" + updatedName + ", age=20");

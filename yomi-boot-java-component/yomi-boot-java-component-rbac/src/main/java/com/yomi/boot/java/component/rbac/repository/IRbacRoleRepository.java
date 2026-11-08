@@ -16,7 +16,7 @@ import java.util.List;
  */
 public interface IRbacRoleRepository {
 
-    /** 新增角色（自动 init 审计字段） */
+    /** 新增角色 */
     void save(RbacRole row);
 
     /** 按主键更新角色 */

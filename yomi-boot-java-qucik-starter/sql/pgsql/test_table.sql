@@ -1,5 +1,5 @@
 -- PostgreSQL 建表脚本（MySQL 版见 ../mysql/test_table.sql；本示例表需手工执行；组件表脚本见仓库根 sql/，同样需手工执行）
--- 测试表：验证 MyBatis-Plus 封装（MyBatisDao）与 mapper.xml 两种接入方式
+-- 测试表：验证业务自建仓储（BaseMapper）与 mapper.xml 两种接入方式
 -- 表结构需与 com.yomi.boot.java.qucik.starter.testtable.TestTable 字段一一对应
 -- 测试接口：GET /test/ds/test-table/dao、GET /test/ds/test-table/xml
 -- 时间列统一 timestamptz(3)；MySQL 版 update_time 的 ON UPDATE CURRENT_TIMESTAMP 在 PG 无对应语法

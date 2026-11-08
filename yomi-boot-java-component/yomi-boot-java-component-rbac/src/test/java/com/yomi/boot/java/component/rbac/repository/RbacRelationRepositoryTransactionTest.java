@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class RbacRelationRepositoryTransactionTest {
 
-    /** 仓储写方法经 BaseEntity.init() 生成雪花主键，测试内自行初始化，用例之间互不依赖 */
+    /** 初始化雪花机器号 */
     @BeforeAll
     static void initIds() {
         IdUtils.initialize(1L, 0L);

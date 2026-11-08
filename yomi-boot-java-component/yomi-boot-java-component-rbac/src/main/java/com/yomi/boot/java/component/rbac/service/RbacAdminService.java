@@ -67,7 +67,6 @@ public class RbacAdminService implements IRbacAdminService {
             throw RbacBiz.of(RbacErrorCode.CODE_CONFLICT);
         }
         RbacPerm perm = new RbacPerm();
-        perm.init();
         perm.setCode(code);
         perm.setName(name);
         perm.setType(type.getCode());
@@ -92,7 +91,7 @@ public class RbacAdminService implements IRbacAdminService {
             throw RbacBiz.of(RbacErrorCode.INVALID_INPUT);
         }
         RbacPerm perm = permRepository.findActive(input.getId());
-        if (perm == null || !perm.exist()) {
+        if (perm == null || perm.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.PERM_NOT_FOUND);
         }
         if (StringUtils.isNotBlank(input.getName())) {
@@ -118,7 +117,6 @@ public class RbacAdminService implements IRbacAdminService {
                 throw RbacBiz.of(RbacErrorCode.MENU_PATH_CONFLICT);
             }
         }
-        perm.update();
         perm.setUpdateBy(input.getActorId() > 0 ? input.getActorId() : null);
         permRepository.update(perm);
         RbacPerm updatedPerm = permRepository.findActive(perm.getId());
@@ -129,11 +127,10 @@ public class RbacAdminService implements IRbacAdminService {
     @Transactional(rollbackFor = Exception.class)
     public void setPermStatus(long id, long actorId, int status) {
         RbacPerm perm = permRepository.findActive(id);
-        if (perm == null || !perm.exist()) {
+        if (perm == null || perm.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.PERM_NOT_FOUND);
         }
         perm.setStatus(RbacSupport.statusOrDefault(status));
-        perm.update();
         perm.setUpdateBy(actorId > 0 ? actorId : null);
         permRepository.update(perm);
     }
@@ -142,7 +139,7 @@ public class RbacAdminService implements IRbacAdminService {
     @Override
     public RbacPermModel getPerm(long id) {
         RbacPerm perm = permRepository.findActive(id);
-        if (perm == null || !perm.exist()) {
+        if (perm == null || perm.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.PERM_NOT_FOUND);
         }
         return RbacModelConverter.toPermModel(perm);
@@ -172,7 +169,6 @@ public class RbacAdminService implements IRbacAdminService {
             throw RbacBiz.of(RbacErrorCode.CODE_CONFLICT);
         }
         RbacPermGroup group = new RbacPermGroup();
-        group.init();
         group.setCode(code);
         group.setName(name);
         group.setRemark(StringUtils.trimToEmpty(input.getRemark()));
@@ -194,14 +190,13 @@ public class RbacAdminService implements IRbacAdminService {
             throw RbacBiz.of(RbacErrorCode.INVALID_INPUT);
         }
         RbacPermGroup group = permGroupRepository.findActive(input.getId());
-        if (group == null || !group.exist()) {
+        if (group == null || group.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.PERM_GROUP_NOT_FOUND);
         }
         if (StringUtils.isNotBlank(input.getName())) {
             group.setName(input.getName().trim());
         }
         group.setRemark(StringUtils.trimToEmpty(input.getRemark()));
-        group.update();
         group.setUpdateBy(input.getActorId() > 0 ? input.getActorId() : null);
         permGroupRepository.update(group);
         RbacPermGroup updatedGroup = permGroupRepository.findActive(group.getId());
@@ -212,11 +207,10 @@ public class RbacAdminService implements IRbacAdminService {
     @Transactional(rollbackFor = Exception.class)
     public void setPermGroupStatus(long id, long actorId, int status) {
         RbacPermGroup group = permGroupRepository.findActive(id);
-        if (group == null || !group.exist()) {
+        if (group == null || group.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.PERM_GROUP_NOT_FOUND);
         }
         group.setStatus(RbacSupport.statusOrDefault(status));
-        group.update();
         group.setUpdateBy(actorId > 0 ? actorId : null);
         permGroupRepository.update(group);
     }
@@ -225,7 +219,7 @@ public class RbacAdminService implements IRbacAdminService {
     @Override
     public RbacPermGroupModel getPermGroup(long id) {
         RbacPermGroup group = permGroupRepository.findActive(id);
-        if (group == null || !group.exist()) {
+        if (group == null || group.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.PERM_GROUP_NOT_FOUND);
         }
         RbacPermGroupModel model = RbacModelConverter.toPermGroupModel(group);
@@ -247,7 +241,7 @@ public class RbacAdminService implements IRbacAdminService {
     @Transactional(rollbackFor = Exception.class)
     public void bindGroupPerms(long groupId, List<Long> permIds, long actorId) {
         RbacPermGroup group = permGroupRepository.findActive(groupId);
-        if (group == null || !group.exist()) {
+        if (group == null || group.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.PERM_GROUP_NOT_FOUND);
         }
         List<Long> ids = RbacSupport.uniqueIds(permIds);
@@ -276,7 +270,6 @@ public class RbacAdminService implements IRbacAdminService {
             throw RbacBiz.of(RbacErrorCode.CODE_CONFLICT);
         }
         RbacRole role = new RbacRole();
-        role.init();
         role.setCode(code);
         role.setName(name);
         role.setBuiltin(0);
@@ -300,14 +293,13 @@ public class RbacAdminService implements IRbacAdminService {
             throw RbacBiz.of(RbacErrorCode.INVALID_INPUT);
         }
         RbacRole role = roleRepository.findActive(input.getId());
-        if (role == null || !role.exist()) {
+        if (role == null || role.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.ROLE_NOT_FOUND);
         }
         if (StringUtils.isNotBlank(input.getName())) {
             role.setName(input.getName().trim());
         }
         role.setRemark(StringUtils.trimToEmpty(input.getRemark()));
-        role.update();
         role.setUpdateBy(input.getActorId() > 0 ? input.getActorId() : null);
         roleRepository.update(role);
         RbacRole updatedRole = roleRepository.findActive(role.getId());
@@ -318,7 +310,7 @@ public class RbacAdminService implements IRbacAdminService {
     @Transactional(rollbackFor = Exception.class)
     public void setRoleStatus(long id, long actorId, int status) {
         RbacRole role = roleRepository.findActive(id);
-        if (role == null || !role.exist()) {
+        if (role == null || role.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.ROLE_NOT_FOUND);
         }
         int target = RbacSupport.statusOrDefault(status);
@@ -333,13 +325,11 @@ public class RbacAdminService implements IRbacAdminService {
             }
             log.warn("[RBAC]发现内置角色处于禁用状态，已恢复为启用 roleId={}, code={}", id, role.getCode());
             role.setStatus(target);
-            role.update();
             role.setUpdateBy(actorId > 0 ? actorId : null);
             roleRepository.update(role);
             return;
         }
         role.setStatus(target);
-        role.update();
         role.setUpdateBy(actorId > 0 ? actorId : null);
         roleRepository.update(role);
     }
@@ -348,7 +338,7 @@ public class RbacAdminService implements IRbacAdminService {
     @Transactional(rollbackFor = Exception.class)
     public void deleteRole(long id, long actorId) {
         RbacRole role = roleRepository.findActive(id);
-        if (role == null || !role.exist()) {
+        if (role == null || role.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.ROLE_NOT_FOUND);
         }
         if (RbacSupport.isBuiltinRole(role)) {
@@ -365,7 +355,7 @@ public class RbacAdminService implements IRbacAdminService {
     @Override
     public RbacRoleModel getRole(long id) {
         RbacRole role = roleRepository.findActive(id);
-        if (role == null || !role.exist()) {
+        if (role == null || role.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.ROLE_NOT_FOUND);
         }
         RbacRoleModel model = RbacModelConverter.toRoleModel(role);
@@ -387,7 +377,7 @@ public class RbacAdminService implements IRbacAdminService {
     @Transactional(rollbackFor = Exception.class)
     public void bindRoleGroups(long roleId, List<Long> groupIds, long actorId) {
         RbacRole role = roleRepository.findActive(roleId);
-        if (role == null || !role.exist()) {
+        if (role == null || role.getDeleteTime() != null) {
             throw RbacBiz.of(RbacErrorCode.ROLE_NOT_FOUND);
         }
         List<Long> ids = RbacSupport.uniqueIds(groupIds);

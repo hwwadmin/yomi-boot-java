@@ -16,7 +16,7 @@ import java.util.List;
  */
 public interface IRbacPermGroupRepository {
 
-    /** 新增权限组（自动 init 审计字段） */
+    /** 新增权限组 */
     void save(RbacPermGroup row);
 
     /** 按主键更新权限组 */

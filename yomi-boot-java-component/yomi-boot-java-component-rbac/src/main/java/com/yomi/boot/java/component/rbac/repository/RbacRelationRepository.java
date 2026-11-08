@@ -1,6 +1,7 @@
 package com.yomi.boot.java.component.rbac.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.yomi.boot.java.base.utils.IdUtils;
 import com.yomi.boot.java.component.rbac.entity.RbacGroupPermRel;
 import com.yomi.boot.java.component.rbac.entity.RbacRole;
 import com.yomi.boot.java.component.rbac.entity.RbacRoleGroupRel;
@@ -11,6 +12,7 @@ import com.yomi.boot.java.component.rbac.repository.mapper.RbacUserRoleRelMapper
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -75,7 +77,10 @@ public class RbacRelationRepository implements IRbacRelationRepository {
         List<RbacUserRoleRel> rows = new ArrayList<>(ids.size());
         for (Long roleId : ids) {
             RbacUserRoleRel row = new RbacUserRoleRel();
-            row.init();
+            row.setId(IdUtils.nextId());
+            Instant now = Instant.now();
+            row.setCreateTime(now);
+            row.setUpdateTime(now);
             row.setUserId(userId);
             row.setRoleId(roleId);
             row.setCreateBy(actorId > 0 ? actorId : null);
@@ -95,7 +100,10 @@ public class RbacRelationRepository implements IRbacRelationRepository {
         List<RbacRoleGroupRel> rows = new ArrayList<>(ids.size());
         for (Long groupId : ids) {
             RbacRoleGroupRel row = new RbacRoleGroupRel();
-            row.init();
+            row.setId(IdUtils.nextId());
+            Instant now = Instant.now();
+            row.setCreateTime(now);
+            row.setUpdateTime(now);
             row.setRoleId(roleId);
             row.setGroupId(groupId);
             row.setCreateBy(actorId > 0 ? actorId : null);
@@ -115,7 +123,10 @@ public class RbacRelationRepository implements IRbacRelationRepository {
         List<RbacGroupPermRel> rows = new ArrayList<>(ids.size());
         for (Long permId : ids) {
             RbacGroupPermRel row = new RbacGroupPermRel();
-            row.init();
+            row.setId(IdUtils.nextId());
+            Instant now = Instant.now();
+            row.setCreateTime(now);
+            row.setUpdateTime(now);
             row.setGroupId(groupId);
             row.setPermId(permId);
             row.setCreateBy(actorId > 0 ? actorId : null);

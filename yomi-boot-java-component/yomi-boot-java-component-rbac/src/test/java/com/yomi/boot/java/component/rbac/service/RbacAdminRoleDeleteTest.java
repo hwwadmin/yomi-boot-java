@@ -24,7 +24,7 @@ class RbacAdminRoleDeleteTest {
 
     @BeforeAll
     static void configureSnowflakeWorkerId() {
-        // BaseEntity.init() 生成雪花主键，需要机器号；单元测试环境没有 yml/环境变量
+        // 雪花主键需要机器号，单测环境未配置
         IdUtils.initialize(1L, 0L);
     }
 
@@ -38,7 +38,6 @@ class RbacAdminRoleDeleteTest {
 
         assertEquals(List.of(7L), relationRepository.deletedRoleRelations, "删除角色必须连带清理绑定关系");
         assertEquals(List.of(7L), roleRepository.physicalDeletes, "删除必须是物理删除（编码可复用）");
-        assertTrue(roleRepository.softDeletes.isEmpty(), "不应再走软删路径");
     }
 
     @Test
@@ -76,7 +75,6 @@ class RbacAdminRoleDeleteTest {
     static class StubRoleRepository extends RbacRoleRepository {
 
         final List<Long> physicalDeletes = new ArrayList<>();
-        final List<Long> softDeletes = new ArrayList<>();
         RuntimeException failNextSave;
         private final AtomicLong ids = new AtomicLong(100L);
 
@@ -101,11 +99,6 @@ class RbacAdminRoleDeleteTest {
         @Override
         public void del(Long id) {
             physicalDeletes.add(id);
-        }
-
-        @Override
-        public void softDel(RbacRole entity) {
-            softDeletes.add(entity.getId());
         }
 
         @Override

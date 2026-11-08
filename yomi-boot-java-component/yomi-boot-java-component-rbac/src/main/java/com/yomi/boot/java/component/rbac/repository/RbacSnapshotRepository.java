@@ -39,9 +39,9 @@ public class RbacSnapshotRepository implements IRbacSnapshotRepository {
     /** 从 DB 加载六表并组装关系图 */
     public RbacSnapshot loadAllForCache() {
         RbacSnapshot snap = new RbacSnapshot();
-        snap.setPerms(permMapper.selectList(null).stream().filter(RbacPerm::exist).toList());
-        snap.setGroups(permGroupMapper.selectList(null).stream().filter(RbacPermGroup::exist).toList());
-        snap.setRoles(roleMapper.selectList(null).stream().filter(RbacRole::exist).toList());
+        snap.setPerms(permMapper.selectList(null).stream().filter(row -> row.getDeleteTime() == null).toList());
+        snap.setGroups(permGroupMapper.selectList(null).stream().filter(row -> row.getDeleteTime() == null).toList());
+        snap.setRoles(roleMapper.selectList(null).stream().filter(row -> row.getDeleteTime() == null).toList());
 
         Map<Long, List<Long>> userRoles = new HashMap<>();
         for (RbacUserRoleRel rel : userRoleRelMapper.selectList(null)) {

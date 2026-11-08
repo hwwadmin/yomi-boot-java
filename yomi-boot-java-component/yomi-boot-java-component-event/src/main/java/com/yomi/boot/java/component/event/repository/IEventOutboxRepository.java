@@ -17,7 +17,7 @@ import java.util.List;
  */
 public interface IEventOutboxRepository {
 
-    /** 写发件箱（PENDING，自动 init） */
+    /** 写发件箱（PENDING） */
     void insert(EventOutbox row);
 
     /** 查询 PENDING 批量（不改变状态） */

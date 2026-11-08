@@ -2,10 +2,12 @@ package com.yomi.boot.java.component.event.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.toolkit.ChainWrappers;
 import com.yomi.boot.java.base.model.PageRequest;
 import com.yomi.boot.java.base.utils.Assert;
-import com.yomi.boot.java.component.ds.MyBatisDao;
+import com.yomi.boot.java.base.utils.IdUtils;
 import com.yomi.boot.java.component.event.entity.EventOutbox;
 import com.yomi.boot.java.component.event.model.EventOutboxQuery;
 import com.yomi.boot.java.component.event.model.OutboxStatus;
@@ -20,32 +22,46 @@ import java.util.List;
  *
  * @author zwei
  */
-public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOutbox>
-        implements IEventOutboxRepository {
+public class EventOutboxRepository implements IEventOutboxRepository {
 
     /** 重置 FETCHED 行时单条 IN 列表的分片大小（PG 扩展协议绑定参数上限 65535，这里留足余量） */
     private static final int RESET_FETCHED_CHUNK = 1_000;
 
+    private final EventOutboxMapper mapper;
+
     public EventOutboxRepository(EventOutboxMapper mapper) {
-        super(mapper);
+        this.mapper = mapper;
     }
 
-    /** 插入待发件箱行（初始化审计字段） */
+    /** lambda 链式条件 */
+    private LambdaQueryChainWrapper<EventOutbox> query() {
+        return ChainWrappers.lambdaQueryChain(mapper, EventOutbox.class);
+    }
+
+    /** 插入待发件箱行 */
     public void insert(EventOutbox row) {
-        row.init();
-        save(row);
+        Assert.nonNull(row, "table#EventOutbox不能为空");
+        Instant now = Instant.now();
+        if (row.getId() == null) {
+            row.setId(IdUtils.nextId());
+        }
+        if (row.getCreateTime() == null) {
+            row.setCreateTime(now);
+        }
+        row.setUpdateTime(now);
+        mapper.insert(row);
     }
 
     /** 查询 PENDING 行（不改状态）；批量上限由分页拦截器落到 SQL 的 LIMIT（缺拦截器由 ds 自检拦在启动期） */
     public List<EventOutbox> fetchPending(String serviceName, int limit) {
         Assert.isTrue(limit > 0, "fetch limit 必须大于 0");
-        return lambdaQuery()
+        return query()
                 .eq(EventOutbox::getServiceName, serviceName)
                 .eq(EventOutbox::getStatus, OutboxStatus.PENDING)
                 .isNull(EventOutbox::getDeleteTime)
                 .orderByAsc(EventOutbox::getCreateTime)
                 // 只取一页并关闭 count 查询，落到 SQL 就是 LIMIT n
-                .page(page(1, limit).setSearchCount(false))
+                .page(new Page<EventOutbox>(1, limit).setSearchCount(false))
                 .getRecords();
     }
 
@@ -61,7 +77,7 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         // 与 fetch_time 列（datetime(3)）对齐到毫秒，否则写库值被截断后按归属重查匹配不上
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         // 用 mapper.update(null, wrapper)：这里需要受影响行数判断本实例是否取到该行，lambdaUpdate() 链只返回 boolean
-        int updated = getMapper().update(null, new LambdaUpdateWrapper<EventOutbox>()
+        int updated = mapper.update(null, new LambdaUpdateWrapper<EventOutbox>()
                 .set(EventOutbox::getStatus, OutboxStatus.FETCHED)
                 .set(EventOutbox::getFetchTime, now)
                 .set(EventOutbox::getUpdateTime, now)
@@ -74,7 +90,7 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         if (updated < ids.size()) {
             // 部分行已被其他实例取走：本实例写入的归属标识就是 fetch_time = now，
             // 只按 status 重查会把他人已取走（可能正在投递）的行也算作自己的，导致重复发送
-            pending = lambdaQuery()
+            pending = query()
                     .in(EventOutbox::getId, ids)
                     .eq(EventOutbox::getStatus, OutboxStatus.FETCHED)
                     .eq(EventOutbox::getFetchTime, now)
@@ -96,13 +112,13 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
      */
     public List<EventOutbox> findFetchedTimeout(String serviceName, Instant fetchTimeBefore, int limit) {
         Assert.isTrue(limit > 0, "回收 limit 必须大于 0");
-        return lambdaQuery()
+        return query()
                 .eq(EventOutbox::getServiceName, serviceName)
                 .eq(EventOutbox::getStatus, OutboxStatus.FETCHED)
                 .lt(EventOutbox::getFetchTime, fetchTimeBefore)
                 .isNull(EventOutbox::getDeleteTime)
                 .orderByAsc(EventOutbox::getId)
-                .page(page(1, limit).setSearchCount(false))
+                .page(new Page<EventOutbox>(1, limit).setSearchCount(false))
                 .getRecords();
     }
 
@@ -113,7 +129,7 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         }
         for (int from = 0; from < ids.size(); from += RESET_FETCHED_CHUNK) {
             List<Long> chunk = ids.subList(from, Math.min(from + RESET_FETCHED_CHUNK, ids.size()));
-            lambdaUpdate()
+            ChainWrappers.lambdaUpdateChain(mapper)
                     .set(EventOutbox::getStatus, OutboxStatus.PENDING)
                     .set(EventOutbox::getFetchTime, null)
                     .set(EventOutbox::getUpdateTime, Instant.now())
@@ -124,10 +140,12 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         }
     }
 
-    /** 按主键更新并刷新 {@link EventOutbox#update()} */
+    /** 按主键更新 */
     public void updateRow(EventOutbox row) {
-        row.update();
-        super.update(row);
+        Assert.nonNull(row.getId(), "table#EventOutbox ID不能为空");
+        row.setUpdateTime(Instant.now());
+        int rows = mapper.updateById(row);
+        Assert.isTrue(rows == 1, "table#EventOutbox更新失败，ID[{}]不存在", row.getId());
     }
 
     /** 按主键批量查询未删除行 */
@@ -135,7 +153,7 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         if (ids == null || ids.isEmpty()) {
             return List.of();
         }
-        return lambdaQuery()
+        return query()
                 .in(EventOutbox::getId, ids)
                 .isNull(EventOutbox::getDeleteTime)
                 .list();
@@ -143,25 +161,25 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
 
     /** 按服务名 + 事件ID 查发件箱行（过滤逻辑删除）；不存在返回 null */
     public EventOutbox findByEventId(String serviceName, String eventId) {
-        return lambdaQuery()
+        return query()
                 .eq(EventOutbox::getServiceName, serviceName)
                 .eq(EventOutbox::getEventId, eventId)
                 .isNull(EventOutbox::getDeleteTime)
                 .one();
     }
 
-    /** 按主键查；不存在或已逻辑删除返回 null（与 {@code get()} 的"不存在抛异常"相区分，供指针失效路径使用） */
+    /** 按主键查；不存在或已逻辑删除返回 null（供指针失效路径使用） */
     public EventOutbox findById(Long id) {
         if (id == null) {
             return null;
         }
-        EventOutbox row = getMapper().selectById(id);
-        return row != null && row.exist() ? row : null;
+        EventOutbox row = mapper.selectById(id);
+        return row != null && row.getDeleteTime() == null ? row : null;
     }
 
     /** 重发：未送达（非 SENT_SUCCESS）的行重置为 PENDING 并清 fetch_time；返回受影响行数 */
     public int resetToPending(String serviceName, String eventId) {
-        return getMapper().update(null, new LambdaUpdateWrapper<EventOutbox>()
+        return mapper.update(null, new LambdaUpdateWrapper<EventOutbox>()
                 .set(EventOutbox::getStatus, OutboxStatus.PENDING)
                 .set(EventOutbox::getFetchTime, null)
                 .set(EventOutbox::getUpdateTime, Instant.now())
@@ -176,7 +194,7 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         Page<EventOutbox> page = new Page<>(
                 Math.max(condition.getPageNo(), 1),
                 Math.min(Math.max(condition.getPageSize(), 1), PageRequest.MAX_PAGE_SIZE));
-        return getMapper().selectPage(page, new LambdaQueryWrapper<EventOutbox>()
+        return mapper.selectPage(page, new LambdaQueryWrapper<EventOutbox>()
                 .select(EventOutbox::getId, EventOutbox::getEventId, EventOutbox::getTopic,
                         EventOutbox::getStatus, EventOutbox::getFetchTime, EventOutbox::getSentTime,
                         EventOutbox::getCreateTime)
@@ -196,13 +214,13 @@ public class EventOutboxRepository extends MyBatisDao<EventOutboxMapper, EventOu
         Assert.isTrue(serviceName != null && !serviceName.isBlank(), "serviceName 不能为空");
         Assert.isTrue(limit > 0, "清理 limit 必须大于 0");
         Assert.nonNull(sentTimeBefore, "清理时间阈值不能为空");
-        return getMapper().deleteSentSuccessBefore(serviceName, OutboxStatus.SENT_SUCCESS, sentTimeBefore, limit);
+        return mapper.deleteSentSuccessBefore(serviceName, OutboxStatus.SENT_SUCCESS, sentTimeBefore, limit);
     }
 
     /** 该服务最旧一条已成功行的 sent_time（无返回 null）：走 idx_status_sent_time */
     public Instant findOldestSentSuccessTime(String serviceName) {
         Assert.isTrue(serviceName != null && !serviceName.isBlank(), "serviceName 不能为空");
-        return getMapper().selectOldestSentSuccessTime(serviceName, OutboxStatus.SENT_SUCCESS);
+        return mapper.selectOldestSentSuccessTime(serviceName, OutboxStatus.SENT_SUCCESS);
     }
 
 }

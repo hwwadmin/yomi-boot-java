@@ -1,5 +1,5 @@
 -- MySQL 建表脚本（PostgreSQL 版见同目录 ../pgsql/test_table.sql；本示例表需手工执行；组件表脚本见仓库根 sql/，同样需手工执行）
--- 测试表：验证 MyBatis-Plus 封装（MyBatisDao）与 mapper.xml 两种接入方式
+-- 测试表：验证业务自建仓储（BaseMapper）与 mapper.xml 两种接入方式
 -- 表结构需与 com.yomi.boot.java.qucik.starter.testtable.TestTable 字段一一对应
 -- 测试接口：GET /test/ds/test-table/dao、GET /test/ds/test-table/xml
 CREATE TABLE IF NOT EXISTS `test_table`

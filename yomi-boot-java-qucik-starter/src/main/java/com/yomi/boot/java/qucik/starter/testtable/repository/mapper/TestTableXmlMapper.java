@@ -12,7 +12,7 @@ import org.apache.ibatis.annotations.Param;
 public interface TestTableXmlMapper {
 
     /**
-     * 新增（id与时间戳需调用方通过 BaseEntity.init() 准备）
+     * 新增
      */
     int insertTestTable(TestTable entity);
 

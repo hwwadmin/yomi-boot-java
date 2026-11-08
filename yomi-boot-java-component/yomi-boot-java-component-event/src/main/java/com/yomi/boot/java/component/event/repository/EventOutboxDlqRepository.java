@@ -1,11 +1,13 @@
 package com.yomi.boot.java.component.event.repository;
 
-import com.yomi.boot.java.base.utils.Assert;
-import com.yomi.boot.java.component.ds.MyBatisDao;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.toolkit.ChainWrappers;
 import com.yomi.boot.java.base.model.PageRequest;
+import com.yomi.boot.java.base.utils.Assert;
+import com.yomi.boot.java.base.utils.IdUtils;
 import com.yomi.boot.java.component.event.entity.EventOutbox;
 import com.yomi.boot.java.component.event.model.EventDlqQuery;
 import com.yomi.boot.java.component.event.entity.EventOutboxDlq;
@@ -23,28 +25,45 @@ import java.util.List;
  *
  * @author zwei
  */
-public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, EventOutboxDlq>
-        implements IEventOutboxDlqRepository {
+public class EventOutboxDlqRepository implements IEventOutboxDlqRepository {
+
+    private final EventOutboxDlqMapper mapper;
 
     public EventOutboxDlqRepository(EventOutboxDlqMapper mapper) {
-        super(mapper);
+        this.mapper = mapper;
+    }
+
+    /** lambda 链式条件 */
+    private LambdaQueryChainWrapper<EventOutboxDlq> query() {
+        return ChainWrappers.lambdaQueryChain(mapper, EventOutboxDlq.class);
     }
 
     /** 插入 DLQ 行 */
     public void insert(EventOutboxDlq row) {
-        row.init();
-        save(row);
+        Assert.nonNull(row, "table#EventOutboxDlq不能为空");
+        Instant now = Instant.now();
+        if (row.getId() == null) {
+            row.setId(IdUtils.nextId());
+        }
+        if (row.getCreateTime() == null) {
+            row.setCreateTime(now);
+        }
+        row.setUpdateTime(now);
+        mapper.insert(row);
     }
 
     /** 按主键更新 DLQ 行 */
     public void updateRow(EventOutboxDlq row) {
-        row.update();
-        super.update(row);
+        Assert.nonNull(row.getId(), "table#EventOutboxDlq ID不能为空");
+        row.setUpdateTime(Instant.now());
+        int rows = mapper.updateById(row);
+        Assert.isTrue(rows == 1, "table#EventOutboxDlq更新失败，ID[{}]不存在", row.getId());
     }
 
     /** 物理删除 DLQ 行 */
     public void deleteById(Long id) {
-        del(id);
+        Assert.nonNull(id, "table#EventOutboxDlq ID不能为空");
+        mapper.deleteById(id);
     }
 
     /**
@@ -55,7 +74,7 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
         Instant now = Instant.now();
         Instant claimUntil = now.plus(lease);
         // 用 mapper.update(null, wrapper)：这里需要受影响行数判断是否占用成功，lambdaUpdate() 链只返回 boolean
-        int rows = getMapper().update(null, new LambdaUpdateWrapper<EventOutboxDlq>()
+        int rows = mapper.update(null, new LambdaUpdateWrapper<EventOutboxDlq>()
                 .set(EventOutboxDlq::getRetryAfterTime, claimUntil)
                 .set(EventOutboxDlq::getUpdateTime, now)
                 .eq(EventOutboxDlq::getId, dlqId)
@@ -67,19 +86,19 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
 
     /** 按发件箱主键查 DLQ（uk_event_outbox_id） */
     public EventOutboxDlq findByEventOutboxId(Long eventOutboxId) {
-        return lambdaQuery()
+        return query()
                 .eq(EventOutboxDlq::getEventOutboxId, eventOutboxId)
                 .isNull(EventOutboxDlq::getDeleteTime)
                 .one();
     }
 
-    /** 按主键查；不存在或已逻辑删除返回 null（与 {@code get()} 的"不存在抛异常"相区分，供重试前复核使用） */
+    /** 按主键查；不存在或已逻辑删除返回 null（供重试前复核使用） */
     public EventOutboxDlq findById(Long id) {
         if (id == null) {
             return null;
         }
-        EventOutboxDlq row = getMapper().selectById(id);
-        return row != null && row.exist() ? row : null;
+        EventOutboxDlq row = mapper.selectById(id);
+        return row != null && row.getDeleteTime() == null ? row : null;
     }
 
     /**
@@ -104,26 +123,26 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
 
     /** 未排期（新建/人工复位）：按 create_time 有序，走 idx_service_name_create_time；上限由分页拦截器落到 LIMIT */
     private List<EventOutboxDlq> selectUnscheduled(String serviceName, int maxRetry, int limit) {
-        return lambdaQuery()
+        return query()
                 .eq(EventOutboxDlq::getServiceName, serviceName)
                 .isNull(EventOutboxDlq::getDeleteTime)
                 .lt(EventOutboxDlq::getRetryCount, maxRetry)
                 .isNull(EventOutboxDlq::getRetryAfterTime)
                 .orderByAsc(EventOutboxDlq::getCreateTime)
-                .page(page(1, limit).setSearchCount(false))
+                .page(new Page<EventOutboxDlq>(1, limit).setSearchCount(false))
                 .getRecords();
     }
 
     /** 已到退避窗口：按 retry_after_time 有序，走 idx_retry_after_time；上限由分页拦截器落到 LIMIT */
     private List<EventOutboxDlq> selectDue(String serviceName, int maxRetry, Instant now, int limit) {
-        return lambdaQuery()
+        return query()
                 .eq(EventOutboxDlq::getServiceName, serviceName)
                 .isNull(EventOutboxDlq::getDeleteTime)
                 .lt(EventOutboxDlq::getRetryCount, maxRetry)
                 .le(EventOutboxDlq::getRetryAfterTime, now)
                 .orderByAsc(EventOutboxDlq::getRetryAfterTime)
                 .orderByAsc(EventOutboxDlq::getCreateTime)
-                .page(page(1, limit).setSearchCount(false))
+                .page(new Page<EventOutboxDlq>(1, limit).setSearchCount(false))
                 .getRecords();
     }
 
@@ -137,7 +156,7 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
 
     /** 删除指定发件箱行的 DLQ（重发时移交重试责任） */
     public int deleteByEventOutboxId(Long eventOutboxId) {
-        return getMapper().delete(new LambdaQueryWrapper<EventOutboxDlq>()
+        return mapper.delete(new LambdaQueryWrapper<EventOutboxDlq>()
                 .eq(EventOutboxDlq::getEventOutboxId, eventOutboxId));
     }
 
@@ -146,7 +165,7 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
         Page<EventOutboxDlq> page = new Page<>(
                 Math.max(condition.getPageNo(), 1),
                 Math.min(Math.max(condition.getPageSize(), 1), PageRequest.MAX_PAGE_SIZE));
-        return getMapper().selectPage(page, new LambdaQueryWrapper<EventOutboxDlq>()
+        return mapper.selectPage(page, new LambdaQueryWrapper<EventOutboxDlq>()
                 .eq(EventOutboxDlq::getServiceName, serviceName)
                 .ge(condition.getStartTime() != null, EventOutboxDlq::getCreateTime, condition.getStartTime())
                 .le(condition.getEndTime() != null, EventOutboxDlq::getCreateTime, condition.getEndTime())
@@ -161,7 +180,7 @@ public class EventOutboxDlqRepository extends MyBatisDao<EventOutboxDlqMapper, E
         if (to.isBefore(from)) {
             throw new IllegalArgumentException("结束时间不能早于开始时间");
         }
-        return getMapper().resetRetryCountInRange(serviceName, from, to, Instant.now());
+        return mapper.resetRetryCountInRange(serviceName, from, to, Instant.now());
     }
 
     /**

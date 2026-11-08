@@ -120,7 +120,7 @@ public class TestRbacFlowService {
     /** 确保演示数据：ApiPerm */
     private Long ensureApiPerm(List<String> steps) {
         RbacPerm existing = permRepository.findByCode(TestRbacDemoConstants.PERM_CODE);
-        if (existing != null && existing.exist()) {
+        if (existing != null && existing.getDeleteTime() == null) {
             steps.add("1.权限: 复用已有 " + TestRbacDemoConstants.PERM_CODE);
             return existing.getId();
         }
@@ -140,7 +140,7 @@ public class TestRbacFlowService {
     /** 确保演示数据：Group */
     private Long ensureGroup(List<String> steps) {
         RbacPermGroup existing = permGroupRepository.findByCode(TestRbacDemoConstants.GROUP_CODE);
-        if (existing != null && existing.exist()) {
+        if (existing != null && existing.getDeleteTime() == null) {
             steps.add("2.权限组: 复用已有 " + TestRbacDemoConstants.GROUP_CODE);
             return existing.getId();
         }
@@ -157,7 +157,7 @@ public class TestRbacFlowService {
     /** 确保演示数据：Role */
     private Long ensureRole(List<String> steps) {
         RbacRole existing = roleRepository.findByCode(TestRbacDemoConstants.ROLE_CODE);
-        if (existing != null && existing.exist()) {
+        if (existing != null && existing.getDeleteTime() == null) {
             steps.add("角色: 复用已有 " + TestRbacDemoConstants.ROLE_CODE);
             return existing.getId();
         }

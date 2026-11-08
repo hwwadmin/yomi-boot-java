@@ -1,7 +1,7 @@
 package com.yomi.boot.java.component.event.entity;
 
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.yomi.boot.java.component.ds.BaseEntity;
 import com.yomi.boot.java.component.event.model.OutboxStatus;
 import lombok.Getter;
 import lombok.Setter;
@@ -17,10 +17,14 @@ import java.time.Instant;
  */
 @Getter
 @Setter
-@ToString(callSuper = true)
+@ToString
 @Accessors(chain = true)
 @TableName("sys_event_outbox")
-public class EventOutbox extends BaseEntity {
+public class EventOutbox {
+
+    /** 主键 */
+    @TableId
+    private Long id;
 
     /** 归属服务名，与 event_id 组成唯一键 */
     private String serviceName;
@@ -42,5 +46,23 @@ public class EventOutbox extends BaseEntity {
 
     /** Kafka 发送成功时间 */
     private Instant sentTime;
+
+    /** 创建时间 */
+    private Instant createTime;
+
+    /** 创建人ID */
+    private Long createBy;
+
+    /** 更新时间 */
+    private Instant updateTime;
+
+    /** 更新人ID */
+    private Long updateBy;
+
+    /** 删除时间 */
+    private Instant deleteTime;
+
+    /** 删除人ID */
+    private Long deleteBy;
 
 }
