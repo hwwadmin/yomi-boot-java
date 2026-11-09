@@ -18,7 +18,6 @@
         <module>yomi-boot-java-component-idempotency</module>
         <module>yomi-boot-java-component-oss</module>
         <module>yomi-boot-java-component-event</module>
-        <module>yomi-boot-java-component-rbac</module>
         <module>yomi-boot-java-component-captcha</module>
         <module>yomi-boot-java-component-desensitize</module>
         <module>yomi-boot-java-component-httplog</module>

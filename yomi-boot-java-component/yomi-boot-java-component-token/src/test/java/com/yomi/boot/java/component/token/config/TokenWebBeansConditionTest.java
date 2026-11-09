@@ -17,7 +17,7 @@ import java.lang.reflect.Proxy;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * token 的 Web Bean 只在 Servlet 应用注册（与 rbac 对齐）：
+ * token 的 Web Bean 只在 Servlet 应用注册：
  * 非 Web / WebFlux 应用不注册这些 Bean，不会给出"令牌校验在生效"的错误印象
  */
 class TokenWebBeansConditionTest {

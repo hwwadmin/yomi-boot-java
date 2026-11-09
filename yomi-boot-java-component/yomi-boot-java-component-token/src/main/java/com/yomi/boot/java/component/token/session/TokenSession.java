@@ -16,7 +16,7 @@ import java.util.Map;
  *     <li>校验时以 {@link #expireAt} 判定过期，Redis TTL 仅作为清理手段；</li>
  *     <li>撤销即删除快照，令牌随之立即失效。</li>
  * </ul>
- * 会话仅表达登录身份（如 {@link #userId}），不包含 RBAC 角色/权限；授权由 rbac 组件按 userId 独立求值。
+ * 会话仅表达登录身份（如 {@link #userId}），不包含角色/权限；授权由业务按 userId 独立求值。
  * 多租户等业务维度由接入方写入 {@link #context}，键名与类型由业务自定。
  * {@link #context} 值为可 JSON 序列化对象（不支持 null）。
  *

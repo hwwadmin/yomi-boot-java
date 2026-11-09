@@ -189,11 +189,6 @@
             </dependency>
             <dependency>
                 <groupId>com.yomi</groupId>
-                <artifactId>yomi-boot-java-component-rbac</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.yomi</groupId>
                 <artifactId>yomi-boot-java-component-captcha</artifactId>
                 <version>${project.version}</version>
             </dependency>
