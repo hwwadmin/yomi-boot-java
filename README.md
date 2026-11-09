@@ -6,7 +6,7 @@
 
 - **有什么**：Token 会话、RBAC 权限、数据源、Redis、Kafka、幂等、事件、对象存储等，用哪个引哪个。
 - **要注意**：不含用户、订单这类业务代码，表要自己建（脚本在 `sql/mysql|pgsql/`）；数据库只支持 MySQL 和 PostgreSQL。
-- **怎么用**：先引 `yomi-boot-java-core`，再按需加 `component` 下的子模块；`qucik-starter` 是参考示例。
+- **怎么用**：先引 `yomi-boot-java-core`，再按需加 `component` 下的子模块。
 
 ## 中间件推荐版本
 

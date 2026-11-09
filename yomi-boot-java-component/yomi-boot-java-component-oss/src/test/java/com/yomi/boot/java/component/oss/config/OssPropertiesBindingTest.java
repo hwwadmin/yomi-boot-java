@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class OssPropertiesBindingTest {
 
-    /** 与 quick-starter dev yml 的 rustfs 示例一致 */
+    /** 与 dev yml 的 rustfs 示例一致 */
     @Test
     void bindsRustfsSectionFromConfig() {
         Map<String, Object> source = Map.of(

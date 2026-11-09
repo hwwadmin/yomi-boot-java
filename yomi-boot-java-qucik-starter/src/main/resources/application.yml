@@ -1,5 +1,0 @@
-spring:
-  application:
-    name: yomi-boot-java-qucik-starter
-  profiles:
-    active: ${SPRING_PROFILES_ACTIVE:dev}

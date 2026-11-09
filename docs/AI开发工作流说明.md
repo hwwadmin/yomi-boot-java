@@ -11,9 +11,9 @@
 | 场景 | 工作区 | 代码落点 | 文档落点 |
 |------|--------|----------|----------|
 | **业务开发**（默认） | 业务 Maven 工程（依赖 `yomi-boot-java-core` 及按需 `component-*`） | 业务工程 `src/main/java` 等 | 业务工程根目录下的 `_doc/`、`_feat-doc/` 等 |
-| **boot 库维护** | 本仓库 `yomi-boot-java` | 仅 `yomi-boot-java-base` / `core` / `component-*` / `qucik-starter` 演示 | 本仓库根目录下同名文档目录（与上表相同文件夹名） |
+| **boot 库维护** | 本仓库 `yomi-boot-java` | 仅 `yomi-boot-java-base` / `core` / `component-*` | 本仓库根目录下同名文档目录（与上表相同文件夹名） |
 
-**boot 库边界**：不在 boot 仓实现产品域表结构、业务流程与用户体系；`qucik-starter` 的 `test*` 包仅作组件集成演示。业务 spec 须在「本项目结构约定」中写清包名与分层，并优先复用已有 component。
+**boot 库边界**：不在 boot 仓实现产品域表结构、业务流程与用户体系。业务 spec 须在「本项目结构约定」中写清包名与分层，并优先复用已有 component。
 
 ---
 
@@ -169,7 +169,7 @@ AI 执行 `_prompts/skills/spec落地执行.md`，将：
 
 1. 确认 `audit.md` 无未闭合严重项，阅读 spec（及可选 PRD）
 2. 拆解为分阶段原子任务，生成 `_task-doc/{需求名称}/tasks.md`（名称通常与 spec 目录中的需求名一致）
-3. 按 **TDD** 逐个功能点推进：先写测试 → 再写实现 → 必要时小步重构；验证以 `mvn test` / 模块测试为主，HTTP 集成可参考 `yomi-boot-java-qucik-starter` 中 `*ApiTest` 模式
+3. 按 **TDD** 逐个功能点推进：先写测试 → 再写实现 → 必要时小步重构；验证以 `mvn test` / 模块测试为主
 4. 每完成一个功能点回写 `tasks.md`
 
 实现约束摘要：
@@ -225,7 +225,7 @@ AI 执行 `_prompts/skills/代码巡检.md`，报告落盘至：
 
 > `_ipc-doc/{YYYYMMDD}_{需求名称}-ipc.md`
 
-未关联某次需求显化时，可使用 `_ipc-doc/{YYYYMMDD}_全项目-ipc.md`。巡检范围在 **boot 仓** 默认为 `base` / `core` / `component-*` / `qucik-starter` 演示；在 **业务仓** 为用户指定包或默认 `src/main/java` 业务代码。不把测试覆盖率作为硬性门禁，重点关注崩溃、资源与并发风险、契约破坏等（见 command 内审查标准）。
+未关联某次需求显化时，可使用 `_ipc-doc/{YYYYMMDD}_全项目-ipc.md`。巡检范围在 **boot 仓** 默认为 `base` / `core` / `component-*`；在 **业务仓** 为用户指定包或默认 `src/main/java` 业务代码。不把测试覆盖率作为硬性门禁，重点关注崩溃、资源与并发风险、契约破坏等（见 command 内审查标准）。
 
 ### deep_think — 深度思考
 

@@ -495,7 +495,7 @@ class DsAutoConfigurationTest {
     }
 
     /**
-     * quick-starter 场景：宿主扫描 com.yomi（会直接扫到自动装配类本身），同时 imports 清单也会注册它。
+     * 宿主扫描 com.yomi 场景：会直接扫到自动装配类本身，同时 imports 清单也会注册它。
      * 同一配置类双通道注册时去重，@ConditionalOnMissingBean 生效后每种 Bean 只有一份
      */
     @Test

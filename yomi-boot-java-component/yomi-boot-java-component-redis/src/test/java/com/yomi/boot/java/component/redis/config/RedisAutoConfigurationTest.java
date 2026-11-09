@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *       即使 Boot 已创建指向 localhost 的默认连接工厂，组件仍保持不激活（Redisson 启动即建连）；</li>
  *   <li>host / url / sentinel / cluster 四种写法都能把组件装配起来。</li>
  * </ol>
- * 激活路径的连通性（真实 Redisson 建连）由 quick-starter 现网流程覆盖；本测试统一注册 stub RedissonClient，
+ * 激活路径的连通性（真实 Redisson 建连）不在本测试覆盖范围；本测试统一注册 stub RedissonClient，
  * 跳过 Redisson.create 真实建连
  */
 class RedisAutoConfigurationTest {

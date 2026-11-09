@@ -11,13 +11,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@code yomi.event.retention.*} 绑定验证：取值与 quick-starter 两份 yml 一致，
+ * {@code yomi.event.retention.*} 绑定验证：取值取自实际 yml 配置示例，
  * 校验 yomi.event 配置可正确绑定（含 Duration 简写 14d/1h）
  */
 class EventPropertiesBindingTest {
 
     @Test
-    void bindsRetentionPropertiesFromQuickStarterConfig() {
+    void bindsRetentionPropertiesFromConfig() {
         Map<String, Object> source = Map.of(
                 "yomi.event.retention.outbox-retention-enabled", "true",
                 "yomi.event.retention.outbox-retention", "14d",
